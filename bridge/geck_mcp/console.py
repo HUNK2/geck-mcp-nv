@@ -32,9 +32,29 @@ TERMINAL = {'acknowledged', 'query_verified', 'effect_verified', 'effect_not_ver
 def paths(project):
     token = 'geck_mcp_console_' + hashlib.sha256(project.project_id.encode()).hexdigest()[:12]
     base = project.game_root / 'Data/NVSE/Plugins'
-    return {suffix: base / (token + suffix) for suffix in
-            ('.dll', '.ready.json', '.request', '.claimed', '.result.json', '.context')} | {
-                'token': token, 'receipt': project.state_dir / 'console/install.json'}
+    files = {suffix: base / (token + suffix) for suffix in
+             ('.dll', '.ready.json', '.request', '.claimed', '.result.json', '.context')}
+    # Under Mod Organizer 2 the game runs in MO2's virtual file system (usvfs). A file the game
+    # creates under Data, where the real folder has none, is written to MO2's overwrite folder, and a
+    # file in overwrite hides the real one. So the files the companion writes (.ready.json, .claimed
+    # from renaming .request, .result.json, and .context after a teleport) are read where the game
+    # sees them. .request stays in the real folder: usvfs fixes its file list at launch, so the game
+    # would not see a file added to overwrite from outside, but it does see real files it has no
+    # entry for.
+    overwrite = mo2_overwrite(project)
+    if overwrite:
+        for suffix in ('.ready.json', '.claimed', '.result.json', '.context'):
+            created = overwrite / (token + suffix)
+            if created.exists() or (suffix != '.context' and not files[suffix].exists()):
+                files[suffix] = created
+    return files | {'token': token, 'receipt': project.state_dir / 'console/install.json'}
+
+
+def mo2_overwrite(project):
+    """MO2's overwrite folder for Data/NVSE/Plugins when the profile's fnv block names an MO2 root."""
+    fnv = getattr(project, 'fnv', None)
+    root = getattr(fnv, 'mo2_root', None) if fnv else None
+    return Path(root) / 'overwrite/NVSE/Plugins' if root else None
 
 
 def lock_root(project):

@@ -437,5 +437,42 @@ class CrashTests(FnvTestBase):
         self.assertTrue(all(name.startswith('fnv_') for name in FNV_TOOLS))
 
 
+class Mo2ConsolePathTests(unittest.TestCase):
+    """Console exchange files under MO2's virtual file system (geck_mcp.console.paths)."""
+
+    def setUp(self):
+        from types import SimpleNamespace
+        from geck_mcp import console
+        self.console = console
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name)
+        self.real = root / 'game/Data/NVSE/Plugins'
+        self.over = root / 'mo2/overwrite/NVSE/Plugins'
+        self.real.mkdir(parents=True)
+        self.over.mkdir(parents=True)
+        self.project = SimpleNamespace(project_id='p', game_root=root / 'game', state_dir=root / 'state',
+                                       fnv=SimpleNamespace(mo2_root=root / 'mo2'))
+
+    def test_without_mo2_everything_is_in_data(self):
+        self.project.fnv = None
+        p = self.console.paths(self.project)
+        self.assertTrue(all(p[s].parent == self.real for s in ('.dll', '.ready.json', '.request', '.claimed',
+                                                               '.result.json', '.context')))
+
+    def test_game_written_files_follow_overwrite(self):
+        p = self.console.paths(self.project)
+        token = p['token']
+        for s in ('.ready.json', '.claimed', '.result.json'):
+            self.assertEqual(p[s].parent, self.over, s)     # where the game will create them
+        for s in ('.dll', '.request', '.context'):
+            self.assertEqual(p[s].parent, self.real, s)     # the bridge's own files stay real
+        (self.real / (token + '.claimed')).write_text('x')  # a real copy the game still sees
+        (self.over / (token + '.context')).write_text('y')  # the companion's rewrite hides the real one
+        p = self.console.paths(self.project)
+        self.assertEqual(p['.claimed'].parent, self.real)
+        self.assertEqual(p['.context'].parent, self.over)
+
+
 if __name__ == '__main__':
     unittest.main()
