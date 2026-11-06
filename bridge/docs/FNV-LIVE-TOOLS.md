@@ -84,6 +84,9 @@ nothing once xNVSE has announced the game is exiting.
 
 ## Setup
 
+The full guide, from an empty machine, is [FNV-MCP-SETUP.md](FNV-MCP-SETUP.md); `fnv_setup_check` says what is
+missing. In short:
+
 1. A portable MO2 instance with a dev profile, xNVSE 6.4.9+ and JIP LN NVSE (fnv-mcp `SETUP-NOTES.md`
    lists the steps; `scripts/setup_dev_profile.py` in fnv-mcp creates it). In the profile's
    `Fallout.ini`: `bAlwaysActive=1` under `[General]`, so the game keeps running unfocused.

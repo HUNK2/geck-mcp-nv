@@ -416,6 +416,23 @@ class DataToolTests(unittest.TestCase):
         self.assertNotIn(5, [line for line, _ in codes])  # comparison after a call is not an argument
         self.assertFalse(report['ok'])
 
+    def test_setup_check_on_an_empty_machine(self):
+        from geck_mcp import fnv_setup
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as folder:
+            fnv = SimpleNamespace(mo2_root=folder, mo2_profile='Dev', mo2_executable='NVSE', zig=None,
+                                  engine_map=Path(folder) / 'none.json', decomp_root=None, clean_exe=None,
+                                  engine_control='read')
+            project = SimpleNamespace(game_root=Path(folder) / 'game', fnv=fnv, state_dir=Path(folder) / 'state')
+            with mock.patch.dict(os.environ, {'GECK_MCP_ZIG': ''}):
+                report = fnv_setup.setup_check(project)
+        self.assertFalse(report['ready'])
+        for name in ('game', 'xNVSE', 'MO2 instance', 'JIP LN NVSE', 'crash logger', 'engine companion', 'engine map'):
+            self.assertIn(name, report['missing'])
+        states = {c['check']: c['state'] for c in report['checks']}
+        self.assertEqual(states['full control'], 'optional')
+        self.assertTrue(all(c['fix'] for c in report['checks'] if c['state'] != 'ok'))
+
     def test_crash_log_without_symbols(self):
         from geck_mcp import fnv_crash
         parsed = {'format': 'yvile5', 'modules': [], 'calltrace': [

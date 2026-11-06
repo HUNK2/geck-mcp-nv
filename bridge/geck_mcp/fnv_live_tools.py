@@ -73,6 +73,8 @@ FNV_LIVE_TOOLS = {
     'fnv_script_hot_swap': ('act', 'replace a running script with a new compile, keeping its variables (undoable)'),
     # milestone 9: end to end
     'fnv_scripts_compile': ('control', "compile the project spec's scripts in game into geck-mcp-nv's script cache"),
+    # milestone 10: setup
+    'fnv_setup_check': ('read', 'is this machine ready for the fnv tools? each prerequisite with its state and the fix'),
 }
 
 
@@ -531,5 +533,13 @@ def register(server, project, annotations, result_type):
         installed and loaded (its forms must exist). Each entry is checked with the builder's verification and
         records an in-game provenance. Scripts with Quest.variable references cannot be compiled in game."""
         return await invoke('fnv_scripts_compile', lambda: data.compile_spec_scripts(only), 'control')
+
+    @server.tool(annotations=read)
+    async def fnv_setup_check() -> result_type:
+        """Is this machine ready for the fnv_* tools? Checks the game build, xNVSE, the MO2 dev instance and its NVSE
+        executable, JIP LN NVSE, the crash logger, bAlwaysActive, Zig, the engine companion (installed, up to date),
+        the engine map, the optional unpacked exe and full control; each with what to do when it is missing."""
+        from .fnv_setup import setup_check
+        return await invoke('fnv_setup_check', lambda: setup_check(project))
 
     return live
