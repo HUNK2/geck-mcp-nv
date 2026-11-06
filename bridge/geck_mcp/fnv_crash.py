@@ -27,6 +27,13 @@ INJECTED_NOTES = {
     'nvac': 'New Vegas Anti Crash (hides real crashes; remove it for diagnosis)',
     'atcuf32': 'Bitdefender (antivirus hook)', 'bdhkm32': 'Bitdefender (antivirus hook)',
     'd3d9': 'Direct3D 9 (driver or a d3d9 wrapper such as DXVK/ENB if it is not in System32)',
+    # overlays and capture tools that inject themselves and hook the renderer's Present
+    'discordhook': "Discord's in-game overlay, injected by the Discord app (it can be turned off per game "
+                   "in Discord's settings)",
+    'rtsshooks': 'RivaTuner Statistics Server overlay (often with MSI Afterburner)',
+    'graphics-hook32': 'OBS Studio game capture',
+    'nvspcap': 'NVIDIA ShadowPlay / GeForce Experience capture',
+    'overlay': 'an overlay (Ubisoft/EA/other launcher)',
 }
 EXCEPTIONS = {
     'C0000005': 'access violation: code read or wrote memory it may not touch (often a null or freed pointer)',
@@ -150,8 +157,9 @@ def parse_text(text):
         out['logger'] = {'name': m.group('name').strip(), 'version': m.group('version').strip(), 'at': m.group('at')}
     if any(l.startswith('Cobb') or 'CobbCrashLogger' in l for l in lines[:5]):
         out['format'] = 'cobb'
-    for l in lines[:40]:
-        if 'NVAC detected' in l or 'Stutter Remover detected' in l or 'heap replacer detected' in l.lower():
+    for l in lines:
+        if (l.lstrip().upper().startswith('WARNING') or 'NVAC detected' in l or 'Stutter Remover detected' in l
+                or 'heap replacer detected' in l.lower()) and l.strip() not in out['warnings']:
             out['warnings'].append(l.strip())
     section = None
     current = None   # register/stack entry that continuation lines belong to
@@ -439,9 +447,13 @@ def resolve_frames(parsed):
                 frame['moduleVersion'] = module['version']
             frame['kind'] = module_kind(module)
         else:
-            frame['kind'] = 'game' if name.lower().startswith('falloutnv') or (
+            # no module table (5.17 logs can lack one): a named module that is not the game, xNVSE or
+            # Windows is some other DLL in the process (a plugin or an injected overlay)
+            lname = name.lower()
+            frame['kind'] = 'game' if lname.startswith('falloutnv') or (
                 0x00400000 <= address < 0x01300000 and parsed['format'] != 'yvile5') else (
-                'system' if name.lower() in SYSTEM_MODULES else 'unknown')
+                'system' if lname in SYSTEM_MODULES else 'script_extender' if lname in SCRIPT_EXTENDER
+                else 'other' if name else 'unknown')
         if f.get('symbol'):
             frame['logSymbol'] = f['symbol']
         if f.get('source'):
@@ -502,7 +514,7 @@ def explain(parsed, engine, project=None, max_frames=40):
     return {'file': parsed.get('file'), 'modified': parsed.get('modified'), 'logger': parsed['logger'],
             'format': parsed['format'],
             'exception': dict(exc, meaning=EXCEPTIONS.get(exc.get('code', ''))) if exc else None,
-            'crashSite': crash_site,
+            'crashSite': crash_site, 'thread': parsed['thread'],
             'frames': frames[:max_frames], 'frameCount': len(frames),
             'formsInvolved': forms[:40],
             'runningScript': parsed['runningScript'] or None,
@@ -563,9 +575,13 @@ def _suspects(parsed, frames, forms, exc):
         if 'Stutter Remover' in w:
             add('module', 'New Vegas Stutter Remover', 'medium', ['the crash logger flags NVSR as a crash source'])
     first_real = next((f for f in frames if f['kind'] not in ('system', 'unknown')), None)
+    counted = set()
     for i, f in enumerate(frames[:10]):
         if f['kind'] in ('nvse_plugin', 'other') and f.get('module'):
             label = f.get('moduleName') or f['module']
+            if label in counted:       # a DLL's own inner frames add nothing
+                continue
+            counted.add(label)
             where = f.get('logSymbol') or ('offset ' + f['offset'] if f.get('offset') else '')
             if i == 0:
                 add('module', label, 'high', ['the crash happened inside %s (%s), the first frame' % (label, where)],
@@ -628,6 +644,10 @@ def _suspects(parsed, frames, forms, exc):
                 ['stack slot %s holds a %s for this file' % (s['slot'], objs[0].get('class') or 'file')])
     if parsed['runningScript']:
         add('script', '; '.join(parsed['runningScript'])[:200], 'medium', ['a script was running when it crashed'])
+    for s in suspects:
+        note = INJECTED_NOTES.get((s.get('module') or '').lower())
+        if note:
+            s['note'] = note
     rank = {'high': 0, 'medium': 1, 'low': 2}
     suspects.sort(key=lambda s: rank[s['confidence']])
     return suspects

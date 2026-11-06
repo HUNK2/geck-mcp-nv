@@ -405,6 +405,39 @@ class CrashTests(FnvTestBase):
         top = e['likelyCulprits'][0]
         self.assertEqual((top['kind'], top['name'], top['confidence']), ('module', 'Test NVSE Plugin', 'high'))
 
+    def test_overlay_without_module_table(self):
+        # Shape of a real 5.17 log from this machine: no "Module bases" section, an injected overlay on top,
+        # a WARNING line after the memory sections
+        log = textwrap.dedent('''\
+            Yvileapsis' Crash Logger version 5.17 at 2026-11-06 23:00:05
+
+            Exception: EXCEPTION_ACCESS_VIOLATION (C0000005)
+            Last Error: The system cannot find the path specified.   (00000003)
+
+            Thread: [FNV] LoadingMenu
+
+            Calltrace:
+                 ebp    |                   Address                 |                 Function                 |  Source
+             0x15EAF978 |                  DiscordHook (0x100BB14E) | dummy_debug_proc+0x8C82E                 |
+             0x15EAF9FC |                  DiscordHook (0x1000A620) |                                          |
+             0x15EAFCF4 |                    FalloutNV (0x00401105) |                                          |
+
+            Game's Heaps:
+             Default Heap      21.05 MiB / 500.00 MiB (4.21%)  (18070000 - 37470000)
+
+            WARNING: New Vegas Tick Fix not found! This will cause performance issues!
+            ''')
+        e = fnv_crash.explain(fnv_crash.parse_text(log), self.engine)
+        self.assertEqual(e['thread'], '[FNV] LoadingMenu')
+        self.assertEqual((e['frames'][0]['kind'], e['frames'][0]['offset']), ('other', '0xBB14E'))
+        self.assertEqual(e['frames'][2]['function']['name'], 'Actor::ApplyLimbDamage')
+        top = e['likelyCulprits'][0]
+        self.assertEqual((top['name'], top['confidence']), ('DiscordHook', 'high'))
+        self.assertIn('Discord', top['note'])
+        self.assertEqual(len(top['reasons']), 1)
+        self.assertEqual(len(e['warnings']), 1)
+        self.assertTrue(e['warnings'][0].startswith('WARNING: New Vegas Tick Fix'))
+
     def test_parse_yvile45_order(self):
         p = fnv_crash.parse_text(LOG45)
         self.assertEqual(p['format'], 'yvile4')
