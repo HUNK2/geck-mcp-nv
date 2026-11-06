@@ -285,8 +285,14 @@ class ScenarioRunner:
         started = time.time()
         report = {'name': scenario['name'], 'source': scenario['_source'], 'passed': False, 'steps': [],
                   'setup': [], 'teardown': [], 'failures': [], 'crash': None, 'relaunched': None}
+        unpause = None
         try:
             report['game'] = self.prepare(scenario)
+            if not scenario.get('allow_menus'):
+                # The game opens its pause menu when its window loses focus; keep the world running while the
+                # test runs (the companion closes the pause menu and message boxes; allow_menus: true opts out).
+                unpause = self.game.keep_unpaused(int(scenario.get('timeout', 240)) + 120)
+                report['game']['keptUnpaused'] = unpause is not None
             marker = self.mark()
             phases = [('setup', scenario.get('setup') or []), ('steps', scenario['steps'])]
             failed = False
@@ -325,6 +331,8 @@ class ScenarioRunner:
                     break
                 result['step'] = number
                 report['teardown'].append(result)
+        if not report['crash']:
+            self.game.stop_task(unpause)
         if not report['passed'] and not report['crash']:
             report['screenshot'] = self.screenshot(scenario['name'])
         report['seconds'] = round(time.time() - started, 1)
@@ -377,13 +385,31 @@ class ScenarioRunner:
                     kind, value = parse_start('continue', self.game.saves_dir)
                 line = 'load "%s"' % value if kind == 'save' else 'coc %s' % value
                 self.game.link.schedule(0, line)
+                if kind == 'coc':
+                    info['arrivalMessages'] = self.game.close_arrival_messages()
                 info['started'] = self.game.wait_in_game(time.monotonic() + 240, proc[0], start)
+        try:  # the pause menu opens when the game window loses focus; steps need the world running
+            if fnv_link.value_of(self.game.link.eval('GetActiveMenuMode')) == 1013:
+                self.game.link.console('CloseActiveMenu')
+                info['closedPauseMenu'] = True
+        except Exception:
+            pass
         wanted = scenario.get('plugins') or ([scenario['plugin']] if scenario.get('plugin') else [])
         for plugin in wanted:
             state = self.live.formid_live(plugin)
             if not state['loaded']:
                 raise ScenarioError('PLUGIN_NOT_LOADED', '%s is not loaded in the dev profile (fnv_install)' % plugin)
         info['plugins'] = wanted
+        if scenario.get('crash_context', True):
+            # Script hooks so a crash during the test names the running script (fnv_crash_context).
+            try:
+                from .fnv_deep import DeepTools
+                deep = getattr(self.live, 'deep', None) or DeepTools(self.live)
+                self.live.deep = deep
+                deep.crash_context('enable')
+                info['crashContext'] = True
+            except Exception as e:  # older companion without hooks: the test still runs
+                info['crashContext'] = 'off (%s)' % getattr(e, 'code', e)
         return info
 
     def mark(self):
@@ -433,7 +459,9 @@ class ScenarioRunner:
                 return {'log': data.get('file'), 'modified': data.get('modified'), 'exception': data.get('exception'),
                         'crashSite': data.get('crashSite'), 'thread': data.get('thread'),
                         'likelyCulprits': (data.get('likelyCulprits') or [])[:5], 'frames': (data.get('frames') or [])[:8],
-                        'formsInvolved': (data.get('formsInvolved') or [])[:10], 'runningScript': data.get('runningScript')}
+                        'formsInvolved': (data.get('formsInvolved') or [])[:10], 'runningScript': data.get('runningScript'),
+                        'companionContext': data.get('companionContext'),
+                        'runningScriptFromCompanion': data.get('runningScriptFromCompanion')}
             return data
         except Exception as e:  # diagnosis is best effort
             return {'error': str(e)}

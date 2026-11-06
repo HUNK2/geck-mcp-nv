@@ -95,3 +95,14 @@ CONTROLS = {'forward': 0, 'backward': 1, 'left': 2, 'right': 3, 'attack': 4, 'ac
             'ready': 7, 'sneak': 8, 'run': 9, 'always_run': 10, 'auto_move': 11, 'jump': 12, 'pov': 13,
             'pipboy': 14, 'wait': 15, 'vats': 16, 'hotkey1': 17, 'ammo_swap': 18, 'quicksave': 25,
             'quickload': 26, 'grab': 27}
+
+# Script block types: g_scriptBlocks (decomp tesscriptrunmanager.cpp), a ScriptFunctionInfo[38] table at
+# 0x0118E2F0 (0x28 bytes each, name pointer first; the console command table follows at 0x0118E8E0). Names read
+# from the exe. ScriptRunner::EvaluateLine reads the block id as the short at the BEGIN statement's data offset.
+SCRIPT_BLOCKS_ADDRESS = 0x0118E2F0
+SCRIPT_BLOCKS = (
+    'GameMode', 'MenuMode', 'OnActivate', 'OnAdd', 'OnEquip', 'OnUnequip', 'OnDrop', 'SayToDone', 'OnHit',
+    'OnHitWith', 'OnDeath', 'OnMurder', 'OnCombatEnd', 'Unused', 'Unused2', 'OnPackageStart', 'OnPackageDone',
+    'ScriptEffectStart', 'ScriptEffectFinish', 'ScriptEffectUpdate', 'OnPackageChange', 'OnLoad', 'OnMagicEffectHit',
+    'OnSell', 'OnTrigger', 'OnStartCombat', 'OnTriggerEnter', 'OnTriggerLeave', 'OnActorEquip', 'OnActorUnequip',
+    'OnReset', 'OnOpen', 'OnClose', 'OnGrab', 'OnRelease', 'OnDestructionStageChange', 'OnFire', 'OnNPCActivate')

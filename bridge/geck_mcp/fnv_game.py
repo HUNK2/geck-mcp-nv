@@ -265,8 +265,13 @@ class Game:
         if not since or not log.exists() or log.stat().st_mtime < since:
             return None
         text = log.read_text(encoding='utf-8', errors='replace')
-        return {'log': str(log), 'modified': log.stat().st_mtime} if 'Exception:' in text or 'Call Stack:' in text or \
-            'Unhandled exception' in text else None
+        if not ('Exception:' in text or 'Call Stack:' in text or 'Unhandled exception' in text):
+            return None
+        from .fnv_crash import SHUTDOWN_MARKERS
+        # A fault while the game was already exiting (plugin exit cleanup, seen on every quit) is not a crash
+        # of the play session; it is reported but marked.
+        shutdown = any(m in text for m in SHUTDOWN_MARKERS)
+        return {'log': str(log), 'modified': log.stat().st_mtime, 'duringShutdown': shutdown}
 
     def crash_summary(self):
         """The crash doctor's verdict on a crash log written since the launch, for errors and status."""
@@ -318,6 +323,37 @@ class Game:
         timeline.append({'t': round(time.time() - launched, 1), 'event': 'ready', 'phase': result['phase']})
         self.save_session(ready=True)
         return {**result, 'pid': pid, 'timeline': timeline, 'seconds': round(time.time() - launched, 1)}
+
+    ARRIVAL_CLOSER = 'Begin Function { }\nif GetActiveMenuMode == 1001\nCloseActiveMenu\nendif\nEnd'
+    UNPAUSER = ('Begin Function { }\nint m\nlet m := GetActiveMenuMode\nif m == 1001 || m == 1013\nCloseActiveMenu\n'
+                'endif\nEnd')
+
+    def keep_unpaused(self, seconds):
+        """For `seconds`, the companion closes the pause menu (which the game opens when its window loses focus)
+        and message boxes every 0.3 s, so a test's world keeps running. Returns the task slot, or None."""
+        try:
+            result = self.link.one('every', '12C', '%X' % (int(seconds) * 1000), fnv_link.hexs(self.UNPAUSER))
+        except LinkError:
+            return None
+        return result.get('slot') if result.get('ok') else None
+
+    def stop_task(self, slot):
+        if slot is not None:
+            try:
+                self.link.one('every', 'cancel', '%X' % slot)
+            except LinkError:
+                pass
+
+    def close_arrival_messages(self, seconds=90):
+        """A coc start makes a fresh character, and the DLC pack and add-on quests then show "items added" and
+        radio boxes for about a minute. The companion closes message boxes on its own for `seconds` (every 0.3 s,
+        on the main thread), so the launch does not have to wait for them. fnv_status lists the task."""
+        try:
+            result = self.link.one('every', '12C', '%X' % (int(seconds) * 1000), fnv_link.hexs(self.ARRIVAL_CLOSER))
+        except LinkError as e:
+            return {'closing': False, 'reason': e.code}
+        return {'closing': bool(result.get('ok')), 'seconds': seconds, 'slot': result.get('slot'),
+                'reason': result.get('error')}
 
     def clear_stale_mo2_state(self):
         """MO2 writes plugin_loadcheck.tmp while it loads its plugins and deletes it afterwards. When MO2 is not
@@ -371,7 +407,11 @@ class Game:
         result = self.link.schedule(0, line)
         if not result.get('ok'):
             raise GameError('START_FAILED', 'Could not queue "%s"' % line, result)
-        return self.wait_in_game(deadline, pid, start='%s:%s' % (kind, value))
+        closer = self.close_arrival_messages() if kind == 'coc' else None
+        ready = self.wait_in_game(deadline, pid, start='%s:%s' % (kind, value))
+        if closer:
+            ready['arrivalMessages'] = closer
+        return ready
 
     def wait_in_game(self, deadline, pid=None, start=None, settle=1.5, dismiss_messages=True):
         """Wait for gameplay. Message boxes that pop up on arrival (a coc start makes a fresh character, and the
@@ -389,12 +429,15 @@ class Game:
                     return {'phase': phase, 'start': start, 'dismissedMessages': dismissed, **detail}
             else:
                 stable_since = None
-                if phase == 'in_menu' and dismiss_messages and len(dismissed) < 20:
+                if phase in ('in_menu', 'paused_menu') and dismiss_messages and len(dismissed) < 20:
                     try:
-                        message = fnv_link.value_of(self.link.eval('MenuMode 1001'))
-                        if message:
+                        # MessageMenu (1001): the arrival boxes. StartMenu (1013): the pause menu the game opens
+                        # when its window loses focus while it loads (the dev profile is ours to drive).
+                        menu = fnv_link.value_of(self.link.eval('GetActiveMenuMode'))
+                        if menu in (1001, 1013):
                             self.link.console('CloseActiveMenu')
-                            dismissed.append({'t': round(time.monotonic(), 1), 'menu': 'MessageMenu'})
+                            dismissed.append({'t': round(time.monotonic(), 1),
+                                              'menu': 'MessageMenu' if menu == 1001 else 'StartMenu (pause)'})
                             time.sleep(0.5)
                             continue
                     except LinkError:

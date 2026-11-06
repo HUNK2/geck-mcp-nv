@@ -28,6 +28,9 @@ class FnvSettings(BaseModel):
     # Act tools (memory writes, engine calls, console changes) refuse unless this is "full".
     engine_control: Literal['read', 'full'] = 'read'
     tests_dir: Path | None = None
+    # Your own unpacked copy of FalloutNV.exe 1.4.0.525 (the Steam exe's code is encrypted on disk): the
+    # reference fnv_patch_map compares the running game's code with. Read locally, never copied.
+    clean_exe: Path | None = None
 
 
 class Project(BaseModel):
@@ -124,7 +127,7 @@ class Project(BaseModel):
             def resolve(value):
                 value = Path(value).expanduser()
                 return str((value if value.is_absolute() else path.parent / value).resolve())
-            for key in ('engine_map', 'decomp_root', 'mo2_root', 'zig', 'tests_dir'):
+            for key in ('engine_map', 'decomp_root', 'mo2_root', 'zig', 'tests_dir', 'clean_exe'):
                 if fnv.get(key):
                     fnv[key] = resolve(fnv[key])
             fnv['crash_dirs'] = [resolve(v) for v in fnv.get('crash_dirs', [])]

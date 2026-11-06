@@ -674,10 +674,55 @@ class LiveService:
             if not text.lower().startswith('begin'):
                 text = 'Begin Function { }\n%s\nEnd' % text
             result = self.link.run(text, r['ptr'] if r else 0)
+        substituted = {}
+        if result.get('error') == 'compile_failed' or not result.get('ok'):
+            # The running game keeps few EditorIDs, so its compiler cannot resolve most base forms by name:
+            # retry with the EditorIDs it does not know replaced by their runtime form ids.
+            retry, substituted = self.substitute_editor_ids(text)
+            if substituted:
+                result = self.link.eval(retry, r['ptr'] if r else 0) if single else self.link.run(retry, r['ptr'] if r else 0)
         self.journal.add({'kind': 'script', 'source': source[:2000], 'ref': r['formId'] if r else None, 'undo': None})
         return {'compiled': result.get('error') != 'compile_failed', 'ok': result.get('ok'),
                 'result': element_value(result.get('result') or {}), 'resultType': (result.get('result') or {}).get('type'),
-                'scriptErrors': result.get('scriptErrors'), 'output': result.get('output'), 'mode': 'expression' if single else 'script'}
+                'scriptErrors': result.get('scriptErrors'), 'output': result.get('output'), 'mode': 'expression' if single else 'script',
+                'substitutedEditorIds': substituted or None}
+
+    KEYWORDS = {'begin', 'end', 'if', 'elseif', 'else', 'endif', 'set', 'to', 'let', 'return', 'short', 'int', 'long',
+                'float', 'ref', 'reference', 'array_var', 'string_var', 'player', 'playerref', 'while', 'loop', 'foreach',
+                'function', 'call', 'scn', 'scriptname', 'gamemode', 'menumode'}
+
+    def substitute_editor_ids(self, text):
+        """Replace EditorIDs found in the offline indexes (not commands, keywords or quoted text) with their runtime
+        form ids, which the in-game compiler accepts. Returns (new text, {EditorID: form id})."""
+        commands = getattr(self, '_command_names', None)
+        if commands is None:
+            commands = set()
+            try:
+                for c in self.engine().commands:
+                    commands.add(c['name'].lower())
+                    if c.get('short'):
+                        commands.add(c['short'].lower())
+            except Exception:
+                pass
+            self._command_names = commands
+        out, subs = [], {}
+        for k, part in enumerate(re.split(r'("[^"]*")', text)):
+            if k % 2:  # quoted string
+                out.append(part)
+                continue
+
+            def repl(m):
+                token = m.group(0)
+                if token.lower() in self.KEYWORDS or token.lower() in commands or FORM_ID.match(token) and len(token) == 8:
+                    return token
+                if token not in subs:
+                    found = self.editor_id(token)
+                    if not found:
+                        return token
+                    subs[token] = found['formId']
+                return subs[token]
+            out.append(re.sub(r'(?<![\w.])[A-Za-z_][A-Za-z0-9_]{2,127}(?!\w)', repl, part))
+        return ''.join(out), subs
 
     # ================================================================= milestone 6: memory and engine
     def _layout(self, cls):
@@ -1057,9 +1102,12 @@ class LiveService:
             raise ValueError('action must be tap, hold, aim_at or activate')
         if control is not None:
             code = fnv_facts.CONTROLS.get(str(control).lower(), control)
-            scan = fnv_link.value_of(self.link.eval('GetControl %d' % int(code)))
+            scan, mouse = self.values(['GetControl %d' % int(code), 'GetAltControl %d' % int(code)])
             if scan is None or scan in (255, -1):
-                raise LiveError('UNBOUND_CONTROL', 'Control %s has no key bound' % control)
+                # Bound to a mouse button only (attack, aim): xNVSE key commands take 256 + button.
+                if mouse is None or mouse in (255, -1):
+                    raise LiveError('UNBOUND_CONTROL', 'Control %s has no key or mouse button bound' % control)
+                scan = 256 + int(mouse)
             scan = int(scan)
         elif key is not None:
             scan = int(key)

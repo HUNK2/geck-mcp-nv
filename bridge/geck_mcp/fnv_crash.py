@@ -488,6 +488,18 @@ def _module_out(m):
             'kind': module_kind(m)}
 
 
+SHUTDOWN_MARKERS = ('ExitProcess', 'LdrShutdownProcess', 'RtlExitUserProcess', 'execute_onexit_table')
+
+
+def during_shutdown(parsed):
+    """True when the crash happened while the process was already exiting (a plugin's exit cleanup)."""
+    for frame in parsed.get('calltrace') or []:
+        symbol = '%s %s' % (frame.get('symbol') or '', frame.get('function') or '')
+        if any(m in symbol for m in SHUTDOWN_MARKERS):
+            return True
+    return False
+
+
 def explain(parsed, engine, project=None, max_frames=40):
     frames = resolve_frames(parsed)
     for f in frames:
@@ -510,6 +522,7 @@ def explain(parsed, engine, project=None, max_frames=40):
     exc = parsed['exception'] or {}
     forms = _collect_forms(parsed)
     suspects = _suspects(parsed, frames, forms, exc)
+    shutdown = during_shutdown(parsed)
     crash_site = frames[0] if frames else None
     return {'file': parsed.get('file'), 'modified': parsed.get('modified'), 'logger': parsed['logger'],
             'format': parsed['format'],
@@ -520,6 +533,10 @@ def explain(parsed, engine, project=None, max_frames=40):
             'runningScript': parsed['runningScript'] or None,
             'playerData': parsed['playerData'] or None,
             'likelyCulprits': suspects,
+            'duringShutdown': shutdown,
+            'shutdownNote': 'The game was already exiting (ExitProcess in the call trace): a plugin faulted in its exit '
+                            'cleanup. This happens on every quit on the test machine, with or without the engine '
+                            'companion, and does not affect play or saves.' if shutdown else None,
             'warnings': parsed['warnings'],
             'engineMap': engine.identity() if engine is not None else None,
             'caveats': ['The top stack frame is where the crash surfaced, not always its cause.',

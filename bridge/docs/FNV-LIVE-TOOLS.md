@@ -1,6 +1,6 @@
 # fnv_* live tools: game control, scenario tests, live inspection and full control
 
-These tools work on the **running game**. They are the fnv-mcp milestones 4-6 on top of the offline
+These tools work on the **running game**. They are the fnv-mcp milestones 4-7 on top of the offline
 engine tools in [FNV-ENGINE-TOOLS.md](FNV-ENGINE-TOOLS.md):
 
 - **Game control and tests**: launch Fallout: New Vegas through a portable MO2 dev profile, load a save or
@@ -10,6 +10,8 @@ engine tools in [FNV-ENGINE-TOOLS.md](FNV-ENGINE-TOOLS.md):
 - **Full control**: console lines with their output, script snippets, memory writes, engine function
   calls, form edits, game settings, actor actions, bounded player input. Every change is journaled and
   can be undone.
+- **Deep tools** (milestone 7): a script profiler, a line-by-line script trace, a damage log, crash
+  context, a hang doctor and a map of the engine code other plugins patched.
 
 They need the **fnvmcp engine companion**, an opt-in xNVSE plugin separate from geck-mcp-nv's own
 companions. Unlike those, it works with engine addresses, so it lives in this fork's fnv-mcp work and
@@ -34,7 +36,9 @@ bridge decides what to do with them:
 | `con` | Run a console line through xNVSE's console interface and return what it printed |
 | `eval` / `run` | Evaluate an xNVSE expression or a script snippet; typed result (number, form, string, array) |
 | `sched` | Run a console line later on the main thread (used to release held keys, and to quit) |
+| `every` | Run a compiled script snippet every N ms for a while (closes arrival message boxes, keeps tests unpaused) |
 | `events` | xNVSE messages seen: loads, saves, new game, exit to menu, script errors with text |
+| `hook` `unhook` `hookctl` `hookfilter` `hooks` | Watch hooks on engine functions (below) |
 
 All ops of one request run in the same frame, in order. Reads and writes go through
 `ReadProcessMemory`/`WriteProcessMemory` on the game's own process, so a bad address fails cleanly.
@@ -47,6 +51,32 @@ Console output capture uses the game's own mechanisms (decomp references in `gec
 the companion routes console output to `%LOCALAPPDATA%\fnvmcp\console.log` with the vanilla `scof`
 command, and the bridge sets the vanilla "verbose messages" byte and the console-visible byte for the one
 frame a line runs, so commands print their results while the console is closed.
+
+### Watch hooks
+
+The bridge picks a proven decomp function, reads its first bytes and decodes whole instructions covering
+five bytes (`fnv_deep.decode_prologue`: MSVC prologues, and a jump another plugin already put there, which is
+relocated so both hooks run). The companion replaces them with a jump to a small stub:
+
+```
+target:      jmp entry                          (the moved bytes run from the trampoline)
+entry:       push hook; jmp enter_common        pushad/pushfd, record the call, ret into the trampoline
+trampoline:  moved bytes; jmp target+n
+exit stub:   (optional) the caller's return address is swapped for it; records eax/edx and the time,
+             then returns to the real caller kept on a per-thread shadow stack
+```
+
+A hook records into a ring (4096 calls: registers, up to 8 arguments, a 96-byte copy of what an argument
+points to, the frame, the result and the time) and/or a per-key table (calls, total and worst time), which
+the bridge reads with `rd`. A filter records only calls where a register or argument has a given value.
+Hooks only observe: every call goes on unchanged. The stub code never touches the x87 stack (a float result
+in st0 survives) and keeps the thread's LastError. Unhooking restores the original bytes if the jump is
+still ours; stub memory stays allocated so calls already inside finish normally.
+
+The companion also installs a vectored exception handler that only observes: at a hardware fault it writes
+`%LOCALAPPDATA%\fnvmcp\crash-context-<pid>-<n>.json` (the hooked calls active on the faulting thread with
+their `this`/argument form ids, the op being served, the console line being run, recent events). It writes
+nothing once xNVSE has announced the game is exiting.
 
 ## Setup
 
@@ -65,6 +95,8 @@ frame a line runs, so commands print their results while the console is closed.
    ```
 
    `engine_control` is `"read"` by default: the act tools then refuse. Set `"full"` to allow changes.
+   For `fnv_patch_map`, add `"clean_exe"`: your own unpacked FalloutNV.exe 1.4.0.525 (the Steam exe keeps its
+   code encrypted on disk; Steamless unpacks it). It is read locally and never copied.
 3. With the game closed, `fnv_companion_install` builds the DLL with Zig and installs it as the MO2 mod
    `fnvmcp engine companion` (it never writes into the game folder).
 4. `fnv_launch start=continue` starts the game and loads the newest dev-profile save.
@@ -92,6 +124,13 @@ frame a line runs, so commands print their results while the console is closed.
 | `fnv_setting_set` `fnv_script_set` | act | Game/INI settings; quest stages, objectives, variables, globals |
 | `fnv_actor_control` `fnv_input` | act | Actor actions (combat, packages, idles, move, kill, items, actor values); bounded player input |
 | `fnv_journal` `fnv_undo` `fnv_revert_all` | read/act | Every change with its old value; undo one, several, or all |
+| `fnv_script_profile` | read | Calls and time per script (quest, object, effect) with the owning quest: hooks on `Script::Run` and `Script::RunScriptEffectStart/Finish/Update` |
+| `fnv_script_trace` | read | The statements of one script as they run: kind (set, if, command name), block names, branches taken, failures, time; with the source, line numbers and the lines that did not run. Hook on `ScriptRunner::EvaluateLine` filtered to the script |
+| `fnv_damage_log` | read | Applied damage (`Actor::DamageHealthAndFatigue`) with the hit behind it: attacker, target, weapon, body part, health/limb/fatigue/armor damage, base damage, multiplier, critical/sneak/fatal flags |
+| `fnv_crash_context` | read | The newest crash-context files, named with the engine map; `enable` adds the script hooks so they name the running script. `fnv_crash_explain` attaches the matching file |
+| `fnv_hang_doctor` | read | The main thread's (or every thread's) stack sampled from outside the process and named: where a hang is stuck. Works when the companion does not answer |
+| `fnv_patch_map` | read | Engine code, imports and vtable slots other modules changed, by owner, with jump chains and functions patched by several owners |
+| `fnv_hooks` | read | The watch hooks installed; remove one or all |
 
 Act tools journal every change in `state/fnv/journal.jsonl` and back up the dev profile's saves before the
 first change of a game session (`state/fnv/save-backups`, newest 10 kept). Console lines, scripts and
@@ -113,6 +152,12 @@ steps:
 teardown:
   - revert_all: true
 ```
+
+A run keeps the world going: the game opens its pause menu when its window loses focus, so while a test runs
+the companion closes the pause menu and message boxes (`allow_menus: true` turns that off, for a test about a
+menu). On a coc start the DLC pack quests show "items added" boxes for about a minute; the companion closes
+them in the background, so the launch does not wait for them. Each run also turns on crash context, so a
+crash during a test names the running script (`crash_context: false` turns it off).
 
 Steps: `run` (console line), `script`, `wait` (`seconds`, `frames`, or `until` an expression with a
 `timeout`), `expect`, `set` (stage, global, variable, objective), `actor`, `input`, `move`, `mem_write`,
@@ -148,6 +193,22 @@ blocks, comments) or JSON; no YAML library is needed. Examples: `examples/fnv-te
   User Settings > Game Overlay) no launch crashed. The Steam overlay and ShadowPlay were loaded without
   trouble.
 
+Milestone 7 (2026-11-07), live in the Prospector Saloon and over MCP:
+
+- `fnv_script_profile`: 238 scripts in 180 frames, 0.09 ms of script time per frame, top scripts named with
+  their quests (`VCG01SCRIPT` / "Ain't That a Kick in the Head", `GSSunnySmilesScript`, DLC quest scripts).
+- `fnv_script_trace GoodspringsRadioScript`: each frame `scriptname`, `begin OnLoad` (not taken),
+  `begin OnActivate` (not taken), `begin GameMode`, `set`, `if` (not taken), `endif`... with offsets and
+  times of 0.2-1 us per statement.
+- `fnv_damage_log`: an NPC fight in the saloon; e.g. Easy Pete's .357 hit the player's torso for 13.04 health
+  and 5.43 limb damage (base 13.04, multiplier 1.0); his dynamite hit a settler for 39.12 (base 42.12).
+- `fnv_patch_map`: 424 patched places (JIP LN 166, xNVSE 86, Crash Logger 17, our watch hooks), 26 engine
+  functions patched by more than one module (for example `Expression::Eval`: JIP LN and xNVSE).
+- `fnv_hang_doctor`: main thread sampled 3 times, in `Renderer::PresentFrame` (vsync) each time.
+- `forced-crash.yaml`: the report now carries the companion's context (main thread, read of 0x1C, the op).
+- Every quit leaves a Crash Logger log on the test machine, with the companion off too: a plugin faults in
+  its exit cleanup (`ExitProcess` in the call trace). The crash doctor marks such logs `duringShutdown`.
+
 ## Launch notes
 
 - MO2 is started with ShellExecute. A detached `CreateProcess` gave the game no window focus and its
@@ -164,8 +225,10 @@ blocks, comments) or JSON; no YAML library is needed. Examples: `examples/fnv-te
 ## Credits
 
 - [xNVSE](https://github.com/xNVSE/NVSE): the plugin interface, console/script/array interfaces, script
-  commands used by the reads, and the extra data type list. xNVSE has no licence file; nothing of its code
-  is copied, only interface declarations (`native/runtime/nvse_abi.h`, upstream geck-mcp-nv) and names.
+  commands used by the reads, the extra data type list, and the `ActorHitData` field offsets, body part
+  names and hit flags `fnv_damage_log` decodes (`GameProcess.h`, `GameForms.h`). xNVSE has no licence file;
+  nothing of its code is copied, only interface declarations (`native/runtime/nvse_abi.h`, upstream
+  geck-mcp-nv), offsets and names.
 - [JIP LN NVSE](https://github.com/jazzisparis/JIP-LN-NVSE): `CloseActiveMenu`, and the layouts of
   `MagicTarget`, `ActiveEffect` and `EffectItem` and the control codes used by `fnv_effects` and
   `fnv_input` (offsets only, checked against the decompilation's class sizes).

@@ -9,6 +9,7 @@ from pydantic import Field
 
 from . import fnv_link
 from .fnv_game import Game
+from .fnv_deep import DeepTools
 from .fnv_live import LiveService
 from .fnv_scenario import ScenarioRunner, diff, load_snapshot, snapshot
 
@@ -54,6 +55,14 @@ FNV_LIVE_TOOLS = {
     'fnv_journal': ('read', 'every change made through the act tools, with old values'),
     'fnv_undo': ('act', 'undo the last journaled change(s) or one by id'),
     'fnv_revert_all': ('act', 'undo every undoable change of this game process'),
+    # milestone 7: watch hooks and deep tools
+    'fnv_script_profile': ('read', 'calls and time per script (quest, object, effect) from watch hooks on Script::Run'),
+    'fnv_script_trace': ('read', 'the statements of one script as they run, with branches taken and failures'),
+    'fnv_damage_log': ('read', 'recent hits broken down: base, health, limb, armor damage, flags, applied damage'),
+    'fnv_crash_context': ('read', 'what was running when the game faulted: hooked engine calls, scripts, request'),
+    'fnv_hang_doctor': ('read', 'sample the call stacks of the game threads and name the functions a hang is stuck in'),
+    'fnv_patch_map': ('read', 'engine code and pointers other plugins changed, by owner module, with chains'),
+    'fnv_hooks': ('read', 'list the watch hooks of the engine companion, or remove them'),
 }
 
 
@@ -65,6 +74,8 @@ def register(server, project, annotations, result_type):
     from mcp.types import CallToolResult, TextContent
 
     live = LiveService(project)
+    deep = DeepTools(live)
+    live.deep = deep
     read, act, control = annotations
 
     def service_call(name, fn, kind):
@@ -378,5 +389,72 @@ def register(server, project, annotations, result_type):
     async def fnv_revert_all() -> result_type:
         """Undo every undoable change made in the current game process; lists those that cannot be undone."""
         return await invoke('fnv_revert_all', live.revert_all, 'act')
+
+    # ------------------------------------------------------------------ milestone 7
+    Action = Literal['start', 'read', 'stop']
+
+    @server.tool(annotations=read)
+    async def fnv_script_profile(action: Action = 'read', seconds: Annotated[float, Field(ge=0.2, le=60)] = 3.0,
+                                 top: Annotated[int, Field(ge=1, le=200)] = 25) -> result_type:
+        """Which scripts run and how long they take. Installs watch hooks on Script::Run and
+        Script::RunScriptEffectStart/Finish/Update (proven), which only time each call. action=start clears the
+        counters and returns; read gives the top scripts by total time since start (on first use it starts,
+        waits `seconds`, then reads): calls per frame, ms per frame, average and worst call, owning quest. stop
+        removes the hooks."""
+        return await invoke('fnv_script_profile', lambda: deep.script_profile(action, seconds, top))
+
+    @server.tool(annotations=read)
+    async def fnv_script_trace(script: Annotated[str, Field(min_length=1, max_length=200, description=(
+            'script EditorID or form id, or a quest / reference / base form whose script to trace'))],
+                               action: Action = 'read', source: Annotated[str, Field(max_length=200000)] | None = None,
+                               limit: Annotated[int, Field(ge=1, le=4096)] = 200) -> result_type:
+        """Line-by-line trace of one script as the game runs it (watch hook on ScriptRunner::EvaluateLine,
+        proven, filtered to that script). Each executed statement: frame, statement number, kind (set, if,
+        command name...), the reference it ran on, whether it succeeded, time. Pass the script's source text to
+        map statement numbers to source lines and list the lines that did not run (branches not taken). Calls
+        after the first read return only new statements. stop removes the hook."""
+        return await invoke('fnv_script_trace', lambda: deep.script_trace(script, action, source, limit))
+
+    @server.tool(annotations=read)
+    async def fnv_damage_log(action: Action = 'read', limit: Annotated[int, Field(ge=1, le=1000)] = 50) -> result_type:
+        """Each recent hit broken down: attacker, target, weapon, body part, health / limb / fatigue / armor
+        damage, weapon base damage, multiplier, flags (critical, sneak attack, fatal, cripple, dismember), and the
+        health damage the engine applied. A watch hook on
+        Actor::DamageHealthAndFatigue (proven), which also copies the hit data its caller, the actor hit handler, passed on. start clears, stop removes the hook."""
+        return await invoke('fnv_damage_log', lambda: deep.damage_log(action, limit))
+
+    @server.tool(annotations=read)
+    async def fnv_crash_context(action: Literal['latest', 'enable', 'disable', 'status'] = 'latest',
+                                limit: Annotated[int, Field(ge=1, le=20)] = 3) -> result_type:
+        """What the crash log cannot know. The engine companion's exception handler writes a context file at a
+        fault: the hooked engine calls active on the faulting thread (with this/argument form ids), the request
+        and console line being run, recent events. enable adds watch hooks on the script entry points so the
+        file names the running script and its reference; latest returns the newest files, named with the engine
+        map. fnv_crash_explain attaches the matching file automatically."""
+        return await invoke('fnv_crash_context', lambda: deep.crash_context(action, limit))
+
+    @server.tool(annotations=read)
+    async def fnv_hang_doctor(samples: Annotated[int, Field(ge=1, le=20)] = 5,
+                              interval_ms: Annotated[int, Field(ge=50, le=5000)] = 250,
+                              all_threads: bool = False) -> result_type:
+        """When the game freezes: read the main thread's call stack (or every thread's) several times from
+        outside the process, name each frame with the engine map, and say where it is stuck. Works without the
+        companion answering; threads are suspended only while their registers are read."""
+        return await invoke('fnv_hang_doctor', lambda: deep.hang_doctor(samples, interval_ms, all_threads))
+
+    @server.tool(annotations=read)
+    async def fnv_patch_map(include_bytes: bool = False, limit: Annotated[int, Field(ge=1, le=5000)] = 400) -> result_type:
+        """Which engine code and pointers other plugins (xNVSE, JIP LN, Stewie's, ours...) changed in memory:
+        the running game's code compared with your unpacked FalloutNV.exe (fnv.clean_exe). Each patch: address,
+        engine function, kind (jump, call, pointer, bytes), owner module, and the jump chain when several
+        modules hook the same place; functions patched by more than one owner; hooked imports and vtable
+        slots."""
+        return await invoke('fnv_patch_map', lambda: deep.patch_map(include_bytes, limit))
+
+    @server.tool(annotations=read)
+    async def fnv_hooks(action: Literal['list', 'remove'] = 'list',
+                        hook_id: Annotated[str, Field(max_length=10)] | None = None) -> result_type:
+        """The engine companion's watch hooks (function, calls seen, records). remove takes a hook id or 'all'."""
+        return await invoke('fnv_hooks', lambda: deep.hooks_tool(action, hook_id))
 
     return live

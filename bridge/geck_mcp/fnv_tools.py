@@ -364,6 +364,21 @@ class FnvService:
             out = fnv_crash.explain(parsed, engine, self.project, max_frames)
             if unavailable:
                 out['engineMap'] = unavailable
+            # The engine companion's own record of the fault (fnv_crash_context), matched by address and time.
+            from .fnv_deep import match_context
+            site = (out.get('crashSite') or {}).get('absolute')
+            context = match_context(site, out.get('modified')) if site else None
+            if context:
+                calls = context.get('hookedCalls') or []
+                out['companionContext'] = {'file': context['file'], 'threadId': context.get('threadId'),
+                                           'mainThread': context.get('mainThread'), 'hookedCalls': calls,
+                                           'consoleLine': context.get('consoleLine') or None,
+                                           'request': context.get('request') or None,
+                                           'recentEvents': context.get('recentEvents'),
+                                           'access': context.get('access'), 'accessAddress': context.get('accessAddress')}
+                if calls:
+                    out['runningScriptFromCompanion'] = {'script': calls[0].get('thisFormId'),
+                                                         'on': calls[0].get('arg0FormId'), 'via': calls[0].get('label')}
             return out
         return self.run('fnv_crash_explain', action)
 

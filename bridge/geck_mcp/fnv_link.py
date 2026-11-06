@@ -16,7 +16,7 @@ import uuid
 from pathlib import Path
 
 NATIVE = Path(__file__).resolve().parents[1] / 'native'
-SOURCES = ('engine/fnvmcp_engine.c', 'runtime/nvse_abi.h')
+SOURCES = ('engine/fnvmcp_engine.c', 'engine/fake_host.c', 'runtime/nvse_abi.h')
 DLL_NAME = 'fnvmcp_engine.dll'
 MOD_NAME = 'fnvmcp engine companion'
 DEFAULT_PIPE = 'fnvmcp-engine'

@@ -349,6 +349,487 @@ static void run_due(bool all) {
         }
 }
 
+/* ------------------------------------------------------------------------------------ hooks
+ * Watch hooks (milestone 7). The bridge picks the function (a proven decomp address), decodes its
+ * prologue and says how many bytes to move ("stolen") and where rel32 fields sit in them. The hook:
+ *   target:  jmp entry_stub                    (stolen bytes replaced, rest NOPed)
+ *   entry:   push hook; jmp enter_common       enter_common: pushad/pushfd, fnvmcp_on_enter(frame),
+ *                                              then "ret" into the trampoline with the stack untouched
+ *   tramp:   stolen bytes (rel32 fixed); jmp target+stolen
+ * With exit capture, on_enter swaps the caller's return address for exit_stub and keeps the real one
+ * on a per-thread shadow stack; exit_stub records eax/edx and the elapsed time and returns to it.
+ * Records go to a ring per hook, call times to a per-key table; the bridge reads both with "rd".
+ * Hook code never touches the x87 stack (a float result is in st0 at exit) and keeps LastError. */
+#define HOOKS 32
+#define HOOK_RING 4096u
+#define HOOK_WORDS 48u
+#define HOOK_TABLE 2048u
+#define SHADOW 256
+#define HF_EXIT 1u
+#define HF_RECORD 2u
+#define HF_TABLE 4u
+typedef struct { uint32_t key, count; uint64_t total; uint32_t max, pad; } HookStat;
+typedef struct {
+    uint32_t id, target, flags, nargs, stolen, active;
+    int32_t filter_sel, key_sel, deref_sel[2], snap_sel;
+    uint32_t filter_value, snap_len;
+    volatile LONG seq, calls, lock, table_used, table_full;
+    unsigned char original[16];
+    unsigned char *entry, *trampoline;
+    uint32_t (*records)[HOOK_WORDS];
+    HookStat *table;
+    char label[40];
+} Hook;
+typedef struct { uint32_t ret_slot, ret; Hook *hook; uint64_t t0; LONG seq; uint32_t ecx, a0, a1; } ShadowFrame;
+typedef struct { int count; ShadowFrame frames[SHADOW]; } Shadow;
+static Hook *hooks[HOOKS];
+static int hook_count;
+static unsigned char *hook_code;
+static uint32_t hook_code_used;
+static DWORD shadow_tls = TLS_OUT_OF_INDEXES;
+static LARGE_INTEGER qpc_frequency;
+
+uint32_t fnvmcp_on_enter(uint32_t *fr);
+uint32_t fnvmcp_on_exit(uint32_t *fr);
+extern void fnvmcp_enter_common(void);
+extern void fnvmcp_exit_stub(void);
+/* frame (low to high): eflags edi esi ebp esp ebx edx ecx eax slot ret args... */
+__asm__(
+    ".text\n"
+    ".globl _fnvmcp_enter_common\n"
+    "_fnvmcp_enter_common:\n"
+    "  pushal\n"
+    "  pushfl\n"
+    "  movl %esp, %eax\n"
+    "  cld\n"
+    "  pushl %eax\n"
+    "  call _fnvmcp_on_enter\n"
+    "  addl $4, %esp\n"
+    "  movl %eax, 36(%esp)\n"
+    "  popfl\n"
+    "  popal\n"
+    "  ret\n"
+    ".globl _fnvmcp_exit_stub\n"
+    "_fnvmcp_exit_stub:\n"
+    "  pushl $0\n"
+    "  pushal\n"
+    "  pushfl\n"
+    "  movl %esp, %eax\n"
+    "  cld\n"
+    "  pushl %eax\n"
+    "  call _fnvmcp_on_exit\n"
+    "  addl $4, %esp\n"
+    "  movl %eax, 36(%esp)\n"
+    "  popfl\n"
+    "  popal\n"
+    "  ret\n");
+
+static Shadow *shadow_get(void) {
+    if (shadow_tls == TLS_OUT_OF_INDEXES) return NULL;
+    Shadow *s = TlsGetValue(shadow_tls);
+    if (!s) {
+        s = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(Shadow));
+        if (s) TlsSetValue(shadow_tls, s);
+    }
+    return s;
+}
+static uint32_t hook_select(const uint32_t *fr, int selector) {
+    if (selector == 1) return fr[7];                 /* ecx */
+    if (selector >= 2 && selector <= 9) return fr[11 + selector - 2]; /* stack argument 0..7 */
+    if (selector == 10) return fr[10];               /* return address (the caller) */
+    if (selector == 11) return fr[6];                /* edx */
+    if (selector == 12 || selector == 13) {
+        /* The caller's first stack argument: [ebp + 8] for a standard frame, [ebx + 8] for MSVC's aligned-stack
+         * frame (push ebx; mov ebx, esp; and esp, -16), whose arguments stay addressed through ebx. */
+        uint32_t value = 0;
+        read_u32((selector == 12 ? fr[3] : fr[5]) + 8, &value);
+        return value;
+    }
+    return 0;
+}
+static void hook_stat(Hook *h, uint32_t key, uint64_t elapsed) {
+    while (InterlockedCompareExchange(&h->lock, 1, 0)) YieldProcessor();
+    uint32_t slot = (key * 2654435761u) % HOOK_TABLE;
+    for (uint32_t probe = 0; probe < HOOK_TABLE; probe++, slot = (slot + 1) % HOOK_TABLE) {
+        HookStat *e = &h->table[slot];
+        if (e->count && e->key != key) continue;
+        if (!e->count) { e->key = key; h->table_used++; }
+        e->count++;
+        e->total += elapsed;
+        if (elapsed > e->max) e->max = elapsed > 0xffffffffu ? 0xffffffffu : (uint32_t)elapsed;
+        InterlockedExchange(&h->lock, 0);
+        return;
+    }
+    h->table_full++;
+    InterlockedExchange(&h->lock, 0);
+}
+uint32_t fnvmcp_on_enter(uint32_t *fr) {
+    Hook *h = (Hook *)(uintptr_t)fr[9];
+    DWORD error = GetLastError();
+    InterlockedIncrement(&h->calls);
+    if (!h->active || (h->filter_sel && hook_select(fr, h->filter_sel) != h->filter_value)) goto done;
+    LARGE_INTEGER now;
+    QueryPerformanceCounter(&now);
+    Shadow *s = (h->flags & HF_EXIT) ? shadow_get() : NULL;
+    LONG seq = 0;
+    if (h->flags & HF_RECORD) {
+        seq = InterlockedIncrement(&h->seq);
+        uint32_t *r = h->records[(uint32_t)(seq - 1) % HOOK_RING];
+        r[0] = 0;
+        MemoryBarrier();
+        r[1] = 1;
+        r[2] = GetCurrentThreadId();
+        r[3] = fr[7];
+        r[4] = fr[6];
+        r[5] = fr[10];
+        r[6] = (uint32_t)now.QuadPart;
+        r[7] = (uint32_t)(now.QuadPart >> 32);
+        r[8] = r[9] = r[10] = r[11] = 0;
+        for (uint32_t i = 0; i < 8; i++) r[12 + i] = i < h->nargs ? fr[11 + i] : 0;
+        for (int i = 0; i < 2; i++) {
+            r[20 + i] = 0;
+            if (h->deref_sel[i]) read_u32(hook_select(fr, h->deref_sel[i]), &r[20 + i]);
+        }
+        r[22] = (uint32_t)frame;
+        r[23] = s ? (uint32_t)s->count : 0;
+        memset(&r[24], 0, 96);
+        if (h->snap_sel && h->snap_len) read_bytes(hook_select(fr, h->snap_sel), &r[24], h->snap_len);
+        MemoryBarrier();
+        r[0] = (uint32_t)seq;
+    }
+    if (s && s->count < SHADOW) {
+        ShadowFrame *f = &s->frames[s->count++];
+        f->ret_slot = (uint32_t)(uintptr_t)&fr[10];
+        f->ret = fr[10];
+        f->hook = h;
+        f->t0 = (uint64_t)now.QuadPart;
+        f->seq = seq;
+        f->ecx = fr[7];
+        f->a0 = fr[11];
+        f->a1 = fr[12];
+        fr[10] = (uint32_t)(uintptr_t)fnvmcp_exit_stub;
+    }
+done:
+    SetLastError(error);
+    return (uint32_t)(uintptr_t)h->trampoline;
+}
+uint32_t fnvmcp_on_exit(uint32_t *fr) {
+    DWORD error = GetLastError();
+    Shadow *s = TlsGetValue(shadow_tls);
+    uint32_t sp = (uint32_t)(uintptr_t)&fr[10]; /* esp when the hooked function returned */
+    /* Frames pushed by deeper calls that never returned (an exception unwound them) sit below this
+     * one on the shadow stack; the frame that is returning now is the last one below sp. */
+    ShadowFrame f = {0};
+    bool found = false;
+    while (s && s->count && s->frames[s->count - 1].ret_slot < sp) {
+        f = s->frames[--s->count];
+        found = true;
+    }
+    if (!found) {
+        /* Unreachable unless the shadow stack was corrupted; there is nowhere safe to return to. */
+        record_event(10, "fnvmcp: hook shadow stack lost a frame; terminating");
+        TerminateProcess(GetCurrentProcess(), 0xF4C0DE01);
+    }
+    LARGE_INTEGER now;
+    QueryPerformanceCounter(&now);
+    uint64_t elapsed = (uint64_t)now.QuadPart - f.t0;
+    Hook *h = f.hook;
+    if (f.seq) {
+        uint32_t *r = h->records[(uint32_t)(f.seq - 1) % HOOK_RING];
+        if (r[0] == (uint32_t)f.seq) {
+            r[8] = fr[8];
+            r[9] = fr[6];
+            r[10] = (uint32_t)elapsed;
+            r[11] = (uint32_t)(elapsed >> 32);
+            MemoryBarrier();
+            r[1] = 2;
+        }
+    }
+    if (h->flags & HF_TABLE) {
+        uint32_t key = h->key_sel == 1 ? f.ecx : h->key_sel == 2 ? f.a0 : h->key_sel == 3 ? f.a1 : h->key_sel == 10 ? f.ret : 0;
+        hook_stat(h, key, elapsed);
+    }
+    SetLastError(error);
+    return f.ret;
+}
+static Hook *hook_find(uint32_t id) {
+    for (int i = 0; i < hook_count; i++)
+        if (hooks[i]->id == id) return hooks[i];
+    return NULL;
+}
+static bool code_write(uint32_t address, const void *bytes, size_t length) {
+    DWORD old;
+    if (!VirtualProtect((void *)(uintptr_t)address, length, PAGE_EXECUTE_READWRITE, &old)) return false;
+    memcpy((void *)(uintptr_t)address, bytes, length);
+    VirtualProtect((void *)(uintptr_t)address, length, old, &old);
+    FlushInstructionCache(GetCurrentProcess(), (void *)(uintptr_t)address, length);
+    return true;
+}
+static void emit_hook(const Hook *h) {
+    emit("{\"id\":%u,\"target\":\"0x%08x\",\"label\":", h->id, h->target);
+    emit_text(h->label, strlen(h->label));
+    emit(",\"active\":%s,\"flags\":%u,\"calls\":%ld,\"seq\":%ld,\"hook\":\"0x%08x\",\"seqAddress\":\"0x%08x\","
+         "\"callsAddress\":\"0x%08x\",\"records\":\"0x%08x\",\"ring\":%u,\"recordWords\":%u,\"table\":\"0x%08x\","
+         "\"tableSize\":%u,\"tableUsed\":%ld,\"tableFull\":%ld,\"trampoline\":\"0x%08x\",\"stolen\":%u,"
+         "\"qpcFrequency\":%lld,\"filter\":%d,\"filterValue\":\"0x%08x\"}",
+         h->active ? "true" : "false", h->flags, h->calls, h->seq, (uint32_t)(uintptr_t)h,
+         (uint32_t)(uintptr_t)&h->seq, (uint32_t)(uintptr_t)&h->calls, (uint32_t)(uintptr_t)h->records, HOOK_RING,
+         HOOK_WORDS, (uint32_t)(uintptr_t)h->table, HOOK_TABLE, h->table_used, h->table_full,
+         (uint32_t)(uintptr_t)h->trampoline, h->stolen, (long long)qpc_frequency.QuadPart, h->filter_sel, h->filter_value);
+}
+/* hook <target> <stolen> <relocs: comma list of rel32 offsets or -> <flags> <filter_sel> <filter_value>
+ *      <key_sel> <nargs> <deref0_sel> <deref1_sel> <snap_sel> <snap_len> <label hex> */
+static void op_hook(int argc, char **argv) {
+    uint32_t target, stolen, flags, filter_value, nargs, snap_len, v[6];
+    if (argc != 14 || !parse_u32(argv[1], &target) || !parse_u32(argv[2], &stolen) || stolen < 5 || stolen > 16 ||
+        !parse_u32(argv[4], &flags) || !parse_u32(argv[5], &v[0]) || !parse_u32(argv[6], &filter_value) ||
+        !parse_u32(argv[7], &v[1]) || !parse_u32(argv[8], &nargs) || nargs > 8 || !parse_u32(argv[9], &v[2]) ||
+        !parse_u32(argv[10], &v[3]) || !parse_u32(argv[11], &v[4]) || !parse_u32(argv[12], &snap_len) ||
+        snap_len > 96)
+        return fail("bad_arguments");
+    long label = unhex(argv[13]);
+    if (label < 0) return fail("bad_arguments");
+    for (int i = 0; i < 5; i++)
+        if (v[i] > 13) return fail("bad_selector");
+    if (hook_count >= HOOKS) { /* forget removed hooks (their memory stays valid) */
+        int kept = 0;
+        for (int i = 0; i < hook_count; i++)
+            if (hooks[i]->stolen) hooks[kept++] = hooks[i];
+        hook_count = kept;
+    }
+    if (hook_count >= HOOKS) return fail("too_many_hooks");
+    for (int i = 0; i < hook_count; i++)
+        if (hooks[i]->target == target && hooks[i]->stolen) return fail("already_hooked");
+    if (shadow_tls == TLS_OUT_OF_INDEXES && (shadow_tls = TlsAlloc()) == TLS_OUT_OF_INDEXES) return fail("no_tls");
+    MEMORY_BASIC_INFORMATION info;
+    if (!VirtualQuery((LPCVOID)(uintptr_t)target, &info, sizeof(info)) || info.State != MEM_COMMIT ||
+        !(info.Protect & (PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)))
+        return fail("not_executable");
+    Hook *h = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(Hook));
+    if (!h) return fail("out_of_memory");
+    if (!read_bytes(target, h->original, stolen)) { HeapFree(GetProcessHeap(), 0, h); return fail("unreadable"); }
+    if (!hook_code) hook_code = VirtualAlloc(NULL, 65536, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+    /* Ring and table are only allocated when used, and never freed: a call that entered before an unhook
+     * may still write to them when it returns. */
+    if (flags & HF_RECORD) h->records = VirtualAlloc(NULL, HOOK_RING * HOOK_WORDS * 4, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    if (flags & HF_TABLE) h->table = VirtualAlloc(NULL, HOOK_TABLE * sizeof(HookStat), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    if (!hook_code || ((flags & HF_RECORD) && !h->records) || ((flags & HF_TABLE) && !h->table) || hook_code_used + 64 > 65536)
+        return fail("out_of_memory");
+    static uint32_t next_id = 1;
+    h->id = next_id++;
+    h->target = target;
+    h->flags = flags;
+    h->filter_sel = (int32_t)v[0];
+    h->filter_value = filter_value;
+    h->key_sel = (int32_t)v[1];
+    h->nargs = nargs;
+    h->deref_sel[0] = (int32_t)v[2];
+    h->deref_sel[1] = (int32_t)v[3];
+    h->snap_sel = (int32_t)v[4];
+    h->snap_len = snap_len;
+    h->stolen = stolen;
+    snprintf(h->label, sizeof(h->label), "%.*s", (int)label, argv[13]);
+    unsigned char *entry = hook_code + hook_code_used, *tramp = entry + 16;
+    hook_code_used += 64;
+    entry[0] = 0x68; /* push hook */
+    uint32_t value = (uint32_t)(uintptr_t)h;
+    memcpy(entry + 1, &value, 4);
+    entry[5] = 0xE9; /* jmp enter_common */
+    value = (uint32_t)(uintptr_t)fnvmcp_enter_common - (uint32_t)(uintptr_t)(entry + 10);
+    memcpy(entry + 6, &value, 4);
+    memcpy(tramp, h->original, stolen);
+    if (strcmp(argv[3], "-")) {
+        for (char *item = argv[3]; item && *item;) {
+            char *comma = strchr(item, ',');
+            if (comma) *comma = 0;
+            uint32_t offset, rel;
+            if (!parse_u32(item, &offset) || offset + 4 > stolen) return fail("bad_relocation");
+            memcpy(&rel, tramp + offset, 4);
+            rel += target - (uint32_t)(uintptr_t)tramp;
+            memcpy(tramp + offset, &rel, 4);
+            item = comma ? comma + 1 : NULL;
+        }
+    }
+    tramp[stolen] = 0xE9;
+    value = target + stolen - (uint32_t)(uintptr_t)(tramp + stolen + 5);
+    memcpy(tramp + stolen + 1, &value, 4);
+    h->entry = entry;
+    h->trampoline = tramp;
+    h->active = 1;
+    unsigned char patch[16];
+    memset(patch, 0x90, sizeof(patch));
+    patch[0] = 0xE9;
+    value = (uint32_t)(uintptr_t)entry - (target + 5);
+    memcpy(patch + 1, &value, 4);
+    hooks[hook_count++] = h;
+    if (!code_write(target, patch, stolen)) { hook_count--; return fail("unwritable"); }
+    emit("{\"ok\":true,\"hook\":");
+    emit_hook(h);
+    emit("}");
+}
+/* unhook <id>: puts the original bytes back if the jump is still ours. Stubs stay allocated, so calls
+ * already inside the hook (or returning through exit_stub) finish normally. */
+static void op_unhook(int argc, char **argv) {
+    uint32_t id;
+    if (argc != 2 || !parse_u32(argv[1], &id)) return fail("bad_arguments");
+    Hook *h = hook_find(id);
+    if (!h) return fail("unknown_hook");
+    if (!h->stolen) return fail("already_removed");
+    unsigned char now[16], expected[5] = {0xE9};
+    uint32_t value = (uint32_t)(uintptr_t)h->entry - (h->target + 5);
+    memcpy(expected + 1, &value, 4);
+    h->active = 0;
+    if (!read_bytes(h->target, now, 5)) return fail("unreadable");
+    if (memcmp(now, expected, 5)) return fail("overwritten_by_another_patch");
+    if (!code_write(h->target, h->original, h->stolen)) return fail("unwritable");
+    h->stolen = 0;
+    emit("{\"ok\":true,\"id\":%u}", id);
+}
+/* hookctl <id> <active 0|1> [clear]: pause/resume recording; "clear" empties the call-time table. */
+static void op_hookctl(int argc, char **argv) {
+    uint32_t id, active;
+    if (argc < 3 || argc > 4 || !parse_u32(argv[1], &id) || !parse_u32(argv[2], &active)) return fail("bad_arguments");
+    Hook *h = hook_find(id);
+    if (!h) return fail("unknown_hook");
+    h->active = active ? 1 : 0;
+    if (argc == 4 && !strcmp(argv[3], "clear")) {
+        while (InterlockedCompareExchange(&h->lock, 1, 0)) YieldProcessor();
+        memset(h->table, 0, HOOK_TABLE * sizeof(HookStat));
+        h->table_used = h->table_full = 0;
+        InterlockedExchange(&h->lock, 0);
+    }
+    emit("{\"ok\":true,\"hook\":");
+    emit_hook(h);
+    emit("}");
+}
+/* hookfilter <id> <selector> <value>: record only calls whose selected register/argument has this value. */
+static void op_hookfilter(int argc, char **argv) {
+    uint32_t id, selector, value;
+    if (argc != 4 || !parse_u32(argv[1], &id) || !parse_u32(argv[2], &selector) || selector > 13 || !parse_u32(argv[3], &value))
+        return fail("bad_arguments");
+    Hook *h = hook_find(id);
+    if (!h) return fail("unknown_hook");
+    h->filter_value = value;
+    MemoryBarrier();
+    h->filter_sel = (int32_t)selector;
+    emit("{\"ok\":true,\"hook\":");
+    emit_hook(h);
+    emit("}");
+}
+static void op_hooks(void) {
+    emit("{\"ok\":true,\"hooks\":[");
+    for (int i = 0; i < hook_count; i++) {
+        if (i) emit(",");
+        emit_hook(hooks[i]);
+    }
+    emit("]}");
+}
+
+/* ------------------------------------------------------------------------------------ crash context
+ * A first vectored exception handler that only observes: on a hardware fault it writes what a crash log
+ * cannot know (the hooked engine calls active on the faulting thread with their this/arguments and form
+ * IDs, the request being served, the console line being run, recent companion events) to
+ * %LOCALAPPDATA%\fnvmcp\crash-context-<pid>-<n>.json, then lets the game's handlers run. Faults a
+ * handler later recovers from are written too; the crash doctor matches the file to a crash log by
+ * exception address and time. */
+static char context_dir[MAX_PATH];
+static volatile LONG context_files, serving_request, exiting;
+static char op_now[256]; /* the op being served (its text before parsing), for the crash context */
+static const char *console_line_now;
+static char context_buffer[16384];
+static size_t context_len;
+static void ctx(const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    int n = vsnprintf(context_buffer + context_len, sizeof(context_buffer) - context_len, format, args);
+    va_end(args);
+    if (n > 0) context_len = context_len + (size_t)n < sizeof(context_buffer) ? context_len + (size_t)n : sizeof(context_buffer) - 1;
+}
+static void ctx_text(const char *text, size_t max) {
+    ctx("\"");
+    for (size_t i = 0; text && text[i] && i < max; i++) {
+        unsigned char c = (unsigned char)text[i];
+        if (c == '"' || c == '\\') ctx("\\%c", c);
+        else if (c < 0x20 || c > 0x7e) ctx("\\u%04x", c);
+        else ctx("%c", c);
+    }
+    ctx("\"");
+}
+static void ctx_form(const char *name, uint32_t address) {
+    uint32_t vtable = 0, form_id = 0;
+    unsigned char type = 0;
+    ctx(",\"%s\":\"0x%08x\"", name, address);
+    if (address > 0x10000 && read_u32(address, &vtable) && vtable >= 0x00401000 && vtable < 0x01300000 &&
+        read_u32(address + 0xC, &form_id) && read_bytes(address + 4, &type, 1))
+        ctx(",\"%sFormId\":\"%08X\",\"%sFormType\":%u", name, form_id, name, type);
+}
+static LONG CALLBACK on_exception(EXCEPTION_POINTERS *e) {
+    DWORD code = e->ExceptionRecord->ExceptionCode;
+    if (code != EXCEPTION_ACCESS_VIOLATION && code != EXCEPTION_ILLEGAL_INSTRUCTION && code != EXCEPTION_INT_DIVIDE_BY_ZERO &&
+        code != EXCEPTION_STACK_OVERFLOW && code != EXCEPTION_PRIV_INSTRUCTION && code != EXCEPTION_ARRAY_BOUNDS_EXCEEDED)
+        return EXCEPTION_CONTINUE_SEARCH;
+    /* After xNVSE's exit messages the game is shutting down; plugins fault in their exit cleanup there
+     * (seen with the companion off too), which is not worth a context file. */
+    if (!context_dir[0] || code == EXCEPTION_STACK_OVERFLOW || exiting) return EXCEPTION_CONTINUE_SEARCH;
+    LONG n = InterlockedIncrement(&context_files);
+    if (n > 8) return EXCEPTION_CONTINUE_SEARCH;
+    static volatile LONG busy;
+    if (InterlockedExchange(&busy, 1)) return EXCEPTION_CONTINUE_SEARCH;
+    context_len = 0;
+    FILETIME now;
+    GetSystemTimeAsFileTime(&now);
+    CONTEXT *c = e->ContextRecord;
+    ctx("{\"schema\":1,\"pid\":%lu,\"n\":%ld,\"fileTime\":\"%llu\",\"code\":\"0x%08lx\",\"address\":\"0x%08x\","
+        "\"threadId\":%lu,\"mainThread\":%s,\"frame\":%ld,\"servingRequest\":%s,\"registers\":{\"eax\":\"0x%08lx\","
+        "\"ebx\":\"0x%08lx\",\"ecx\":\"0x%08lx\",\"edx\":\"0x%08lx\",\"esi\":\"0x%08lx\",\"edi\":\"0x%08lx\","
+        "\"ebp\":\"0x%08lx\",\"esp\":\"0x%08lx\",\"eip\":\"0x%08lx\"}",
+        (unsigned long)pid, n, ((ULONGLONG)now.dwHighDateTime << 32) | now.dwLowDateTime, (unsigned long)code,
+        (uint32_t)(uintptr_t)e->ExceptionRecord->ExceptionAddress, GetCurrentThreadId(),
+        GetCurrentThreadId() == main_thread ? "true" : "false", frame, serving_request ? "true" : "false",
+        c->Eax, c->Ebx, c->Ecx, c->Edx, c->Esi, c->Edi, c->Ebp, c->Esp, c->Eip);
+    if (code == EXCEPTION_ACCESS_VIOLATION && e->ExceptionRecord->NumberParameters >= 2)
+        ctx(",\"access\":\"%s\",\"accessAddress\":\"0x%08x\"",
+            e->ExceptionRecord->ExceptionInformation[0] == 0 ? "read" : e->ExceptionRecord->ExceptionInformation[0] == 8 ? "execute" : "write",
+            (uint32_t)e->ExceptionRecord->ExceptionInformation[1]);
+    ctx(",\"hookedCalls\":[");
+    Shadow *s = shadow_tls != TLS_OUT_OF_INDEXES ? TlsGetValue(shadow_tls) : NULL;
+    for (int i = s ? s->count - 1 : -1, first = 1; i >= 0 && i >= s->count - 16; i--, first = 0) {
+        ShadowFrame *f = &s->frames[i];
+        ctx("%s{\"label\":", first ? "" : ",");
+        ctx_text(f->hook->label, sizeof(f->hook->label));
+        ctx(",\"target\":\"0x%08x\",\"caller\":\"0x%08x\"", f->hook->target, f->ret);
+        ctx_form("this", f->ecx);
+        ctx_form("arg0", f->a0);
+        ctx_form("arg1", f->a1);
+        ctx("}");
+    }
+    ctx("],\"consoleLine\":");
+    ctx_text(console_line_now, 400);
+    ctx(",\"request\":");
+    ctx_text(serving_request ? op_now : "", sizeof(op_now));
+    ctx(",\"recentEvents\":[");
+    LONG last = event_seq;
+    for (LONG seq = last - 7 > 1 ? last - 7 : 1, first = 1; seq <= last; seq++) {
+        Event *ev = &events[(unsigned)seq % EVENTS];
+        if (ev->seq != seq) continue;
+        ctx("%s{\"seq\":%ld,\"type\":\"%s\",\"text\":", first ? "" : ",", ev->seq, message_name(ev->type));
+        ctx_text(ev->text, 200);
+        ctx("}");
+        first = 0;
+    }
+    ctx("]}\n");
+    char path[MAX_PATH + 64];
+    snprintf(path, sizeof(path), "%s\\crash-context-%lu-%ld.json", context_dir, (unsigned long)pid, n);
+    HANDLE file = CreateFileA(path, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (file != INVALID_HANDLE_VALUE) {
+        DWORD written;
+        WriteFile(file, context_buffer, (DWORD)context_len, &written, NULL);
+        CloseHandle(file);
+    }
+    InterlockedExchange(&busy, 0);
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+
 /* ------------------------------------------------------------------------------------ ops */
 static void op_info(void) {
     emit("{\"ok\":true,\"pid\":%lu,\"started\":\"%llu\",\"companion\":%d,\"wire\":%d,\"nvse\":\"0x%08x\","
@@ -357,8 +838,11 @@ static void op_info(void) {
          (unsigned long)pid, started, COMPANION_VERSION, WIRE_VERSION, nvse_version, runtime_version, frame,
          loaded ? "true" : "false", deferred_init ? "true" : "false", script_errors, event_seq);
     emit_text(console_log, strlen(console_log));
-    emit(",\"consoleRouted\":%s,\"mainThread\":%s}", console_routed ? "true" : "false",
-         GetCurrentThreadId() == main_thread ? "true" : "false");
+    emit(",\"consoleRouted\":%s,\"mainThread\":%s,\"mainThreadId\":%lu,\"crashContextDir\":",
+         console_routed ? "true" : "false", GetCurrentThreadId() == main_thread ? "true" : "false",
+         (unsigned long)main_thread);
+    emit_text(context_dir, strlen(context_dir));
+    emit("}");
 }
 static void op_read(int argc, char **argv) {
     uint32_t address, length;
@@ -470,8 +954,10 @@ static void op_console(int argc, char **argv) {
     LONGLONG before = 0;
     file_size(console_log, &before);
     LONG errors = script_errors;
+    console_line_now = argv[1];
     bool accepted = console->version >= 2 && console->RunScriptLine2 ? console->RunScriptLine2(argv[1], ref, false)
                                                                      : console->RunScriptLine(argv[1], ref);
+    console_line_now = NULL;
     emit("{\"ok\":true,\"accepted\":%s,\"scriptErrors\":%ld,\"captured\":%s,\"output\":", accepted ? "true" : "false",
          script_errors - errors, console_routed ? "true" : "false");
     read_console_since(before);
@@ -503,6 +989,69 @@ static void op_eval(int argc, char **argv, bool expression) {
     emit_element(&result, 0);
     if (script_errors != errors) { emit(",\"output\":"); read_console_since(before); }
     emit("}");
+}
+/* every <interval_ms> <duration_ms> <script hex> | every cancel <slot> | every list: run a compiled script
+ * snippet periodically on the main thread (the bridge uses it to close the DLC arrival message boxes that
+ * keep appearing for a minute after a fresh character spawns). */
+#define PERIODIC 8
+typedef struct { void *script; ULONGLONG next, until; uint32_t interval; LONG runs; char text[120]; } Periodic;
+static Periodic periodic[PERIODIC];
+static void run_periodic(void) {
+    ULONGLONG now = GetTickCount64();
+    for (unsigned i = 0; i < PERIODIC; i++) {
+        Periodic *p = &periodic[i];
+        if (!p->script || now < p->next) continue;
+        if (now >= p->until) { p->script = NULL; continue; }
+        p->next = now + p->interval;
+        Element result;
+        memset(&result, 0, sizeof(result));
+        scripts->CallFunction(p->script, NULL, NULL, &result, 0);
+        p->runs++;
+    }
+}
+static void op_every(int argc, char **argv) {
+    uint32_t interval, duration, slot;
+    if (argc == 2 && !strcmp(argv[1], "list")) {
+        emit("{\"ok\":true,\"tasks\":[");
+        bool comma = false;
+        ULONGLONG now = GetTickCount64();
+        for (unsigned i = 0; i < PERIODIC; i++)
+            if (periodic[i].script && now < periodic[i].until) {
+                emit(comma ? ",{" : "{");
+                comma = true;
+                emit("\"slot\":%u,\"intervalMs\":%u,\"msLeft\":%llu,\"runs\":%ld,\"text\":", i, periodic[i].interval,
+                     periodic[i].until - now, periodic[i].runs);
+                emit_text(periodic[i].text, strlen(periodic[i].text));
+                emit("}");
+            }
+        emit("]}");
+        return;
+    }
+    if (argc == 3 && !strcmp(argv[1], "cancel")) {
+        if (!parse_u32(argv[2], &slot) || slot >= PERIODIC) return fail("bad_arguments");
+        periodic[slot].script = NULL;
+        emit("{\"ok\":true}");
+        return;
+    }
+    if (argc != 4 || !parse_u32(argv[1], &interval) || interval < 16 || !parse_u32(argv[2], &duration) ||
+        duration > 3600000 || unhex(argv[3]) <= 0)
+        return fail("bad_arguments");
+    if (!scripts || !scripts->CompileScript || !scripts->CallFunction) return fail("script_api_unavailable");
+    const char *failure = "";
+    void *script = compile(argv[3], false, &failure);
+    if (!script) return fail(failure);
+    for (unsigned i = 0; i < PERIODIC; i++)
+        if (!periodic[i].script || GetTickCount64() >= periodic[i].until) {
+            periodic[i].script = script;
+            periodic[i].interval = interval;
+            periodic[i].next = GetTickCount64();
+            periodic[i].until = GetTickCount64() + duration;
+            periodic[i].runs = 0;
+            snprintf(periodic[i].text, sizeof(periodic[i].text), "%s", argv[3]);
+            emit("{\"ok\":true,\"slot\":%u}", i);
+            return;
+        }
+    fail("periodic_full");
 }
 static void op_schedule(int argc, char **argv) {
     uint32_t delay;
@@ -540,6 +1089,7 @@ static void op_events(int argc, char **argv) {
 static void serve_op(char *op) {
     char *argv[40];
     int argc = 0;
+    snprintf(op_now, sizeof(op_now), "%s", op);
     for (char *token = strtok(op, " "); token && argc < 40; token = strtok(NULL, " ")) argv[argc++] = token;
     if (!argc) return fail("empty_op");
     if (!strcmp(argv[0], "info")) op_info();
@@ -553,7 +1103,13 @@ static void serve_op(char *op) {
     else if (!strcmp(argv[0], "eval")) op_eval(argc, argv, true);
     else if (!strcmp(argv[0], "run")) op_eval(argc, argv, false);
     else if (!strcmp(argv[0], "sched")) op_schedule(argc, argv);
+    else if (!strcmp(argv[0], "every")) op_every(argc, argv);
     else if (!strcmp(argv[0], "events")) op_events(argc, argv);
+    else if (!strcmp(argv[0], "hook")) op_hook(argc, argv);
+    else if (!strcmp(argv[0], "unhook")) op_unhook(argc, argv);
+    else if (!strcmp(argv[0], "hookctl")) op_hookctl(argc, argv);
+    else if (!strcmp(argv[0], "hooks")) op_hooks();
+    else if (!strcmp(argv[0], "hookfilter")) op_hookfilter(argc, argv);
     else fail("unknown_op");
 }
 /* Serves one request line on the main thread; ops run in order within the same frame. */
@@ -602,10 +1158,11 @@ static void ping(HANDLE pipe, char *id) {
     ULONGLONG now = GetTickCount64(), last = last_frame_tick;
     snprintf(text, sizeof(text),
              "{\"id\":\"%.64s\",\"pong\":true,\"pid\":%lu,\"started\":\"%llu\",\"companion\":%d,\"wire\":%d,\"frame\":%ld,"
-             "\"msSinceFrame\":%lld,\"loaded\":%s,\"deferredInit\":%s,\"lastMessage\":\"%s\",\"busy\":%s}\n",
+             "\"msSinceFrame\":%lld,\"loaded\":%s,\"deferredInit\":%s,\"lastMessage\":\"%s\",\"busy\":%s,"
+             "\"mainThreadId\":%lu,\"hooks\":%d}\n",
              id, (unsigned long)pid, started, COMPANION_VERSION, WIRE_VERSION, frame, last ? (long long)(now - last) : -1LL,
              loaded ? "true" : "false", deferred_init ? "true" : "false", message_name(last_message),
-             pending ? "true" : "false");
+             pending ? "true" : "false", (unsigned long)main_thread, hook_count);
     write_all(pipe, text, strlen(text));
 }
 static bool client_gone(HANDLE pipe) {
@@ -682,8 +1239,11 @@ static void on_message(Message *m) {
         last_frame_tick = GetTickCount64();
         if (deferred_init) route_console(); /* script errors reach the log even between requests */
         run_due(false);
+        if (scripts && scripts->CallFunction) run_periodic();
         if (InterlockedCompareExchange(&pending, 2, 1) == 1) {
+            InterlockedExchange(&serving_request, 1);
             serve(request);
+            InterlockedExchange(&serving_request, 0);
             InterlockedExchange(&pending, 0);
             SetEvent(done_event);
         }
@@ -701,7 +1261,10 @@ static void on_message(Message *m) {
     if (type == MSG_PRELOAD || type == MSG_MENU || type == MSG_EXIT || type == MSG_EXIT_CONSOLE) loaded = 0;
     if (type == MSG_NEWGAME) loaded = 1;
     if (type == MSG_POSTLOAD) loaded = m->data != NULL;
-    if (type == MSG_EXIT || type == MSG_EXIT_CONSOLE) run_due(true);
+    if (type == MSG_EXIT || type == MSG_EXIT_CONSOLE) {
+        InterlockedExchange(&exiting, 1);
+        run_due(true);
+    }
     const char *text = (type == 3 || type == 4) && m->data ? (const char *)m->data
                        : type == MSG_POSTLOAD                ? (m->data ? "success" : "failed")
                                                              : "";
@@ -738,7 +1301,10 @@ __declspec(dllexport) bool NVSEPlugin_Load(const NVSEInterface *nvse) {
         n = GetEnvironmentVariableA("FNVMCP_CONSOLE_LOG", console_log, sizeof(console_log));
         if (!n || n >= sizeof(console_log)) snprintf(console_log, sizeof(console_log), "%s\\console.log", folder);
         DeleteFileA(console_log);
+        snprintf(context_dir, sizeof(context_dir), "%s", folder);
     }
+    QueryPerformanceFrequency(&qpc_frequency);
+    AddVectoredExceptionHandler(1, on_exception);
     FILETIME creation, exit_time, kernel, user;
     if (!GetProcessTimes(GetCurrentProcess(), &creation, &exit_time, &kernel, &user)) return false;
     pid = GetCurrentProcessId();

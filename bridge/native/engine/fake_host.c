@@ -26,6 +26,57 @@ static int __fastcall fast(int a, int b, int c) { return a * 100 + b * 10 + c; }
 static float __cdecl halfsum(float a, float b) { return (a + b) / 2; }
 static double __stdcall scale(double v, int k) { return v * k; }
 
+/* Hook targets with MSVC-style prologues (what the bridge's prologue decoder must handle):
+ *   msvc_this  thiscall (this, a, b) -> *this + a*b       55 8b ec 83 ec 08
+ *   msvc_seh   cdecl (a) -> a + 1                          55 8b ec 6a ff 68 imm32
+ *   prehooked  cdecl (a) -> 3a, starts with a jmp into "another plugin" (rel32 to relocate)
+ *   msvc_float cdecl (float a) -> a in st0                 55 8b ec d9 45 08 */
+extern int msvc_this(void), msvc_seh(void), prehooked(void), msvc_float(void);
+__asm__(
+    ".text\n"
+    ".globl _msvc_this\n"
+    "_msvc_this:\n"
+    "  pushl %ebp\n"
+    "  movl %esp, %ebp\n"
+    "  subl $8, %esp\n"
+    "  movl (%ecx), %eax\n"
+    "  movl 8(%ebp), %edx\n"
+    "  imull 12(%ebp), %edx\n"
+    "  addl %edx, %eax\n"
+    "  movl %ebp, %esp\n"
+    "  popl %ebp\n"
+    "  ret $8\n"
+    ".globl _msvc_seh\n"
+    "_msvc_seh:\n"
+    "  pushl %ebp\n"
+    "  movl %esp, %ebp\n"
+    "  pushl $-1\n"
+    "  pushl $0x12345678\n"
+    "  addl $8, %esp\n"
+    "  movl 8(%ebp), %eax\n"
+    "  incl %eax\n"
+    "  popl %ebp\n"
+    "  ret\n"
+    ".globl _prehooked\n"
+    "_prehooked:\n"
+    "  .byte 0xe9\n"
+    "  .long other_plugin - (. + 4)\n"
+    "  nop\n"
+    "  nop\n"
+    "  nop\n"
+    "  ret\n"
+    "other_plugin:\n"
+    "  movl 4(%esp), %eax\n"
+    "  imull $3, %eax, %eax\n"
+    "  ret\n"
+    ".globl _msvc_float\n"
+    "_msvc_float:\n"
+    "  pushl %ebp\n"
+    "  movl %esp, %ebp\n"
+    "  flds 8(%ebp)\n"
+    "  popl %ebp\n"
+    "  ret\n");
+
 static void send(uint32_t type, void *data) {
     Message m = {"NVSE", type, 0, data};
     listener(&m);
@@ -130,11 +181,12 @@ int main(int argc, char **argv) {
     if (!q || !l || q(&editor, &info) || q(&wrong_build, &info) || !q(&nvse, &info) || !l(&nvse)) return 4;
     static int self_value = 6;
     printf("{\"buffer\":\"0x%08x\",\"chain\":\"0x%08x\",\"chainEnd\":\"0x%08x\",\"add3\":\"0x%08x\",\"sub2\":\"0x%08x\","
-           "\"member\":\"0x%08x\",\"self\":\"0x%08x\",\"fast\":\"0x%08x\",\"halfsum\":\"0x%08x\",\"scale\":\"0x%08x\"}\n",
+           "\"member\":\"0x%08x\",\"self\":\"0x%08x\",\"fast\":\"0x%08x\",\"halfsum\":\"0x%08x\",\"scale\":\"0x%08x\",\"msvcThis\":\"0x%08x\",\"msvcSeh\":\"0x%08x\",\"prehooked\":\"0x%08x\",\"msvcFloat\":\"0x%08x\"}\n",
            (unsigned)(uintptr_t)memory, (unsigned)(uintptr_t)&chain_a, (unsigned)(uintptr_t)chain_b,
            (unsigned)(uintptr_t)add3, (unsigned)(uintptr_t)sub2, (unsigned)(uintptr_t)member,
            (unsigned)(uintptr_t)&self_value, (unsigned)(uintptr_t)fast, (unsigned)(uintptr_t)halfsum,
-           (unsigned)(uintptr_t)scale);
+           (unsigned)(uintptr_t)scale, (unsigned)(uintptr_t)msvc_this, (unsigned)(uintptr_t)msvc_seh,
+           (unsigned)(uintptr_t)prehooked, (unsigned)(uintptr_t)msvc_float);
     fflush(stdout);
     send(18, NULL);  /* DeferredInit */
     send(14, NULL);  /* NewGame */

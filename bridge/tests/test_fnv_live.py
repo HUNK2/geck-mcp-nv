@@ -7,13 +7,14 @@ import struct
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 import uuid
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from geck_mcp import fnv_game, fnv_link, fnv_scenario  # noqa: E402
+from geck_mcp import fnv_deep, fnv_game, fnv_link, fnv_scenario  # noqa: E402
 from geck_mcp.config import Project  # noqa: E402
 from geck_mcp.fnv_facts import FACTS  # noqa: E402
 from geck_mcp.fnv_live import LiveService  # noqa: E402
@@ -305,6 +306,55 @@ steps:
         self.assertTrue(Path(report['report']).exists())
 
 
+class DeepToolTests(unittest.TestCase):
+    """Milestone 7 helpers that need no game."""
+
+    def test_prologues(self):
+        # Real FalloutNV.exe prologues: Script::Run, ScriptRunner::EvaluateLine (SEH), RunScriptEffectStart.
+        self.assertEqual(fnv_deep.decode_prologue(bytes.fromhex('558bec83ec08894df80fb6451485c0751500')), (6, []))
+        self.assertEqual(fnv_deep.decode_prologue(bytes.fromhex('558bec6aff686c9cef0064a1000000005000')), (5, []))
+        self.assertEqual(fnv_deep.decode_prologue(bytes.fromhex('558bec51894dfc51d9eed91c246a006a0100')), (7, []))
+        # Already hooked by another module: move just its jump, relocating rel32.
+        self.assertEqual(fnv_deep.decode_prologue(bytes.fromhex('e9112233449090909090909090909090')), (5, [1]))
+        self.assertEqual(fnv_deep.decode_prologue(bytes.fromhex('558bece8aabbccdd9090909090909090')), (8, [4]))
+        for code in ('558bec7405909090909090909090', 'c3909090909090909090909090', '558becff2510203040909090'):
+            with self.assertRaises(fnv_deep.HookError):
+                fnv_deep.decode_prologue(bytes.fromhex(code))
+
+    def test_statement_lines(self):
+        source = 'scn Foo\nshort x ; c\n\nbegin GameMode\n  set x to 1 ; hi\n  if x\n    print "a"\n  endif\nend'
+        self.assertEqual([n for n, _ in fnv_deep.statement_lines(source)], [1, 4, 5, 6, 7, 8, 9])
+        # scn; begin (block id, skip size, no params); set; a reference function call; end
+        data = (struct.pack('<HH', 29, 0) + struct.pack('<HH', 16, 8) + struct.pack('<HiH', 0, 20, 0) +
+                struct.pack('<HH', 21, 3) + b'abc' + struct.pack('<HHHH', 28, 1, 0x1001, 2) + b'xy' + struct.pack('<HH', 17, 0))
+        self.assertEqual(fnv_deep.statement_offsets(data), [4, 8, 20, 31, 37])
+
+    def test_hit_decode(self):
+        snap = struct.pack('<IIIIifffffffIf', 0x1000, 0x2000, 0, 0, 0, 13.036, 13.036, 0, 5.432, 0, 0, 0, 0x3000, 40.0)
+        snap += struct.pack('<3f', 1, 2, 3) + b'\0' * 12 + struct.pack('<IIIf', 0, 0, 0x404, 1.0)
+        record = [0] * 22 + [77, 0] + list(struct.unpack('<24I', snap))
+        hit = fnv_deep.decode_hit(record)
+        self.assertEqual((hit['source'], hit['target'], hit['weapon'], hit['hitLocation']), (0x1000, 0x2000, 0x3000, 'torso'))
+        self.assertEqual((hit['healthDamage'], hit['limbDamage'], hit['damageMultiplier']), (13.036, 5.432, 1.0))
+        self.assertEqual(hit['flags'], ['critical', 'sneak_attack_critical'])
+
+    def test_shutdown_crash(self):
+        from geck_mcp import fnv_crash
+        self.assertTrue(fnv_crash.during_shutdown({'calltrace': [{'symbol': 'execute_onexit_table+0x71'},
+                                                                 {'symbol': 'ExitProcess+0x13'}]}))
+        self.assertFalse(fnv_crash.during_shutdown({'calltrace': [{'symbol': 'TESContainer::IsGold'}]}))
+
+    def test_context_match(self):
+        with tempfile.TemporaryDirectory() as folder, mock.patch.dict(os.environ, {'LOCALAPPDATA': folder}):
+            target = Path(folder) / 'fnvmcp'
+            target.mkdir()
+            (target / 'crash-context-1-1.json').write_text(json.dumps({'address': '0x0084e3aa', 'hookedCalls': []}))
+            now = time.time()
+            self.assertEqual(fnv_deep.match_context('0x0084E3AA', now)['address'], '0x0084e3aa')
+            self.assertIsNone(fnv_deep.match_context('0x00400000', now))
+            self.assertIsNone(fnv_deep.match_context('0x0084E3AA', now + 3600))
+
+
 @unittest.skipUnless(os.environ.get('GECK_MCP_ZIG'), 'set GECK_MCP_ZIG to build the engine companion')
 class CompanionPipeTests(unittest.TestCase):
     """The real DLL over its pipe, loaded by a fake xNVSE host (never the game)."""
@@ -361,6 +411,59 @@ class CompanionPipeTests(unittest.TestCase):
         lo, hi = struct.unpack('<II', struct.pack('<d', 2.25))
         self.assertEqual(self.link.one('call', w(t['scale']), 'f', '0', '0', '%x' % lo, '%x' % hi, '4')['st0'], 9)
         self.assertEqual(self.link.one('call', '10', 'i', '0', '0')['error'], 'bad_arguments')
+
+    def _hook(self, target, flags, key=0, nargs=2, filter_sel=0, filter_value=0, snap_sel=0, snap_len=0, label='t'):
+        w = fnv_link.word
+        stolen, relocs = fnv_deep.decode_prologue(self.link.read(target, 24))
+        result = self.link.one('hook', w(target), w(stolen), ','.join('%x' % r for r in relocs) or '-', w(flags),
+                               w(filter_sel), w(filter_value), w(key), w(nargs), '0', '0', w(snap_sel), w(snap_len),
+                               fnv_link.hexs(label))
+        self.assertTrue(result['ok'], result)
+        return result['hook']
+
+    def _records(self, hook):
+        seq = struct.unpack('<I', self.link.read(int(hook['seqAddress'], 16), 4))[0]
+        raw = self.link.read(int(hook['records'], 16), seq * 192) if seq else b''
+        return [struct.unpack_from('<48I', raw, k * 192) for k in range(seq)]
+
+    def test_watch_hooks(self):
+        t, w = self.targets, fnv_link.word
+        original = self.link.read(t['msvcThis'], 8)
+        h = self._hook(t['msvcThis'], fnv_deep.HF_EXIT | fnv_deep.HF_RECORD | fnv_deep.HF_TABLE, key=1, snap_sel=1,
+                       snap_len=4, label='this')
+        self.assertEqual(self.link.read(t['msvcThis'], 1), b'\xe9')
+        self.assertEqual(self.link.one('call', w(t['msvcThis']), 'i', w(t['self']), '0', '7', '3')['eax'], '0x0000001b')
+        (r,) = self._records(h)
+        self.assertEqual((r[1], r[3], r[12], r[13], r[8], r[24]), (2, t['self'], 7, 3, 27, 6))  # exited, ecx, args, eax, *ecx
+        table = self.link.read(int(h['table'], 16), h['tableSize'] * 24)
+        rows = [struct.unpack_from('<IIQII', table, k * 24) for k in range(h['tableSize'])]
+        self.assertEqual([(k, c) for k, c, *_ in rows if c], [(t['self'], 1)])
+        # A filter records only matching calls; it can be switched in place.
+        s = self._hook(t['msvcSeh'], fnv_deep.HF_RECORD, filter_sel=2, filter_value=5, nargs=1, label='seh')
+        for value, expected in ((4, 5), (5, 6)):
+            self.assertEqual(int(self.link.one('call', w(t['msvcSeh']), 'i', '0', '0', w(value))['eax'], 16), expected)
+        self.assertEqual([r[12] for r in self._records(s)], [5])
+        self.link.one('hookfilter', w(s['id']), '2', '4')
+        self.link.one('call', w(t['msvcSeh']), 'i', '0', '0', '4')
+        self.assertEqual([r[12] for r in self._records(s)], [5, 4])
+        # A function another module already hooked (jmp at offset 0) chains: the jump is relocated.
+        p = self._hook(t['prehooked'], fnv_deep.HF_RECORD | fnv_deep.HF_EXIT, nargs=1, label='chain')
+        self.assertEqual(self.link.one('call', w(t['prehooked']), 'i', '0', '0', '7')['eax'], '0x00000015')
+        self.assertEqual(self._records(p)[0][8], 21)
+        # The exit stub leaves a float result in st0.
+        self._hook(t['msvcFloat'], fnv_deep.HF_EXIT | fnv_deep.HF_TABLE, nargs=1, label='float')
+        f = '%x' % struct.unpack('<I', struct.pack('<f', 2.5))[0]
+        self.assertEqual(self.link.one('call', w(t['msvcFloat']), 'f', '0', '0', f)['st0'], 2.5)
+        listed = {x['label']: x for x in self.link.one('hooks')['hooks']}
+        self.assertEqual(listed['this']['calls'], 1)
+        self.assertEqual(listed['seh']['calls'], 3)
+        self.assertEqual(self.link.one('hook', w(t['msvcThis']), '6', '-', '1', '0', '0', '0', '0', '0', '0', '0', '0',
+                                       fnv_link.hexs('again'))['error'], 'already_hooked')
+        for label, x in listed.items():
+            self.assertTrue(self.link.one('unhook', w(x['id']))['ok'])
+        self.assertEqual(self.link.read(t['msvcThis'], 8), original)
+        self.assertEqual(self.link.one('call', w(t['msvcThis']), 'i', w(t['self']), '0', '7', '3')['eax'], '0x0000001b')
+        self.assertEqual(self.link.one('unhook', w(listed['this']['id']))['error'], 'already_removed')
 
     def test_console_eval_events(self):
         out = self.link.console('player.additem f 5')
