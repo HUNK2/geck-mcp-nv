@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field, ConfigDict
 from . import __version__
 from .config import Project
 from .service import CAPABILITIES, Service
+from . import fnv_tools
 from .runtime import Profile as RuntimeProfile, Mapping as RuntimeMapping
 
 Session = Annotated[str, Field(min_length=3, max_length=100)]
@@ -423,6 +424,9 @@ def make_server(project, service=None):
         """Make a transparent <name>-cutout.png from a PNG with a flat background (background colour is
         estimated from the borders; the soft glow around GECK actors is removed)."""
         return await invoke(service.image_cutout, path, tolerance, chroma_tolerance)
+
+    # fnv_* tools: offline engine knowledge (decomp) and crash doctor; read-only.
+    fnv_tools.register(server, project, observe, Result)
 
     @server.resource('geck://project/manifest', mime_type='application/json')
     def manifest() -> str:

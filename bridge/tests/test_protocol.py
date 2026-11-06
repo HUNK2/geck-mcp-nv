@@ -7,6 +7,7 @@ import unittest
 from mcp import Client
 from mcp.client.stdio import StdioServerParameters
 from geck_mcp.server import make_server
+from geck_mcp.fnv_tools import FNV_TOOLS
 import test_service
 
 
@@ -23,7 +24,13 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
             listing = await client.list_tools()
             tools = listing.tools if hasattr(listing, 'tools') else listing
             by_name = {tool.name: tool for tool in tools}
-            self.assertEqual(len(by_name), 44)
+            self.assertEqual(len([n for n in by_name if n.startswith('geck_')]), 44)
+            self.assertEqual(set(n for n in by_name if n.startswith('fnv_')), set(FNV_TOOLS))
+            for name in FNV_TOOLS:
+                self.assertTrue(by_name[name].annotations.read_only_hint, name)
+            result = await client.call_tool('fnv_func_find', {'query': 'anything'})
+            self.assertTrue(result.is_error)
+            self.assertEqual(result.structured_content['error']['code'], 'ENGINE_MAP_UNAVAILABLE')
             self.assertIn('geck_show_windows', by_name)
             self.assertIn('geck_runtime_snapshot', by_name)
             self.assertIn('geck_runtime_compare', by_name)
@@ -82,7 +89,7 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn('STAT', str(result.structured_content))
             listing = await client.list_tools()
             tools = listing.tools if hasattr(listing, 'tools') else listing
-            self.assertEqual(len(tools), 44)
+            self.assertEqual(len(tools), 44 + len(FNV_TOOLS))
             result = await client.call_tool('geck_console_readiness', {'expected_plugin_hash': '0'*64})
             self.assertFalse(result.is_error, result)
             self.assertFalse(result.structured_content['data']['ready'])

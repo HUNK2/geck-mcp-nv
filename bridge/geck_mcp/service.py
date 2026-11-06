@@ -22,10 +22,13 @@ from .worker import AutoTransport, PersistentTransport
 from .verify import match_cell_references
 from .authoring import Authoring, AuthoringError
 from .esp.records import SpecError
+from .fnv_tools import FNV_TOOLS
 
 
 CAPABILITIES = {
     'toolCount': 44,
+    'fnv': {'toolCount': len(FNV_TOOLS), 'tools': FNV_TOOLS,
+            'scope': 'read-only offline engine knowledge (decomp + fnvsym proofs) and crash logs; game build 1.4.0.525'},
     'version': __version__, 'game': 'Fallout New Vegas', 'recordTypes': ['STAT'],
     'transport': 'stdio', 'editorAdapter': '32-bit Win32 controls; native Windows or configured Wine/CrossOver',
     'helperTransport': 'persistent worker (Probe.Mcp.exe serve) with automatic one-shot fallback',

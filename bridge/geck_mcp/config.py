@@ -11,6 +11,18 @@ class Record(BaseModel):
     record_type: str = Field(default='STAT', pattern=r'^STAT$')
 
 
+class FnvSettings(BaseModel):
+    """Optional settings for the fnv_* tools (engine knowledge, crash doctor). Paths may be relative to the
+    project file. Every field can stay unset: engine_map defaults to <state_dir>/engine_map.json and the
+    decomp checkout to the path recorded in the map."""
+    model_config = ConfigDict(extra='forbid', frozen=True)
+    engine_map: Path | None = None
+    decomp_root: Path | None = None
+    crash_dirs: list[Path] = Field(default_factory=list, max_length=20)
+    mo2_root: Path | None = None
+    mo2_profile: str | None = Field(default=None, pattern=r'^[^\\/:*?"<>|]{1,64}$')
+
+
 class Project(BaseModel):
     model_config = ConfigDict(extra='forbid', frozen=True)
     schema_version: int = Field(default=1, ge=1, le=1)
@@ -33,6 +45,8 @@ class Project(BaseModel):
     transport: Literal['auto', 'persistent', 'oneshot'] = 'auto'
     # Milestone 2: JSON spec this project builds from (relative to the project file).
     spec: Path | None = None
+    # fnv_* tools (engine map, crash doctor); optional.
+    fnv: FnvSettings | None = None
 
     @field_validator('plugin')
     @classmethod
@@ -97,6 +111,17 @@ class Project(BaseModel):
             data['spec'] = str((value if value.is_absolute() else path.parent / value).resolve())
         data['source_roots'] = [str((path.parent / Path(p).expanduser()).resolve())
                                 for p in data.get('source_roots', [])]
+        if isinstance(data.get('fnv'), dict):
+            fnv = dict(data['fnv'])
+
+            def resolve(value):
+                value = Path(value).expanduser()
+                return str((value if value.is_absolute() else path.parent / value).resolve())
+            for key in ('engine_map', 'decomp_root', 'mo2_root'):
+                if fnv.get(key):
+                    fnv[key] = resolve(fnv[key])
+            fnv['crash_dirs'] = [resolve(v) for v in fnv.get('crash_dirs', [])]
+            data['fnv'] = fnv
         return cls.model_validate(data)
 
 
