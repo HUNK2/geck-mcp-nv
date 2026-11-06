@@ -139,10 +139,14 @@ blocks, comments) or JSON; no YAML library is needed. Examples: `examples/fnv-te
 - Over MCP: every read tool on the player and a placed NPC; memory write and undo; a form edit of a
   weapon's damage checked with `GetAttackDamage`; a setting change reverted; an unproven function refused;
   holding "forward" for 800 ms moved the player 262 units.
-- Not yet verified: `fnv_launch` from inside an MCP server. The launch itself works (in game 9.5 s), but
-  on the test machine Discord's in-game overlay (`DiscordHook`) injected into the game and crashed it at
-  startup in every launch after 00:33, also from a plain shell, although its per-game switch was off. Turn
-  the overlay off in Discord (User Settings > Game Overlay) or quit Discord while testing.
+- Over MCP from a closed game: `fnv_test_run hello-wasteland.yaml` launched the game and passed in 9 s;
+  `fnv_test_run_all` on the three examples took 34 s (one pass, the broken one failed with the actual
+  value, the forced crash was diagnosed and the server relaunched the game in 8.5 s). The game keeps
+  running after the MCP client closes.
+- Discord's in-game overlay (`DiscordHook`) crashed the game at startup with JIP LN loaded, in every
+  launch for a while, even with its per-game switch off. With the overlay turned off globally (Discord >
+  User Settings > Game Overlay) no launch crashed. The Steam overlay and ShadowPlay were loaded without
+  trouble.
 
 ## Launch notes
 
