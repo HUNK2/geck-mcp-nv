@@ -393,7 +393,8 @@ class CrashTests(FnvTestBase):
         self.assertEqual(culprits[('module', 'Test NVSE Plugin')]['confidence'], 'medium')
         self.assertEqual(culprits[('plugin', 'MyMod.esp')]['confidence'], 'medium')
         self.assertIn(('asset', 'DATA\\textures\\test\\broken.dds'), culprits)
-        self.assertIn(('engine_function', 'Actor::ApplyLimbDamage'), culprits)
+        self.assertEqual(culprits[('engine_function', 'Actor::ApplyLimbDamage')]['calledFrom'], 'Actor::ApplyDamage')
+        self.assertIn('eax=0x00000000', culprits[('pattern', 'null pointer')]['reasons'][0])
         forms = {f['formId']: f for f in e['formsInvolved']}
         self.assertFalse(forms['01000ABC']['vanilla'])
         self.assertTrue(forms['000DADB7']['vanilla'])

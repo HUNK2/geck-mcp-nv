@@ -612,10 +612,21 @@ def _suspects(parsed, frames, forms, exc):
                 ['the crash is inside the memory manager (%s): memory was corrupted earlier by other code; '
                  'the top frame is a victim' % name])
         else:
+            caller = next((f for f in frames[frames.index(top) + 1:] if f['kind'] == 'game'
+                           and (f.get('function') or {}).get('status') == 'proven'), None)
+            called_from = caller['function']['name'] if caller else None
             add('engine_function', name, 'medium' if fn.get('status') == 'proven' else 'low',
-                ['the crash surfaced in game code %s (%s); game code usually crashes on bad data, see the forms'
-                 % (name, fn.get('status', 'unknown status'))], address=top.get('absolute'),
-                function=fn or None)
+                ['the crash surfaced in game code %s (%s)%s; game code usually crashes on bad data, see the forms'
+                 % (name, fn.get('status', 'unknown status'),
+                    ', called from %s' % called_from if called_from else '')], address=top.get('absolute'),
+                function=fn or None, calledFrom=called_from)
+    if code == 'C0000005':
+        low = ['%s=%s' % (r['register'], r['value']) for r in parsed['registers']
+               if r['register'] in ('eax', 'ebx', 'ecx', 'edx', 'esi', 'edi') and int(r['value'], 16) < 0x10000]
+        if low:
+            add('pattern', 'null pointer', 'low',
+                ['%s: near-null values; an access violation with these is usually a null object pointer '
+                 '(plus a field offset) being used' % ', '.join(low)])
     register_forms = [f for f in forms if any(w.startswith('register') for w in f['seenAt'])]
     for f in register_forms:
         culprit_plugin = f.get('lastModifiedBy') or f.get('plugin')
