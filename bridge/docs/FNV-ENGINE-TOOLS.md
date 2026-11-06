@@ -1,7 +1,8 @@
 # fnv_* tools: engine knowledge and crash doctor
 
 Fifteen read-only tools that use the game's own code, through the Fallout: New Vegas decompilation.
-They work offline: no game, GECK or companion needs to run, and they change nothing.
+They work offline: no game, GECK or companion needs to run, and they change nothing. The tools that work
+on the running game (control, tests, live inspection, full control) are in [FNV-LIVE-TOOLS.md](FNV-LIVE-TOOLS.md).
 
 | Tool | What it answers |
 | --- | --- |

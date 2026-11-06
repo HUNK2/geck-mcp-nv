@@ -1,0 +1,16 @@
+# Passes: boots into the HelloWasteland test cell (coc), checks the plugin's cell and lights, changes a
+# global and checks it, then reverts every journaled change.
+name: hello wasteland cell and a reversible change
+start: {coc: HelloWasteland}
+plugins: [HelloWasteland.esp]
+steps:
+  - expect: {eval: "GetName (player.GetParentCell)", equals: "Hello Wasteland"}
+  - expect: {eval: "GetNumRefs 0 0", ge: 14}          # the spec places 14 references
+  - set: {global: GameHour, value: 10}
+  - wait: {frames: 10}
+  - expect: {global: GameHour, approx: 10, tolerance: 0.2}
+  - run: player.GetAV Health
+  - expect: {console: "player.GetAV Health", contains: "GetActorValue: Health >>"}
+  - expect: {no_script_errors: true}
+teardown:
+  - revert_all: true

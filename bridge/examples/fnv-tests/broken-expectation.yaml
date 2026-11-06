@@ -1,0 +1,7 @@
+# Fails on purpose: GameHour can never be 99, so the second step fails and reports the actual value.
+name: broken expectation fails clearly
+start: {coc: HelloWasteland}
+steps:
+  - expect: {eval: "GetName (player.GetParentCell)", equals: "Hello Wasteland"}
+  - expect: {global: GameHour, equals: 99}
+  - run: player.GetAV Luck            # skipped after the failure

@@ -28,8 +28,8 @@ INJECTED_NOTES = {
     'atcuf32': 'Bitdefender (antivirus hook)', 'bdhkm32': 'Bitdefender (antivirus hook)',
     'd3d9': 'Direct3D 9 (driver or a d3d9 wrapper such as DXVK/ENB if it is not in System32)',
     # overlays and capture tools that inject themselves and hook the renderer's Present
-    'discordhook': "Discord's in-game overlay, injected by the Discord app (it can be turned off per game "
-                   "in Discord's settings)",
+    'discordhook': "Discord's in-game overlay, injected by the Discord app. Turn it off in Discord: User Settings > "
+                   "Game Overlay (a per-game switch did not cover every launch on the test machine)",
     'rtsshooks': 'RivaTuner Statistics Server overlay (often with MSI Afterburner)',
     'graphics-hook32': 'OBS Studio game capture',
     'nvspcap': 'NVIDIA ShadowPlay / GeForce Experience capture',

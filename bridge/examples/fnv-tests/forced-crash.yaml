@@ -1,0 +1,6 @@
+# Crashes on purpose: calls TESContainer::IsGold (proven, cdecl) with a bad pointer. The runner reports
+# the crash doctor's diagnosis of the new CrashLogger.log and relaunches the game.
+name: forced crash is diagnosed and the game relaunched
+start: {coc: HelloWasteland}
+steps:
+  - call: {function: TESContainer::IsGold, args: [{type: ptr, value: "0x10"}], returns: bool}

@@ -21,6 +21,13 @@ class FnvSettings(BaseModel):
     crash_dirs: list[Path] = Field(default_factory=list, max_length=20)
     mo2_root: Path | None = None
     mo2_profile: str | None = Field(default=None, pattern=r'^[^\\/:*?"<>|]{1,64}$')
+    # Game control and the engine companion (fnv-mcp milestones 4-6).
+    mo2_executable: str = Field(default='NVSE', pattern=r'^[^\\/:*?"<>|]{1,64}$')
+    zig: Path | None = None
+    engine_pipe: str | None = Field(default=None, pattern=r'^[A-Za-z0-9_.-]{1,64}$')
+    # Act tools (memory writes, engine calls, console changes) refuse unless this is "full".
+    engine_control: Literal['read', 'full'] = 'read'
+    tests_dir: Path | None = None
 
 
 class Project(BaseModel):
@@ -117,7 +124,7 @@ class Project(BaseModel):
             def resolve(value):
                 value = Path(value).expanduser()
                 return str((value if value.is_absolute() else path.parent / value).resolve())
-            for key in ('engine_map', 'decomp_root', 'mo2_root'):
+            for key in ('engine_map', 'decomp_root', 'mo2_root', 'zig', 'tests_dir'):
                 if fnv.get(key):
                     fnv[key] = resolve(fnv[key])
             fnv['crash_dirs'] = [resolve(v) for v in fnv.get('crash_dirs', [])]

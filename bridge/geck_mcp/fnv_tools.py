@@ -505,4 +505,12 @@ def register(server, project, observe, result_type):
         or as plugin DLL + offset, the forms involved, and the likely culprit with reasons."""
         return await invoke(service.crash_explain, path, max_frames)
 
+    # Live tools (game control, tests, inspection, full control) on the engine companion.
+    from mcp.types import ToolAnnotations
+
+    from . import fnv_live_tools
+    act = ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempotentHint=False, openWorldHint=False)
+    control = ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=False)
+    live_read = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=False, openWorldHint=False)
+    fnv_live_tools.register(server, project, (live_read, act, control), result_type)
     return service
