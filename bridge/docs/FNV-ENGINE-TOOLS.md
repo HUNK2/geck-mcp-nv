@@ -1,6 +1,6 @@
 # fnv_* tools: engine knowledge and crash doctor
 
-Fourteen read-only tools that use the game's own code, through the Fallout: New Vegas decompilation.
+Fifteen read-only tools that use the game's own code, through the Fallout: New Vegas decompilation.
 They work offline: no game, GECK or companion needs to run, and they change nothing.
 
 | Tool | What it answers |
@@ -10,7 +10,7 @@ They work offline: no game, GECK or companion needs to run, and they change noth
 | `fnv_func_callers` / `fnv_func_callees` | Who calls it, what it calls (direct calls read from the exe; several levels) |
 | `fnv_symbolize` | Address → function + offset, a setting/static object, or DLL + offset |
 | `fnv_name_status` | Is this name proven, and by what evidence? |
-| `fnv_class_layout` / `fnv_class_vtable` | Fields with offsets and types; virtual slots |
+| `fnv_class_layout` / `fnv_class_vtable` / `fnv_class_tree` | Fields with offsets and types; each vtable slot's function; base and derived classes (RTTI) |
 | `fnv_command_info` | A console/script command: parameters, return type, handlers and what they call |
 | `fnv_global_find` / `fnv_setting_info` | Settings and static objects: address, default value, which functions use them |
 | `fnv_string_xrefs` | Functions whose code contains a string |
@@ -38,7 +38,7 @@ cd bridge
 - `--verified`: fnvsym's `proofs/verified.csv`. Without it no name counts as proven.
 - `--exe`: an **unpacked** FalloutNV.exe 1.4.0.525 (the Steam exe is DRM-packed; Steamless unpacks it).
   It is checked against the decomp's 16 image probes and then gives the full call graph, Windows imports,
-  setting addresses and defaults, and the vanilla command tables. Only addresses, names and hashes are
+  setting addresses and defaults, RTTI class hierarchy and vtables, and the vanilla command tables. Only addresses, names and hashes are
   written. Without it the call graph only follows `FUN_xxxxxxxx` references in the source.
 - `--nvse-src`, `--plugin-src LABEL=PATH`: script-extender source trees for their command definitions.
 - `--header`: a C header of proven function addresses for native code.

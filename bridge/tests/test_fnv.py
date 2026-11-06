@@ -109,6 +109,14 @@ class FnvTestBase(unittest.TestCase):
         with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
             generate.main(['--decomp', str(cls.decomp), '--verified', str(cls.decomp / 'verified.csv'),
                            '--out', str(cls.map_path), '--header', str(root / 'state' / 'addresses.h')])
+        data = json.loads(cls.map_path.read_text())
+        data['rtti'] = {     # what --exe adds; synthetic here
+            'Actor': {'bases': ['TESObjectREFR', 'TESForm'], 'directBases': ['TESObjectREFR'],
+                      'vtables': [{'address': '0x01010000', 'thisOffset': 0, 'slots': ['0x00401000', '0x00401100']},
+                                  {'address': '0x01010020', 'thisOffset': 24, 'slots': ['0x00401200']}]},
+            'TESObjectREFR': {'bases': ['TESForm'], 'directBases': ['TESForm'], 'vtables': []},
+            'TESForm': {'bases': [], 'directBases': [], 'vtables': []}}
+        cls.map_path.write_text(json.dumps(data))
         cls.engine = fnv_engine.EngineMap(cls.map_path)
         game = root / 'game'
         (game / 'Data').mkdir(parents=True)
@@ -248,6 +256,23 @@ class EngineQueryTests(FnvTestBase):
         self.assertEqual(r['data']['results'][0]['address'], '0x011DEED8')
         r = service.command_info('GetAV')
         self.assertFalse(r['ok'])
+
+    def test_rtti_vtables_and_tree(self):
+        vt = self.engine.symbolize(0x01010004)
+        self.assertEqual((vt['kind'], vt['class'], vt['slot']), ('vtable', 'Actor', 1))
+        self.assertEqual(vt['slotFunction']['name'], 'Actor::ApplyLimbDamage')
+        self.assertNotIn('slot', self.engine.symbolize(0x01010000))
+        service = FnvService(self.project)
+        r = service.class_vtable('actor')
+        self.assertEqual(r['data']['vtable'], '0x01010000')
+        self.assertEqual(r['data']['slots'][1]['function']['name'], 'Actor::ApplyLimbDamage')
+        self.assertEqual(r['data']['slots'][1]['declared']['declaration'], 'virtual void ApplyDamage(float)')
+        self.assertEqual(r['data']['otherVtables'], [{'address': '0x01010020', 'thisOffset': '0x18', 'slots': 1}])
+        r = service.class_tree('TESForm')
+        self.assertEqual(r['data']['directDerived'], ['TESObjectREFR'])
+        self.assertEqual(r['data']['allDerived'], ['TESObjectREFR', 'Actor'])
+        r = service.class_tree('Nope')
+        self.assertEqual(r['error']['code'], 'NOT_FOUND')
 
     def test_missing_map_is_reported(self):
         project = self.project.model_copy(update={'fnv': None, 'state_dir': Path(self.tmp.name) / 'nowhere'})
@@ -408,7 +433,7 @@ class CrashTests(FnvTestBase):
         self.assertEqual(r['error']['code'], 'CRASH_LOG_MISSING')
 
     def test_tool_catalog(self):
-        self.assertEqual(len(FNV_TOOLS), 14)
+        self.assertEqual(len(FNV_TOOLS), 15)
         self.assertTrue(all(name.startswith('fnv_') for name in FNV_TOOLS))
 
 

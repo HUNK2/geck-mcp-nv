@@ -86,6 +86,16 @@ class EngineMap:
         self.commands = data.get('commands', [])
         self.statics = data.get('statics', [])
         self.statics_by_address = {int(s['address'], 16): s for s in self.statics if s.get('address')}
+        self.rtti = data.get('rtti') or {}
+        self.rtti_lower = {k.lower(): k for k in self.rtti}
+        self.vtables = {}
+        self.derived = {}
+        for cls, info in self.rtti.items():
+            for vt in info.get('vtables', []):
+                self.vtables[int(vt['address'], 16)] = (cls, vt)
+            for base in info.get('directBases', []):
+                self.derived.setdefault(base, []).append(cls)
+        self.vtable_starts = sorted(self.vtables)
         self._files = OrderedDict()
         self._lock = threading.Lock()
 
@@ -289,6 +299,9 @@ class EngineMap:
     # ----------------------------------------------------------------------------- symbolize
     def symbolize(self, address, modules=None):
         """Function + offset inside the game exe, a known static object, or a module + offset."""
+        vt = self.vtable_at(address)
+        if vt:
+            return vt
         static = self.statics_by_address.get(address)
         if static:
             return {'address': hx(address), 'module': 'FalloutNV.exe', 'kind': 'static',
@@ -316,6 +329,45 @@ class EngineMap:
                 out['afterOffset'] = '0x%X' % (address - near)
             return out
         return {'address': hx(address), 'kind': 'unknown', 'note': 'outside FalloutNV.exe and the given modules'}
+
+    def vtable_at(self, address):
+        """A virtual table (or one of its slots) containing this address, from the exe's RTTI."""
+        i = bisect_right(self.vtable_starts, address) - 1
+        if i < 0:
+            return None
+        start = self.vtable_starts[i]
+        cls, vt = self.vtables[start]
+        if not start <= address < start + 4 * len(vt['slots']):
+            return None
+        slot, rem = divmod(address - start, 4)
+        out = {'address': hx(address), 'module': 'FalloutNV.exe', 'kind': 'vtable', 'class': cls,
+               'vtable': vt['address'], 'thisOffset': '0x%X' % vt['thisOffset']}
+        if address != start or rem:
+            out['slot'] = slot
+            target = int(vt['slots'][slot], 16)
+            if target in self.functions:
+                out['slotFunction'] = self.summary(target, with_location=False)
+        return out
+
+    def rtti_class(self, name):
+        key = self.rtti_lower.get(name.strip().lower())
+        if not key:
+            words = _words(name)
+            close = sorted((k for k in self.rtti if all(w in k.lower() for w in words)), key=len)[:20]
+            raise EngineMapError('NOT_FOUND', 'No RTTI class %r (the map needs --exe for RTTI)' % name,
+                                 {'similar': close})
+        return key, self.rtti[key]
+
+    def descendants(self, cls, limit=300):
+        out, queue, seen = [], deque(self.derived.get(cls, [])), set()
+        while queue and len(out) < limit:
+            c = queue.popleft()
+            if c in seen:
+                continue
+            seen.add(c)
+            out.append(c)
+            queue.extend(self.derived.get(c, []))
+        return out, bool(queue)
 
     # ----------------------------------------------------------------------------- classes, commands
     def class_layout(self, name):

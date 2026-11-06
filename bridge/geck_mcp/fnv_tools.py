@@ -25,7 +25,8 @@ FNV_TOOLS = {
     'fnv_symbolize': 'offline read: addresses -> exe function + offset, static object, or module + offset',
     'fnv_name_status': 'offline read: is a name proven, by which evidence (fnvsym verified.csv)',
     'fnv_class_layout': 'offline read: fields with offsets, types and checks from the decomp headers',
-    'fnv_class_vtable': 'offline read: virtual functions in slot order from the decomp headers',
+    'fnv_class_vtable': 'offline read: vtable slots with implementing functions (exe RTTI) and header declarations',
+    'fnv_class_tree': 'offline read: base and derived classes from the game RTTI',
     'fnv_command_info': 'offline read: console/script command parameters, handlers and what they call',
     'fnv_global_find': 'offline read: settings and static objects with addresses (proven initializers)',
     'fnv_setting_info': 'offline read: one game/INI setting, its address and the functions that use it',
@@ -209,15 +210,54 @@ class FnvService:
     def class_vtable(self, class_name):
         def action():
             e = self.engine()
-            key, layout = e.class_layout(class_name)
-            virtuals = sorted(layout.get('virtuals', []), key=lambda v: (v['slot'] is None, v['slot'] or 0))
-            return {'class': key, 'bases': layout.get('bases'),
-                    'definedIn': '%s:%s' % (layout['file'], layout['line']),
-                    'slots': [{'slot': v['slot'], 'declaration': v['declaration'], 'line': v['line']} for v in virtuals],
-                    'note': 'Slots as the decomp headers declare them; inherited slots are on the base classes. '
-                            'Implementing function addresses per class are not in the map yet.',
-                    'identity': e.identity()}
+            rtti_key = e.rtti_lower.get(class_name.strip().lower())
+            layout_key = e.classes_lower.get(class_name.strip().lower())
+            if not rtti_key and not layout_key:
+                e.rtti_class(class_name)   # raises NOT_FOUND with similar names
+            chain = [rtti_key or layout_key] + (e.rtti[rtti_key]['bases'] if rtti_key else [])
+            declared = {}
+            for name in chain:
+                layout = e.classes.get(name) or e.classes.get(e.classes_lower.get(name.lower(), ''))
+                for v in (layout or {}).get('virtuals', []):
+                    if v['slot'] is not None and v['slot'] not in declared:
+                        declared[v['slot']] = {'declaration': v['declaration'], 'declaredIn': name,
+                                               'line': '%s:%s' % (layout['file'], v['line'])}
+            out = {'class': rtti_key or layout_key, 'identity': e.identity()}
+            if rtti_key:
+                tables = e.rtti[rtti_key]['vtables']
+                primary = next((t for t in tables if t['thisOffset'] == 0), tables[0] if tables else None)
+                slots = []
+                for i, text in enumerate(primary['slots'] if primary else []):
+                    target = parse_address(text)
+                    entry = {'slot': i, 'function': e.summary(target) if target in e.functions else {'address': text}}
+                    if i in declared:
+                        entry['declared'] = declared[i]
+                    slots.append(entry)
+                out.update({'vtable': primary['address'] if primary else None, 'slots': slots,
+                            'otherVtables': [{'address': t['address'], 'thisOffset': '0x%X' % t['thisOffset'],
+                                              'slots': len(t['slots'])} for t in tables if t is not primary],
+                            'note': 'Slots and implementing functions read from the exe\'s RTTI and vtables; '
+                                    'declarations from the decomp headers of this class or its bases. The '
+                                    'slot count is read until the next non-code value, so it can run long.'})
+            else:
+                out.update({'slots': [dict(v, slot=k) for k, v in sorted(declared.items())],
+                            'note': 'No RTTI for this class in the map (generate with --exe): header '
+                                    'declarations only.'})
+            return out
         return self.run('fnv_class_vtable', action)
+
+    def class_tree(self, class_name, limit=200):
+        def action():
+            e = self.engine()
+            key, info = e.rtti_class(class_name)
+            descendants, capped = e.descendants(key, limit)
+            return {'class': key, 'directBases': info.get('directBases'), 'allBases': info.get('bases'),
+                    'directDerived': sorted(e.derived.get(key, [])), 'allDerived': descendants,
+                    'allDerivedCapped': capped, 'hasLayout': key.lower() in e.classes_lower,
+                    'vtables': [{'address': t['address'], 'thisOffset': '0x%X' % t['thisOffset']}
+                                for t in info.get('vtables', [])],
+                    'note': "From the game's RTTI (base order as MSVC records it).", 'identity': e.identity()}
+        return self.run('fnv_class_tree', action)
 
     def command_info(self, name):
         def action():
@@ -416,8 +456,15 @@ def register(server, project, observe, result_type):
 
     @server.tool(annotations=observe)
     async def fnv_class_vtable(class_name: Annotated[str, Field(min_length=1, max_length=200)]) -> result_type:
-        """Virtual functions an engine class declares, in vtable slot order, from the decomp headers."""
+        """Virtual table of an engine class: each slot's implementing function (name, proof status) read from
+        the game's RTTI, with the declaration from the decomp headers where one exists."""
         return await invoke(service.class_vtable, class_name)
+
+    @server.tool(annotations=observe)
+    async def fnv_class_tree(class_name: Annotated[str, Field(min_length=1, max_length=200)],
+                             limit: Limit = 200) -> result_type:
+        """Base classes and derived classes of an engine class, from the game's RTTI."""
+        return await invoke(service.class_tree, class_name, limit)
 
     @server.tool(annotations=observe)
     async def fnv_command_info(name: Annotated[str, Field(min_length=1, max_length=100)]) -> result_type:

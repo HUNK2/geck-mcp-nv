@@ -169,7 +169,7 @@ the one-time upgrade, and never convert the process FILETIME to a JS Number.
 
 ## Engine knowledge and crash doctor (`fnv_*`, HUNK2 fork)
 
-Fourteen read-only `fnv_*` tools look things up in the game's own code through your local
+Fifteen read-only `fnv_*` tools look things up in the game's own code through your local
 [fnv_decomp](https://github.com/momusdigital/fnv_decomp) checkout: find engine functions, read their
 decompiled code, callers/callees, symbolize addresses, check whether a name is proven, class layouts,
 command tables and settings; and explain crash logs (Yvile's Crash Logger) in those terms. They work

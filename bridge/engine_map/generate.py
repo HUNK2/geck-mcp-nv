@@ -30,7 +30,7 @@ if __package__ in (None, ''):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     __package__ = 'engine_map'
 
-from . import commands, headers, source  # noqa: E402
+from . import commands, headers, rtti, source  # noqa: E402
 from .demangle import clean_name, demangle  # noqa: E402
 from .pe import Image  # noqa: E402
 
@@ -340,6 +340,11 @@ def build(args):
     layouts = headers.collect(decomp, log)
     log('class layouts: %d' % len(layouts))
 
+    classes_rtti = {}
+    if image:
+        classes_rtti = rtti.parse(image)
+        log('RTTI classes: %d, vtables: %d' % (len(classes_rtti), sum(len(c['vtables']) for c in classes_rtti.values())))
+
     statics = settings_from_proofs(verified)
     if image:
         settings_from_exe(image, statics, units)
@@ -358,13 +363,15 @@ def build(args):
             'callGraph': 'exe: direct E8/E9 rel32 to function entries; indirect and virtual calls are not resolved'
             if image else 'source: FUN_xxxxxxxx placeholders referenced in each body only (pass --exe for the full graph)',
             'counts': {'functions': len(functions), 'proven': sum(f['status'] == 'proven' for f in functions),
-                       'located': located, 'classes': len(layouts), 'commands': len(commands_out)},
+                       'located': located, 'classes': len(layouts), 'commands': len(commands_out),
+                       'rttiClasses': len(classes_rtti)},
         },
         'functions': functions,
         'calls': {hx(a): [hx(t) for t in ts] for a, ts in edges.items()},
         'tailCalls': {hx(a): [hx(t) for t in ts] for a, ts in tails.items()},
         'classes': layouts,
         'statics': statics,
+        'rtti': classes_rtti,
         'commands': commands_out,
     }
 
