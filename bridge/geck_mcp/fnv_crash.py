@@ -65,6 +65,7 @@ FORMID = re.compile(r'^([0-9A-Fa-f]{8})(?:\s*\("([^"]*)"\))?')
 EXCEPTION5 = re.compile(r'^Exception:\s*(\S+)\s*\(([0-9A-Fa-f]{8})\)')
 EXCEPTION4 = re.compile(r'^Exception\s+([0-9A-Fa-f]{8})\s+caught')
 REBASE = 0x10000000
+UNKNOWN_MODULE = re.compile(r'^-\\\(.{1,3}_o\)/-$')  # what Yvile's logger prints when it cannot name a module
 
 
 class CrashLogError(Exception):
@@ -427,6 +428,12 @@ def resolve_frames(parsed):
         address = f['address']
         frame = {'index': i, 'module': name or None}
         inside = module is not None and module['base'] <= address < module['end']
+        if UNKNOWN_MODULE.match(name) and address >= REBASE and 0x00400000 <= address - REBASE < 0x01300000:
+            # When its symbol store fails to start, Yvile's logger names no module ("-\(°_o)/-") and prints
+            # the game's own addresses rebased to 0x10000000 too: put them back in FalloutNV.exe.
+            frames.append({'index': i, 'module': 'FalloutNV.exe', 'absolute': '0x%08X' % (address - REBASE),
+                           'kind': 'game', 'logModule': name, 'logSymbol': f.get('symbol')})
+            continue
         if (parsed['format'] in ('yvile5', 'yvile4') and name and not name.lower().startswith('falloutnv')
                 and not inside and address >= REBASE):
             # Yvile's logger rebases a DLL frame to 0x10000000 + offset

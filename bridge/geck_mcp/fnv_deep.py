@@ -493,7 +493,14 @@ class DeepTools:
                     'note': 'Let the script run, then call again with action=read.'}
         seq, recs, lost = self.records(h, state['since'], limit=max(1, min(limit, RING)))
         state['since'] = seq
-        source = source or self.script_source(ptr)
+        source_from = 'argument' if source else None
+        if not source:
+            source = self.script_source(ptr)
+            source_from = 'game memory' if source else None
+        if not source and info.get('formId'):
+            from .fnv_data import DataTools
+            source = DataTools(self.live.project, self.live).script_text(info['formId'])
+            source_from = 'plugin record (SCTX)' if source else None
         lines = statement_lines(source) if source else None
         commands = {int(c['opcode'], 16): c['name'] for c in self.live.engine().commands if c.get('opcode')}
         refs = self._forms(sorted({r[14] for r in recs if r[14]}))
@@ -530,7 +537,7 @@ class DeepTools:
         else:
             lines_note = None
         out = {'script': {**info, **self.describe_forms([info.get('formId')], names=False).get(info.get('formId'), {})},
-               'owner': owner, 'steps': steps, 'lost': lost, 'seq': seq, 'statements': len(starts),
+               'owner': owner, 'steps': steps, 'lost': lost, 'seq': seq, 'statements': len(starts), 'sourceFrom': source_from,
                'sourceMapped': bool(lines), 'note': lines_note}
         if lines:
             out['notRun'] = [{'statement': k + 1, 'line': ln, 'text': t} for k, (ln, t) in enumerate(lines)

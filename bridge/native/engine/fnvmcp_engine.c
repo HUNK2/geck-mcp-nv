@@ -1053,6 +1053,21 @@ static void op_every(int argc, char **argv) {
         }
     fail("periodic_full");
 }
+/* compile <script text hex>: compile with xNVSE's CompileScript and return the new Script (not run, not
+ * cached: every call gets its own object, which a hot-swap keeps the old code in). */
+static void op_compile(int argc, char **argv) {
+    if (argc != 2 || unhex(argv[1]) <= 0) return fail("bad_arguments");
+    if (!scripts || !scripts->CompileScript) return fail("script_api_unavailable");
+    route_console();
+    LONGLONG before = 0;
+    file_size(console_log, &before);
+    LONG errors = script_errors;
+    void *script = scripts->CompileScript(argv[1]);
+    emit("{\"ok\":%s,\"script\":\"0x%08x\",\"scriptErrors\":%ld,\"output\":", script ? "true" : "false",
+         (uint32_t)(uintptr_t)script, script_errors - errors);
+    read_console_since(before);
+    emit("}");
+}
 static void op_schedule(int argc, char **argv) {
     uint32_t delay;
     if (argc == 2 && !strcmp(argv[1], "flush")) { run_due(true); emit("{\"ok\":true}"); return; }
@@ -1104,6 +1119,7 @@ static void serve_op(char *op) {
     else if (!strcmp(argv[0], "run")) op_eval(argc, argv, false);
     else if (!strcmp(argv[0], "sched")) op_schedule(argc, argv);
     else if (!strcmp(argv[0], "every")) op_every(argc, argv);
+    else if (!strcmp(argv[0], "compile")) op_compile(argc, argv);
     else if (!strcmp(argv[0], "events")) op_events(argc, argv);
     else if (!strcmp(argv[0], "hook")) op_hook(argc, argv);
     else if (!strcmp(argv[0], "unhook")) op_unhook(argc, argv);

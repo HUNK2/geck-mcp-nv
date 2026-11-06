@@ -9,6 +9,7 @@ from pydantic import Field
 
 from . import fnv_link
 from .fnv_game import Game
+from .fnv_data import DataTools
 from .fnv_deep import DeepTools
 from .fnv_live import LiveService
 from .fnv_scenario import ScenarioRunner, diff, load_snapshot, snapshot
@@ -63,6 +64,13 @@ FNV_LIVE_TOOLS = {
     'fnv_hang_doctor': ('read', 'sample the call stacks of the game threads and name the functions a hang is stuck in'),
     'fnv_patch_map': ('read', 'engine code and pointers other plugins changed, by owner module, with chains'),
     'fnv_hooks': ('read', 'list the watch hooks of the engine companion, or remove them'),
+    # milestone 8: data and authoring
+    'fnv_loadorder': ('read', 'the dev profile load order: plugins, index, real file, MO2 mod, masters, problems'),
+    'fnv_record_find': ('read', 'records in every active plugin by EditorID, name, form id or type'),
+    'fnv_record_show': ('read', 'one record decoded, with every plugin that edits it and what each changed'),
+    'fnv_script_lint': ('read', 'check script source against the vanilla, xNVSE and JIP LN command tables'),
+    'fnv_compile_ingame': ('read', 'compile script source with the running game: errors, variables, bytecode'),
+    'fnv_script_hot_swap': ('act', 'replace a running script with a new compile, keeping its variables (undoable)'),
 }
 
 
@@ -76,6 +84,7 @@ def register(server, project, annotations, result_type):
     live = LiveService(project)
     deep = DeepTools(live)
     live.deep = deep
+    data = DataTools(project, live)
     read, act, control = annotations
 
     def service_call(name, fn, kind):
@@ -456,5 +465,61 @@ def register(server, project, annotations, result_type):
                         hook_id: Annotated[str, Field(max_length=10)] | None = None) -> result_type:
         """The engine companion's watch hooks (function, calls seen, records). remove takes a hook id or 'all'."""
         return await invoke('fnv_hooks', lambda: deep.hooks_tool(action, hook_id))
+
+    # ------------------------------------------------------------------ milestone 8
+    @server.tool(annotations=read)
+    async def fnv_loadorder() -> result_type:
+        """The dev profile's plugins in load order: index prefix, the real file behind MO2's virtual folder (the
+        MO2 mod or the game Data folder), masters, and problems (missing masters, missing files). Uses the running
+        game's list when the game runs."""
+        return await invoke('fnv_loadorder', data.loadorder)
+
+    @server.tool(annotations=read)
+    async def fnv_record_find(query: Annotated[str, Field(max_length=200)] = '',
+                              record_type: Annotated[str, Field(pattern=r'^[A-Za-z_]{4}$')] | None = None,
+                              plugin: Annotated[str, Field(max_length=120)] | None = None,
+                              limit: Annotated[int, Field(ge=1, le=200)] = 25,
+                              offset: Annotated[int, Field(ge=0)] = 0) -> result_type:
+        """Find records in every active plugin of the load order (masters, DLC, mods) by EditorID or name
+        substring, load-order form id (0x00104C6C), or Plugin.esp:LOCALID; filter by type (WEAP, NPC_, QUST...)
+        or plugin. Each result names the plugin that defines it, the winning plugin and the override count. The
+        first call indexes the plugins (seconds; cached until a file changes)."""
+        return await invoke('fnv_record_find', lambda: data.record_find(query, record_type, plugin, limit, offset))
+
+    @server.tool(annotations=read)
+    async def fnv_record_show(record: Annotated[str, Field(min_length=1, max_length=200, description=(
+            'EditorID, load-order form id, or Plugin.esp:LOCALID'))], all_versions: bool = True,
+                              max_bytes: Annotated[int, Field(ge=16, le=4096)] = 256) -> result_type:
+        """One record decoded from the plugins: the winning version's subrecords (strings, form references with
+        their EditorIDs, script header, source and bytecode size, common DATA layouts), every plugin that edits it
+        in load order, and which subrecords each override changed."""
+        return await invoke('fnv_record_show', lambda: data.record_show(record, all_versions, max_bytes))
+
+    @server.tool(annotations=read)
+    async def fnv_script_lint(source: Annotated[str, Field(min_length=1, max_length=200000)],
+                              check_forms: bool = True) -> result_type:
+        """Check script source before compiling, offline: scn line, begin/end and if/endif structure, block
+        types, declared variables, unknown commands (vanilla, xNVSE and JIP LN tables from the engine map), argument
+        counts, and EditorIDs no active plugin defines or of the wrong record type. Each problem has a line."""
+        return await invoke('fnv_script_lint', lambda: data.script_lint(source, check_forms=check_forms))
+
+    @server.tool(annotations=read)
+    async def fnv_compile_ingame(source: Annotated[str, Field(min_length=1, max_length=200000)],
+                                 include_bytecode: bool = True) -> result_type:
+        """Compile script source with the running game's own compiler (nothing runs): the compiler's errors, or
+        the variables with their indexes, the referenced forms, the statement count and the bytecode. EditorIDs the
+        game does not keep are replaced by their form ids first (listed)."""
+        return await invoke('fnv_compile_ingame', lambda: data.compile_ingame(source, include_bytecode))
+
+    @server.tool(annotations=act)
+    async def fnv_script_hot_swap(script: Annotated[str, Field(min_length=1, max_length=200, description=(
+            'script EditorID or form id, or a quest / reference whose script to replace'))],
+                                  source: Annotated[str, Field(min_length=1, max_length=200000)],
+                                  force: bool = False) -> result_type:
+        """Replace a running script's code with a new compile, without restarting: quests, objects and effects
+        using it run the new code from their next run and keep their variable values. Refuses when existing
+        variables would move or disappear (instances keep values by index) unless force. Journaled; fnv_undo
+        swaps the old code back."""
+        return await invoke('fnv_script_hot_swap', lambda: data.hot_swap(script, source, force), 'act')
 
     return live

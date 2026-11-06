@@ -706,6 +706,13 @@ class LiveService:
                 pass
             self._command_names = commands
         out, subs = [], {}
+        # The script's own name (scn) and its declared variables are names, not forms.
+        protected = set()
+        for line in text.replace('\r', '').split('\n'):
+            words = line.split(';', 1)[0].split()
+            if len(words) >= 2 and words[0].lower() in ('scn', 'scriptname', 'short', 'int', 'long', 'float', 'ref',
+                                                        'reference', 'array_var', 'string_var'):
+                protected.update(w.lower().rstrip(',') for w in words[1:])
         for k, part in enumerate(re.split(r'("[^"]*")', text)):
             if k % 2:  # quoted string
                 out.append(part)
@@ -713,7 +720,8 @@ class LiveService:
 
             def repl(m):
                 token = m.group(0)
-                if token.lower() in self.KEYWORDS or token.lower() in commands or FORM_ID.match(token) and len(token) == 8:
+                if token.lower() in self.KEYWORDS or token.lower() in commands or token.lower() in protected or \
+                        FORM_ID.match(token) and len(token) == 8:
                     return token
                 if token not in subs:
                     found = self.editor_id(token)
@@ -721,7 +729,7 @@ class LiveService:
                         return token
                     subs[token] = found['formId']
                 return subs[token]
-            out.append(re.sub(r'(?<![\w.])[A-Za-z_][A-Za-z0-9_]{2,127}(?!\w)', repl, part))
+            out.append(re.sub(r'(?<![\w.])[A-Za-z_][A-Za-z0-9_]{2,127}(?![\w.])', repl, part))
         return ''.join(out), subs
 
     # ================================================================= milestone 6: memory and engine
@@ -1144,6 +1152,9 @@ class LiveService:
             self.link.write(int(undo['address'], 16), bytes.fromhex(undo['hex']))
         elif undo['op'] == 'console':
             self.console(undo['line'])
+        elif undo['op'] == 'swap_script':
+            from .fnv_data import swap_script_code
+            swap_script_code(self, int(undo['target'], 16), int(undo['holder'], 16))
         elif undo['op'] == 'console_ref':
             ref = self.resolve(undo['ref'])
             for line in undo['lines']:

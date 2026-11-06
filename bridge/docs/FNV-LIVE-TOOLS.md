@@ -1,6 +1,6 @@
 # fnv_* live tools: game control, scenario tests, live inspection and full control
 
-These tools work on the **running game**. They are the fnv-mcp milestones 4-7 on top of the offline
+These tools work on the **running game** and its plugins. They are the fnv-mcp milestones 4-8 on top of the offline
 engine tools in [FNV-ENGINE-TOOLS.md](FNV-ENGINE-TOOLS.md):
 
 - **Game control and tests**: launch Fallout: New Vegas through a portable MO2 dev profile, load a save or
@@ -12,6 +12,9 @@ engine tools in [FNV-ENGINE-TOOLS.md](FNV-ENGINE-TOOLS.md):
   can be undone.
 - **Deep tools** (milestone 7): a script profiler, a line-by-line script trace, a damage log, crash
   context, a hang doctor and a map of the engine code other plugins patched.
+- **Data and authoring** (milestone 8): the load order, records across all plugins with their overrides,
+  a script lint against the game's command tables, compiling with the running game's own compiler, and
+  replacing a running script's code without a restart.
 
 They need the **fnvmcp engine companion**, an opt-in xNVSE plugin separate from geck-mcp-nv's own
 companions. Unlike those, it works with engine addresses, so it lives in this fork's fnv-mcp work and
@@ -39,6 +42,7 @@ bridge decides what to do with them:
 | `every` | Run a compiled script snippet every N ms for a while (closes arrival message boxes, keeps tests unpaused) |
 | `events` | xNVSE messages seen: loads, saves, new game, exit to menu, script errors with text |
 | `hook` `unhook` `hookctl` `hookfilter` `hooks` | Watch hooks on engine functions (below) |
+| `compile` | Compile script text with xNVSE's CompileScript into a new Script object (not run, not cached) |
 
 All ops of one request run in the same frame, in order. Reads and writes go through
 `ReadProcessMemory`/`WriteProcessMemory` on the game's own process, so a bad address fails cleanly.
@@ -131,6 +135,12 @@ nothing once xNVSE has announced the game is exiting.
 | `fnv_hang_doctor` | read | The main thread's (or every thread's) stack sampled from outside the process and named: where a hang is stuck. Works when the companion does not answer |
 | `fnv_patch_map` | read | Engine code, imports and vtable slots other modules changed, by owner, with jump chains and functions patched by several owners |
 | `fnv_hooks` | read | The watch hooks installed; remove one or all |
+| `fnv_loadorder` | read | The dev profile's plugins in order: index, the real file behind MO2's virtual folder, masters, problems |
+| `fnv_record_find` | read | Records in every active plugin by EditorID, name, form id or `Plugin.esp:LOCALID`; defining and winning plugin, override count |
+| `fnv_record_show` | read | One record decoded (strings, form references with EditorIDs, script header and source, common DATA layouts), every version in load order, and what each override changed |
+| `fnv_script_lint` | read | Script source checked offline: structure, block types, variables, unknown commands, argument counts, EditorIDs of the wrong type or in no plugin |
+| `fnv_compile_ingame` | read | Compile with the running game's compiler: its errors with line numbers, or the variables, references, statements and bytecode |
+| `fnv_script_hot_swap` | act | Replace a running script's code with a new compile; instances keep their variables; undoable |
 
 Act tools journal every change in `state/fnv/journal.jsonl` and back up the dev profile's saves before the
 first change of a game session (`state/fnv/save-backups`, newest 10 kept). Console lines, scripts and
@@ -174,6 +184,29 @@ and the game is relaunched. Reports are saved in `state/fnv/test-reports`.
 Files are a YAML subset (block mappings and lists, flow `{}` and `[]`, quoted or plain scalars, `|`
 blocks, comments) or JSON; no YAML library is needed. Examples: `examples/fnv-tests/`.
 
+## Data and authoring
+
+`fnv_record_find` and `fnv_record_show` index every active plugin into `state/fnv/records.sqlite` (record
+headers and the first subrecords; a file is re-indexed when its size or time changes; the 245 MB
+FalloutNV.esm plus the DLC took a few seconds). Records are found by the plugin that defines them and
+their local id, so a record's versions across the load order, and what each override changed, come from
+one query. Single records are decoded with geck-mcp-nv's codec.
+
+`fnv_script_lint` uses the engine map's command tables (vanilla, xNVSE and JIP LN: about 3000 commands with
+their parameters) and the record index for EditorIDs. On 1500 FalloutNV.esm scripts it reports errors in 2
+(both malformed lines); what the game's compiler accepts anyway (a stray `endif`, a variable declared twice)
+is a warning.
+
+`fnv_compile_ingame` compiles with xNVSE's CompileScript in the running game and returns the compiler's own
+messages (the console flags are set for that frame so it prints them). The running game keeps few EditorIDs:
+base forms are replaced by their form ids before compiling, and **`Quest.variable` references cannot be
+resolved** at runtime (the game keeps no quest EditorIDs), so scripts using them compile only in GECK.
+
+`fnv_script_hot_swap` compiles the new source into a fresh Script and exchanges the compiled code (header
+counts, bytecode, reference and variable lists, not the script type) with the running one in one frame.
+Instances keep their variables by index, so the tool refuses when existing variables would move or vanish.
+Variables the new code adds do not exist in instances that were already running. `fnv_undo` swaps back.
+
 ## Tested on (2026-11-06/07, FalloutNV 1.4.0.525 Steam, xNVSE 6.4.9, JIP LN 57.30, Crash Logger 5.17)
 
 - Launch through MO2 to the main menu in 5.5 s, a save loaded with no clicks in 25 s; quit via `qqq` 3 s.
@@ -208,6 +241,19 @@ Milestone 7 (2026-11-07), live in the Prospector Saloon and over MCP:
 - `forced-crash.yaml`: the report now carries the companion's context (main thread, read of 0x1C, the op).
 - Every quit leaves a Crash Logger log on the test machine, with the companion off too: a plugin faults in
   its exit cleanup (`ExitProcess` in the call trace). The crash doctor marks such logs `duringShutdown`.
+
+Milestone 8 (2026-11-07):
+
+- `fnv_loadorder`: 11 plugins (FalloutNV.esm, 5 DLC masters, 4 packs, GunRunnersArsenal, HelloWasteland.esp).
+- `fnv_record_find Trudy`: `GSTrudy` (NPC_), `TrudyRef`, her note, topics, packages and script, across the
+  load order, 3.2 s including the first index build.
+- `fnv_record_show Weap10mmPistol`: defined in FalloutNV.esm, winner GunRunnersArsenal.esm, which changes
+  `DNAM`; `DATA` value 750, health 80, weight 3, damage 22, clip 12; ammo list resolved to `AmmoList10mm`.
+- `fnv_script_trace GoodspringsRadioScript` mapped each statement to its source line from the plugin's
+  `SCTX` and listed the lines that did not run.
+- `fnv_compile_ingame`: `set undeclared to 1` fails with the game's "Unknown variable 'undeclared'", line 3.
+- `fnv_script_hot_swap GoodspringsRadioScript` with a line `set Button to 42`: the radio's `Button` read 42
+  while swapped and -1 again after `fnv_undo`; a version that reordered the variables was refused.
 
 ## Launch notes
 

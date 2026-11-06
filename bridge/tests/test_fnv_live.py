@@ -10,6 +10,7 @@ import tempfile
 import time
 import unittest
 import uuid
+import zlib
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -353,6 +354,74 @@ class DeepToolTests(unittest.TestCase):
             self.assertEqual(fnv_deep.match_context('0x0084E3AA', now)['address'], '0x0084e3aa')
             self.assertIsNone(fnv_deep.match_context('0x00400000', now))
             self.assertIsNone(fnv_deep.match_context('0x0084E3AA', now + 3600))
+
+
+class DataToolTests(unittest.TestCase):
+    """Milestone 8 helpers that need no game: plugin scan, record decode, lint, crash log rebasing."""
+
+    @staticmethod
+    def sub(tag, data):
+        return tag.encode() + struct.pack('<H', len(data)) + data
+
+    def plugin(self):
+        header = self.sub('HEDR', struct.pack('<fII', 0.94, 2, 0x800)) + self.sub('MAST', b'FalloutNV.esm\0') + \
+            self.sub('DATA', b'\0' * 8)
+        weap = self.sub('EDID', b'MyGun\0') + self.sub('FULL', b'My Gun\0') + \
+            self.sub('DATA', struct.pack('<iifhB', 100, 50, 2.5, 30, 8))
+        body = self.sub('EDID', b'MyMisc\0') + self.sub('SCRI', struct.pack('<I', 0x0000434F))
+        packed = zlib.compress(body)
+        misc = b'MISC' + struct.pack('<IIIIHH', 4 + len(packed), 0x00040000, 0x01000801, 0, 15, 0) + \
+            struct.pack('<I', len(body)) + packed
+        rec = b'WEAP' + struct.pack('<IIIIHH', len(weap), 0, 0x01000800, 0, 15, 0) + weap
+        group = b'GRUP' + struct.pack('<I4si8s', 24 + len(rec), b'WEAP', 0, b'\0' * 8) + rec
+        group2 = b'GRUP' + struct.pack('<I4si8s', 24 + len(misc), b'MISC', 0, b'\0' * 8) + misc
+        return b'TES4' + struct.pack('<IIIIHH', len(header), 0, 0, 0, 15, 0) + header + group + group2
+
+    def test_scan_and_read(self):
+        from geck_mcp import fnv_data
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'Test.esp'
+            path.write_bytes(self.plugin())
+            masters, rows = fnv_data.scan_plugin(path)
+            self.assertEqual(masters, ['FalloutNV.esm'])
+            self.assertEqual([(r[1], r[2], r[3]) for r in rows], [('WEAP', 'MyGun', 'My Gun'), ('MISC', 'MyMisc', None)])
+            weap = fnv_data.read_record(path, rows[0][4])
+            data = fnv_data.decode_subrecord('WEAP', 'DATA', weap.get('DATA'))
+            self.assertEqual(data, {'value': 100, 'health': 50, 'weight': 2.5, 'damage': 30, 'clipSize': 8})
+            misc = fnv_data.read_record(path, rows[1][4])  # compressed
+            self.assertEqual(misc.editor_id, 'MyMisc')
+            self.assertEqual(struct.unpack('<I', misc.get('SCRI'))[0], 0x0000434F)
+            self.assertEqual(fnv_data.plugin_masters(path), ['FalloutNV.esm'])
+
+    def test_lint(self):
+        from geck_mcp import fnv_data
+
+        class Engine:
+            commands = [{'name': 'PlaceAtMe', 'source': 'vanilla', 'params': [{'type': 'ObjectID', 'optional': False},
+                                                                             {'type': 'Integer', 'optional': True}]},
+                        {'name': 'SetStage', 'source': 'vanilla', 'params': [{'type': 'Quest', 'optional': False},
+                                                                            {'type': 'Integer', 'optional': False}]},
+                        {'name': 'GetStage', 'source': 'vanilla', 'params': [{'type': 'Quest', 'optional': False}]}]
+        known = {'myquest': {'QUST'}, 'caps001': {'MISC'}}
+        source = ('scn Test\nshort n\nbegin GameMode\n  set n to n + 1\n  if GetStage MyQuest == 10\n'
+                  '    PlaceAtMe Caps001 1\n    SetStage MyQuest\n    SetStage Caps001 20\n    Frob 1\n  endif\n'
+                  '  set missing to 1\nend\nbegin OnWhatever\nend\n')
+        report = fnv_data.lint_script(source, Engine(), lambda name: known.get(name.lower(), set()))
+        codes = [(p['line'], p['code']) for p in report['problems']]
+        self.assertIn((7, 'TOO_FEW_ARGUMENTS'), codes)
+        self.assertIn((8, 'WRONG_FORM_TYPE'), codes)
+        self.assertIn((9, 'UNKNOWN_COMMAND'), codes)
+        self.assertIn((11, 'UNDECLARED_VARIABLE'), codes)
+        self.assertIn((13, 'UNKNOWN_BLOCK'), codes)
+        self.assertNotIn(5, [line for line, _ in codes])  # comparison after a call is not an argument
+        self.assertFalse(report['ok'])
+
+    def test_crash_log_without_symbols(self):
+        from geck_mcp import fnv_crash
+        parsed = {'format': 'yvile5', 'modules': [], 'calltrace': [
+            {'module': '-\\(°_o)/-', 'address': 0x10AA55A6, 'symbol': '(Corrupt stack or heap?)'}]}
+        frame = fnv_crash.resolve_frames(parsed)[0]
+        self.assertEqual((frame['module'], frame['absolute'], frame['kind']), ('FalloutNV.exe', '0x00AA55A6', 'game'))
 
 
 @unittest.skipUnless(os.environ.get('GECK_MCP_ZIG'), 'set GECK_MCP_ZIG to build the engine companion')
