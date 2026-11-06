@@ -141,6 +141,7 @@ nothing once xNVSE has announced the game is exiting.
 | `fnv_script_lint` | read | Script source checked offline: structure, block types, variables, unknown commands, argument counts, EditorIDs of the wrong type or in no plugin |
 | `fnv_compile_ingame` | read | Compile with the running game's compiler: its errors with line numbers, or the variables, references, statements and bytecode |
 | `fnv_script_hot_swap` | act | Replace a running script's code with a new compile; instances keep their variables; undoable |
+| `fnv_scripts_compile` | control | Compile the project spec's scripts with the running game into geck-mcp-nv's compiled-script cache, so `geck_plugin_build` emits compiled scripts without GECK |
 
 Act tools journal every change in `state/fnv/journal.jsonl` and back up the dev profile's saves before the
 first change of a game session (`state/fnv/save-backups`, newest 10 kept). Console lines, scripts and
@@ -207,6 +208,20 @@ counts, bytecode, reference and variable lists, not the script type) with the ru
 Instances keep their variables by index, so the tool refuses when existing variables would move or vanish.
 Variables the new code adds do not exist in instances that were already running. `fnv_undo` swaps back.
 
+## Building a mod without GECK
+
+geck-mcp-nv's builder emits a script uncompiled until its compiled-script cache (`state/scripts/<project>.json`)
+has it; normally GECK fills that cache. `fnv_scripts_compile` fills it from the running game instead: with the
+last build installed and loaded, it compiles each spec script in game, drops the scriptname statement xNVSE
+writes before compiling (GECK's bytecode starts with a single one), maps runtime form ids to the plugin's
+master-relative ids, builds `SCHR`/`SCDA`/`SCTX`/`SLSD`/`SCVR`/`SCRO`/`SCRV`, checks them with the builder's own
+`verify_script`, and stores them with an in-game provenance tied to the build's compile context. The next
+`geck_plugin_build` includes them. Scripts with `Quest.variable` references still need GECK. The worked
+example is [examples/hello-quest](../examples/hello-quest/README.md).
+
+Scenario expressions (`until`, `eval`, `console`, `run`) and references accept EditorIDs from any active
+plugin: names the game does not keep are replaced by their form ids from the record index.
+
 ## Tested on (2026-11-06/07, FalloutNV 1.4.0.525 Steam, xNVSE 6.4.9, JIP LN 57.30, Crash Logger 5.17)
 
 - Launch through MO2 to the main menu in 5.5 s, a save loaded with no clicks in 25 s; quit via `qqq` 3 s.
@@ -254,6 +269,12 @@ Milestone 8 (2026-11-07):
 - `fnv_compile_ingame`: `set undeclared to 1` fails with the game's "Unknown variable 'undeclared'", line 3.
 - `fnv_script_hot_swap GoodspringsRadioScript` with a line `set Button to 42`: the radio's `Button` read 42
   while swapped and -1 again after `fnv_undo`; a version that reordered the variables was refused.
+
+Milestone 9 (2026-11-07): Hello Quest built with `geck_plugin_build`, its script compiled in game with
+`fnv_scripts_compile`, rebuilt, installed and proven by `hello-quest.yaml` (16 steps passed, twice: after the
+first build and after a spec change that invalidated the cached script). Open: launching from the main menu
+straight into that room takes 2-3.5 minutes (the main thread is in DirectSound buffer creation, per
+`fnv_hang_doctor`); other cells take 10-15 s.
 
 ## Launch notes
 

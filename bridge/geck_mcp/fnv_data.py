@@ -391,6 +391,99 @@ class DataTools:
             return None
         return next((f['value'] for f in record['fields'] if f['tag'] == 'SCTX' and isinstance(f.get('value'), str)), None)
 
+    # ------------------------------------------------------------------ fnv_scripts_compile
+    def compile_spec_scripts(self, only=None):
+        """Compile the project spec's scripts with the running game and store them in geck-mcp-nv's compiled-script
+        cache (state/scripts/<project>.json), so its builder emits compiled scripts without GECK.
+
+        Needs the last build of the plugin loaded in the game (its own forms must exist to be referenced). Each
+        script's bytecode, variables and references come from the in-game compile: xNVSE writes a scriptname
+        statement before compiling, so the first 4 bytes are dropped to get GECK's layout; runtime form ids are
+        mapped back to the plugin's master-relative ids. Each entry is checked with the builder's own
+        verify_script and carries an in-game provenance; the builder reuses it only while the sources, spec and
+        build inputs stay the same (its compile context)."""
+        from .authoring import Authoring, atomic_write
+        from .esp import generic, scripts as esp_scripts
+        live = self.live
+        live.in_game()
+        authoring = Authoring(self.project)
+        spec = authoring.load_spec()
+        receipt = authoring.receipt()
+        plugin, masters = spec['plugin'], spec['masters']
+        loaded = {p['name'].lower(): int(p['index'], 16) for p in (live.game.loaded_plugins() or []) if p.get('name')}
+        if plugin.lower() not in loaded:
+            raise DataError('PLUGIN_NOT_LOADED', '%s is not loaded in the game: install the build (fnv_install) and '
+                            'restart, so the scripts can reference its forms' % plugin)
+        by_index = {index: name for name, index in loaded.items()}
+        own = [m.lower() for m in masters] + [plugin.lower()]
+
+        def relative(form_id):
+            value = int(form_id, 16)
+            name = by_index.get(value >> 24)
+            if name not in own:
+                raise DataError('FOREIGN_FORM', 'The script references %s from %s, which is not a master of %s'
+                                % (form_id, name, plugin))
+            return (own.index(name) << 24) | (value & 0xFFFFFF)
+
+        context = authoring.compile_context(spec)
+        cache = esp_scripts.load_cache(self.project.state_dir, spec['project_id'])
+        results, changed = {}, False
+        for edid, rec in spec.get('records', {}).items():
+            if rec.get('type') != 'SCPT' or (only and edid not in only):
+                continue
+            stype = generic.SCRIPT_TYPES[rec.get('script_type', 'object')]
+            text = generic.script_text(authoring.spec_path.parent, rec, edid, 'records.%s' % edid)
+            form_id = receipt['formIds'].get(edid)
+            compiled = self.compile_ingame(text.decode('cp1252').replace('\r\n', '\n'), include_bytecode=True)
+            if not compiled['compiled']:
+                results[edid] = {'compiled': False, 'errors': compiled['errors'], 'hint': compiled.get('hint'),
+                                 'lint': compiled.get('lint')}
+                continue
+            data = bytes.fromhex(compiled['bytecode'])
+            if data[:8] != b'\x1d\0\0\0\x1d\0\0\0':
+                results[edid] = {'compiled': False, 'errors': ['unexpected bytecode start %s' % data[:8].hex()]}
+                continue
+            scda = data[4:]
+            variables = compiled['variables']
+            references = compiled['references']
+            subs = [('SCHR', struct.pack('<4sIIIHH', b'\0' * 4, len(references), len(scda), len(variables), stype, 1)),
+                    ('SCDA', scda), ('SCTX', text)]
+            kinds = {'float': 0, 'int': 1, 'string': 2, 'array': 3, 'ref': 0}
+            for v in variables:
+                subs.append(('SLSD', struct.pack('<I12sB7s', v['index'], b'\0' * 12, kinds.get(v['type'], 0), b'\0' * 7)))
+                subs.append(('SCVR', v['name'].encode('cp1252') + b'\0'))
+            for ref in references:
+                if ref.get('kind') == 'variable':
+                    subs.append(('SCRV', struct.pack('<I', ref['index'])))
+                else:
+                    subs.append(('SCRO', struct.pack('<I', relative(ref['formId']))))
+            entry_compiled = [(tag, value.hex()) for tag, value in subs]
+            candidate = {'formId': form_id, 'type': stype, 'text': text, 'compiledSize': len(scda), 'compiled': entry_compiled}
+            try:
+                proof = esp_scripts.verify_script(candidate, text, stype, form_id, prior=cache.get(edid))
+            except ValueError as e:
+                results[edid] = {'compiled': True, 'cached': False, 'reason': 'builder verification failed: %s' % e}
+                continue
+            cache[edid] = {'sourceSha256': generic.source_sha(text, stype), 'formId': form_id,
+                           'compiledSize': len(scda), 'compiled': entry_compiled, 'verification': proof,
+                           'provenance': {'context': context, 'kind': 'fnv_ingame_compile',
+                                          'compiler': 'FalloutNV.exe 1.4.0.525 script compiler through xNVSE '
+                                                      'CompileScript (fnvmcp engine companion)',
+                                          'pid': (live.link.hello or {}).get('pid'), 'compiledAt': time.time(),
+                                          'loadOrderIndex': '%02X' % loaded[plugin.lower()],
+                                          'adjustments': ['dropped the 4-byte scriptname statement xNVSE writes first',
+                                                          'runtime form ids mapped to master-relative ids']}}
+            changed = True
+            results[edid] = {'compiled': True, 'cached': True, 'bytes': len(scda), 'variables': len(variables),
+                             'references': len(references)}
+        if changed:
+            path = esp_scripts.cache_path(self.project.state_dir, spec['project_id'])
+            path.parent.mkdir(parents=True, exist_ok=True)
+            atomic_write(path, (json.dumps(cache, indent=1, sort_keys=True) + '\n').encode())
+        return {'scripts': results, 'cache': str(esp_scripts.cache_path(self.project.state_dir, spec['project_id'])),
+                'next': 'Rebuild (geck_plugin_build) to include the compiled scripts, then fnv_install and restart.'
+                if changed else None}
+
     # ------------------------------------------------------------------ fnv_script_lint
     def script_lint(self, source, plugin=None, check_forms=True):
         return lint_script(source, self.live.engine() if self.live else None,
@@ -579,12 +672,19 @@ def read_script(live, script, include_bytecode=True):
         out_vars.append({'index': index, 'name': name.get('text') if name.get('ok') else None,
                          'type': {0: 'float', 1: 'int', 2: 'string', 3: 'array', 4: 'ref'}.get(raw[0x10], raw[0x10])})
     ref_ptrs = live.walk_list(script + SCRIPT_REFS, 512)
-    ref_raw = live.reads([(p, 0x10) for p in ref_ptrs]) if ref_ptrs else []
-    ref_forms = live.form_ids([struct.unpack_from('<I', r, 8)[0] for r in ref_raw if r]) if ref_raw else []
+    ref_raw = [r for r in (live.reads([(p, 0x10) for p in ref_ptrs]) if ref_ptrs else []) if r]
+    # ScriptReferencedObject: name String (8), form (4), variable index (4): a form, or a local ref variable
+    ref_forms = live.form_ids([struct.unpack_from('<I', r, 8)[0] for r in ref_raw]) if ref_raw else []
+    references = []
+    for raw, form in zip(ref_raw, ref_forms):
+        if form:
+            references.append(dict(form, kind='form'))
+        else:
+            references.append({'kind': 'variable', 'index': struct.unpack_from('<I', raw, 12)[0]})
     data = live.reads([(data_ptr, min(size, 0xFF00))])[0] if data_ptr and size else b''
     out = {'type': {0: 'object', 1: 'quest', 0x100: 'effect'}.get(stype, stype), 'dataSize': size,
            'variables': sorted(out_vars, key=lambda v: v['index']),
-           'references': [f for f in ref_forms if f], 'statements': _statement_offsets(data) if data else []}
+           'references': references, 'statements': _statement_offsets(data) if data else []}
     if include_bytecode:
         out['bytecode'] = data.hex()
     return out

@@ -384,9 +384,12 @@ class ScenarioRunner:
                     from .fnv_game import parse_start
                     kind, value = parse_start('continue', self.game.saves_dir)
                 line = 'load "%s"' % value if kind == 'save' else 'coc %s' % value
-                self.game.link.schedule(0, line)
-                if kind == 'coc':
-                    info['arrivalMessages'] = self.game.close_arrival_messages()
+                if kind == 'coc':  # the closer goes in the same request: once the cell loads the main loop is busy
+                    first, _ = self.game.link.batch([('every', '12C', '%X' % 90000, fnv_link.hexs(self.game.ARRIVAL_CLOSER)),
+                                                     ('sched', '0', fnv_link.hexs(line))])
+                    info['arrivalMessages'] = {'closing': bool(first.get('ok')), 'seconds': 90}
+                else:
+                    self.game.link.schedule(0, line)
                 info['started'] = self.game.wait_in_game(time.monotonic() + 240, proc[0], start)
         try:  # the pause menu opens when the game window loses focus; steps need the world running
             if fnv_link.value_of(self.game.link.eval('GetActiveMenuMode')) == 1013:
@@ -466,10 +469,21 @@ class ScenarioRunner:
         except Exception as e:  # diagnosis is best effort
             return {'error': str(e)}
 
+    def _expr(self, text):
+        """An expression or console line with the EditorIDs the running game does not keep (base forms, a mod's
+        own records) replaced by their form ids; cached per text."""
+        cache = self.__dict__.setdefault('_expr_cache', {})
+        if text not in cache:
+            try:
+                cache[text] = self.live.substitute_editor_ids(text)[0]
+            except Exception:
+                cache[text] = text
+        return cache[text]
+
     def _dispatch(self, action, arg, marker):
         live = self.live
         if action in ('run', 'console'):
-            line = arg if isinstance(arg, str) else arg.get('line')
+            line = self._expr(arg if isinstance(arg, str) else arg.get('line'))
             ref = arg.get('ref') if isinstance(arg, dict) else None
             out = live.run_console(line, ref)
             allow = isinstance(arg, dict) and arg.get('allow_errors')
@@ -549,7 +563,7 @@ class ScenarioRunner:
             deadline = time.monotonic() + float(arg.get('timeout', 10))
             last = None
             while time.monotonic() < deadline:
-                last = fnv_link.value_of(self.live.link.eval(arg['until']))
+                last = fnv_link.value_of(self.live.link.eval(self._expr(arg['until'])))
                 if last:
                     return {'passed': True, 'actual': last}
                 time.sleep(float(arg.get('poll', 0.2)))
@@ -569,7 +583,7 @@ class ScenarioRunner:
                     'reason': None if passed else '%d script error(s)' % count}
         if 'eval' in arg:
             r = live.resolve(ref) if 'ref' in arg else None
-            actual = fnv_link.value_of(live.link.eval(arg['eval'], r['ptr'] if r else 0))
+            actual = fnv_link.value_of(live.link.eval(self._expr(arg['eval']), r['ptr'] if r else 0))
             what = arg['eval']
         elif 'item_count' in arg:
             r = live.resolve(ref)
@@ -602,7 +616,7 @@ class ScenarioRunner:
             arg = {**arg, 'equals': want}
             what = 'player cell'
         elif 'console' in arg:
-            actual = live.console(arg['console'])['output']
+            actual = live.console(self._expr(arg['console']))['output']
             what = 'output of %s' % arg['console']
         elif 'disabled' in arg:
             r = live.resolve(arg['disabled'])

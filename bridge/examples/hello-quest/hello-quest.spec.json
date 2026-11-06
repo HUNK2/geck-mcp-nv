@@ -1,0 +1,71 @@
+{
+ "schema": 1,
+ "project_id": "helloquest",
+ "plugin": "HelloQuest.esp",
+ "author": "fnv-mcp milestone 9",
+ "description": "Hello Quest: a small room with three Hello Tokens. Picking up all three completes the quest and pays 100 caps. Vanilla assets only.",
+ "masters": [
+  "FalloutNV.esm"
+ ],
+ "records": {
+  "HelloQuestToken": {
+   "type": "MISC",
+   "fields": [
+    {"tag": "OBND", "pack": "<6h", "values": [-4, -4, -6, 4, 4, 5]},
+    {"tag": "FULL", "text": "Hello Token"},
+    {"tag": "MODL", "text": "Clutter\\Junk\\TinCan01.NIF"},
+    {"tag": "ICON", "text": "Interface\\Icons\\PipboyImages\\Items\\item_junk.dds"},
+    {"tag": "DATA", "pack": "<if", "values": [1, 0.5]}
+   ]
+  },
+  "HelloQuestLight": {
+   "type": "LIGH",
+   "radius": 600,
+   "color": [255, 220, 160],
+   "flags": ["dynamic"],
+   "falloff": 1.0,
+   "fov": 90.0,
+   "fade": 1.0
+  },
+  "HelloQuestScript": {
+   "type": "SCPT",
+   "source": "scripts/HelloQuestScript.gek",
+   "script_type": "quest"
+  },
+  "HelloQuest": {
+   "type": "QUST",
+   "fields": [
+    {"tag": "SCRI", "form": "@HelloQuestScript"},
+    {"tag": "FULL", "text": "Hello Quest"},
+    {"tag": "DATA", "pack": "<BBBBf", "values": [1, 50, 0, 0, 0.5]},
+    {"tag": "INDX", "pack": "<h", "values": [10], "append": true},
+    {"tag": "INDX", "pack": "<h", "values": [20], "append": true}
+   ]
+  }
+ },
+ "cells": {
+  "HelloQuestRoom": {
+   "name": "Hello Quest Room",
+   "lighting": {
+    "ambient": [40, 36, 32],
+    "directional": [20, 20, 24],
+    "fog_color": [0, 0, 0],
+    "fog_near": 0.0,
+    "fog_far": 10000.0,
+    "clip_distance": 10000.0,
+    "directional_fade": 1.0,
+    "fog_power": 1.0
+   },
+   "objects": [
+    {"ref_id": "coc.marker", "base": "@COCMarkerHeading", "position": [0, -170, 8]},
+    {"ref_id": "light", "base": "@HelloQuestLight", "position": [0, 0, 220]},
+    {"ref_id": "floor.w", "base": "@FacRmFloor01", "position": [-256, 0, 0]},
+    {"ref_id": "floor.c", "base": "@FacRmFloor01", "position": [0, 0, 0]},
+    {"ref_id": "floor.e", "base": "@FacRmFloor01", "position": [256, 0, 0]},
+    {"ref_id": "token.1", "base": "@HelloQuestToken", "position": [-120, 60, 30], "editor_id": "HelloToken1Ref", "persistent": true},
+    {"ref_id": "token.2", "base": "@HelloQuestToken", "position": [0, 90, 30], "editor_id": "HelloToken2Ref", "persistent": true},
+    {"ref_id": "token.3", "base": "@HelloQuestToken", "position": [120, 60, 30], "editor_id": "HelloToken3Ref", "persistent": true}
+   ]
+  }
+ }
+}

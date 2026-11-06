@@ -141,6 +141,23 @@ class GameProcess:
             kernel32.CloseHandle(snapshot)
         return out
 
+    def main_thread(self, threads=None):
+        """The process's first thread (earliest creation time): its main thread."""
+        best = None
+        for tid in threads or self.threads():
+            handle = kernel32.OpenThread(THREAD_QUERY_INFORMATION, False, tid)
+            if not handle:
+                continue
+            times = [wintypes.FILETIME() for _ in range(4)]
+            try:
+                if kernel32.GetThreadTimes(handle, *[ctypes.byref(t) for t in times]):
+                    created = (times[0].dwHighDateTime << 32) | times[0].dwLowDateTime
+                    if best is None or created < best[0]:
+                        best = (created, tid)
+            finally:
+                kernel32.CloseHandle(handle)
+        return best[1] if best else None
+
     def thread_context(self, tid):
         """{'eip','esp','ebp',...} of a thread, suspended only while the context is read; None if unavailable."""
         thread = kernel32.OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION, False, tid)

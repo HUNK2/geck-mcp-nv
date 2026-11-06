@@ -71,6 +71,8 @@ FNV_LIVE_TOOLS = {
     'fnv_script_lint': ('read', 'check script source against the vanilla, xNVSE and JIP LN command tables'),
     'fnv_compile_ingame': ('read', 'compile script source with the running game: errors, variables, bytecode'),
     'fnv_script_hot_swap': ('act', 'replace a running script with a new compile, keeping its variables (undoable)'),
+    # milestone 9: end to end
+    'fnv_scripts_compile': ('control', "compile the project spec's scripts in game into geck-mcp-nv's script cache"),
 }
 
 
@@ -521,5 +523,13 @@ def register(server, project, annotations, result_type):
         variables would move or disappear (instances keep values by index) unless force. Journaled; fnv_undo
         swaps the old code back."""
         return await invoke('fnv_script_hot_swap', lambda: data.hot_swap(script, source, force), 'act')
+
+    @server.tool(annotations=control)
+    async def fnv_scripts_compile(only: list[Annotated[str, Field(max_length=128)]] | None = None) -> result_type:
+        """Compile the project spec's scripts with the running game's compiler and store them in geck-mcp-nv's
+        compiled-script cache, so geck_plugin_build emits compiled scripts without GECK. The last build must be
+        installed and loaded (its forms must exist). Each entry is checked with the builder's verification and
+        records an in-game provenance. Scripts with Quest.variable references cannot be compiled in game."""
+        return await invoke('fnv_scripts_compile', lambda: data.compile_spec_scripts(only), 'control')
 
     return live

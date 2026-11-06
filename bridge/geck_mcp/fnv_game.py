@@ -404,10 +404,17 @@ class Game:
             return {'phase': 'main_menu', 'start': 'menu'}
         line = 'load "%s"' % value if kind == 'save' else 'coc %s' % value
         # Scheduled so the reply is sent before the game starts loading.
-        result = self.link.schedule(0, line)
+        closer = None
+        if kind == 'coc':
+            # Queue the arrival closer in the same request as the coc: once the cell loads, the main loop is
+            # busy and a separate request would wait for it.
+            ops = [('every', '12C', '%X' % 90000, fnv_link.hexs(self.ARRIVAL_CLOSER)), ('sched', '0', fnv_link.hexs(line))]
+            first, result = self.link.batch(ops)
+            closer = {'closing': bool(first.get('ok')), 'seconds': 90, 'slot': first.get('slot'), 'reason': first.get('error')}
+        else:
+            result = self.link.schedule(0, line)
         if not result.get('ok'):
             raise GameError('START_FAILED', 'Could not queue "%s"' % line, result)
-        closer = self.close_arrival_messages() if kind == 'coc' else None
         ready = self.wait_in_game(deadline, pid, start='%s:%s' % (kind, value))
         if closer:
             ready['arrivalMessages'] = closer
@@ -417,16 +424,20 @@ class Game:
         """Wait for gameplay. Message boxes that pop up on arrival (a coc start makes a fresh character, and the
         DLC pack quests then announce their items) are closed with JIP LN's CloseActiveMenu."""
         stable_since = None
+        start_menu_since = None
         detail = {}
         dismissed = []
+        phases, began = [], time.monotonic()
         while time.monotonic() < deadline:
             if pid and not any(p == pid for p, _ in game_processes()):
                 raise GameError('GAME_EXITED', 'The game exited while loading', {'crash': self.crash_summary()})
             phase, detail = self.phase()
+            if not phases or phases[-1][1] != phase:
+                phases.append((round(time.monotonic() - began, 1), phase))
             if phase == 'in_game':
                 stable_since = stable_since or time.monotonic()
                 if time.monotonic() - stable_since >= settle:
-                    return {'phase': phase, 'start': start, 'dismissedMessages': dismissed, **detail}
+                    return {'phase': phase, 'start': start, 'dismissedMessages': dismissed, 'phases': phases, **detail}
             else:
                 stable_since = None
                 if phase in ('in_menu', 'paused_menu') and dismiss_messages and len(dismissed) < 20:
@@ -434,7 +445,10 @@ class Game:
                         # MessageMenu (1001): the arrival boxes. StartMenu (1013): the pause menu the game opens
                         # when its window loses focus while it loads (the dev profile is ours to drive).
                         menu = fnv_link.value_of(self.link.eval('GetActiveMenuMode'))
-                        if menu in (1001, 1013):
+                        # The main menu is StartMenu (1013) too, and it stays up while a coc or a save loads:
+                        # close 1013 only when it has been open for 5 s with a cell loaded (a real pause).
+                        start_menu_since = (start_menu_since or time.monotonic()) if menu == 1013 else None
+                        if menu == 1001 or (menu == 1013 and time.monotonic() - start_menu_since > 5):
                             self.link.console('CloseActiveMenu')
                             dismissed.append({'t': round(time.monotonic(), 1),
                                               'menu': 'MessageMenu' if menu == 1001 else 'StartMenu (pause)'})
@@ -443,7 +457,7 @@ class Game:
                     except LinkError:
                         pass
             time.sleep(0.25)
-        raise GameError('NOT_IN_GAME', 'The game did not reach gameplay in time', {'lastDetail': detail,
+        raise GameError('NOT_IN_GAME', 'The game did not reach gameplay in time', {'lastDetail': detail, 'phases': phases,
                                                                                     'dismissedMessages': dismissed})
 
     def _wait(self, probe, deadline, code, message, pid=None):

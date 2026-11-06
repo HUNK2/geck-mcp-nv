@@ -1,0 +1,18 @@
+scn HelloQuestScript
+
+; Hello Quest: stage 10 when the game starts, stage 20 and 100 caps once the player holds three Hello Tokens.
+
+short rewarded
+
+begin GameMode
+	if GetStage HelloQuest < 10
+		SetStage HelloQuest 10
+	endif
+	if rewarded == 0
+		if player.GetItemCount HelloQuestToken >= 3
+			player.AddItem Caps001 100
+			SetStage HelloQuest 20
+			set rewarded to 1
+		endif
+	endif
+end

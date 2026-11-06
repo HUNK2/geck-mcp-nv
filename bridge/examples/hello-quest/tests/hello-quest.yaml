@@ -1,0 +1,21 @@
+# Hello Quest end to end: pick up the three tokens in the room, the quest pays 100 caps.
+name: hello quest pays 100 caps for three tokens
+start: {coc: HelloQuestRoom}
+plugins: [HelloQuest.esp]
+steps:
+  - wait: {until: "GetQuestRunning HelloQuest", timeout: 10}
+  - wait: {until: "GetStage HelloQuest >= 10", timeout: 10}
+  - expect: {stage: HelloQuest, equals: 10}
+  - run: player.RemoveItem Caps001 100000
+  - expect: {item_count: Caps001, equals: 0}
+  - input: {action: activate, target: HelloToken1Ref}
+  - input: {action: activate, target: HelloToken2Ref}
+  - wait: {seconds: 1.5}
+  - expect: {stage: HelloQuest, equals: 10}        # two tokens: no reward yet
+  - expect: {item_count: Caps001, equals: 0}
+  - input: {action: activate, target: HelloToken3Ref}
+  - wait: {until: "GetStage HelloQuest >= 20", timeout: 10}
+  - expect: {item_count: HelloQuestToken, equals: 3}
+  - expect: {item_count: Caps001, equals: 100}
+  - expect: {variable: rewarded, of: HelloQuest, equals: 1}
+  - expect: {no_script_errors: true}

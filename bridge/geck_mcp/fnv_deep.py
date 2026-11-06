@@ -685,7 +685,7 @@ class DeepTools:
         with fnv_procmem.GameProcess(pid) as proc:
             modules = proc.modules()
             threads = proc.threads()
-            main = ping.get('mainThreadId') or (threads[0] if threads else None)
+            main = ping.get('mainThreadId') or proc.main_thread(threads)
             wanted = threads if all_threads else [main]
             stacks = defaultdict(list)
             for k in range(max(1, min(int(samples), 20))):

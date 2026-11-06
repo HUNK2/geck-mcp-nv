@@ -299,7 +299,7 @@ class LiveService:
             for entry in (found if isinstance(found[0], list) else [found]):
                 hits.append((master, entry))
         if not hits:
-            return None
+            return self._editor_id_from_plugins(edid)
         hits.sort(key=lambda h: self.PREFERRED.index(h[1][0]) if h[1][0] in self.PREFERRED else 99)
         master, (rtype, form_id, name, _model) = hits[0]
         index = fnv_link.value_of(self.link.eval('GetModIndex "%s"' % master))
@@ -308,6 +308,33 @@ class LiveService:
         local = int(form_id, 16) & 0xFFFFFF
         return {'formId': _fid((int(index) << 24) | local), 'type': rtype, 'name': name, 'master': master,
                 'candidates': len(hits)}
+
+    def _editor_id_from_plugins(self, edid):
+        """An EditorID defined in any active plugin (mods, DLC), from the load-order record index."""
+        cache = self.__dict__.setdefault('_plugin_edids', {})
+        if edid.lower() in cache:
+            row = cache[edid.lower()]
+        else:
+            from .fnv_data import DataTools
+            data = DataTools(self.project, self)
+            try:
+                entries = data._active()[0]
+                files = ','.join(str(e['fileId']) for e in entries)
+                row = data.index.db.execute('select owner, local, type, full from records where edid = ? collate nocase '
+                                            'and file in (%s) limit 1' % files, (edid,)).fetchone()
+            except Exception:
+                row = None
+            finally:
+                if data._index is not None:
+                    data._index.db.close()  # never keep the SQLite file open between calls
+            cache[edid.lower()] = row
+        if not row:
+            return None
+        owner, local, rtype, name = row
+        index = fnv_link.value_of(self.link.eval('GetModIndex "%s"' % owner))
+        if index is None or index < 0 or index > 254:
+            return None
+        return {'formId': _fid((int(index) << 24) | local), 'type': rtype, 'name': name, 'master': owner, 'candidates': 1}
 
     def form_expr(self, form_id):
         value = int(form_id, 16)
