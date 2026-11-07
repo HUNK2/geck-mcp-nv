@@ -145,6 +145,10 @@ missing. In short:
 | `fnv_compile_ingame` | read | Compile with the running game's compiler: its errors with line numbers, or the variables, references, statements and bytecode |
 | `fnv_script_hot_swap` | act | Replace a running script's code with a new compile; instances keep their variables; undoable |
 | `fnv_scripts_compile` | control | Compile the project spec's scripts with the running game into geck-mcp-nv's compiled-script cache, so `geck_plugin_build` emits compiled scripts without GECK |
+| `fnv_dialogue_tree` | read | The responses a speaker could give for a topic (GREETING by default): prompt, quest and priority, flags, response text, every condition with its value, the engine's verdict, and the response it would pick now |
+| `fnv_dialogue_choose` | act | Talk to an NPC and pick responses by index, prompt text or info id; each step's options, the pick and the answer |
+| `fnv_ai_packages` | read | An actor's packages in order: type, flags, schedule against the game clock, location, conditions with values; which one runs, which are eligible or shadowed, and why the others are not |
+| `fnv_form_live_diff` | read | A form in memory versus its winning plugin record (name, value, weight, health, damage, script, global value, quest data): what changed at runtime |
 
 Act tools journal every change in `state/fnv/journal.jsonl` and back up the dev profile's saves before the
 first change of a game session (`state/fnv/save-backups`, newest 10 kept). Console lines, scripts and
@@ -210,6 +214,41 @@ resolved** at runtime (the game keeps no quest EditorIDs), so scripts using them
 counts, bytecode, reference and variable lists, not the script type) with the running one in one frame.
 Instances keep their variables by index, so the tool refuses when existing variables would move or vanish.
 Variables the new code adds do not exist in instances that were already running. `fnv_undo` swaps back.
+
+## Dialogue, AI packages and runtime changes
+
+Conditions are evaluated the way `TESConditionItem::ContainsTrait` (0x00681600) does it: pick the reference
+the function runs on (subject, target, a reference, the combat target or the linked reference), call the
+command's eval handler from the running game's own command table (`CommandInfo.eval` at +0x20, cdecl
+`(ref, param1, param2, double &)`), compare with the value or global, and combine (an OR item joins the next
+one; groups are ANDed). So each condition shows its own value, not only pass or fail. Handler calls are
+batched, 250 per frame: Trudy's GREETING (5579 responses of every quest) takes about 10 s.
+
+`fnv_dialogue_tree` asks the engine for each response's verdict with `TESTopicInfo::CheckCondition`
+(0x0061E600, proven; with the speaker and the player), which also applies say-once, quest conditions and the
+dummy-node rules; a response where the engine and the per-condition check disagree gets a note. `wouldSay`
+is the first available response of the highest-priority quest in list order (random responses are chosen
+among consecutive ones at run time). `scope=speaker` keeps the responses whose positive speaker tests
+(`GetIsID X == 1`, `GetIsVoiceType`, `GetInFaction`...) pass for this speaker, plus any available now;
+`available` and `all` widen or narrow that. Response text comes from the plugin record (NAM1), since the game
+loads it only when a line is spoken.
+
+`fnv_dialogue_choose` opens the conversation by having the player activate the speaker, waits until the
+speaker has finished (DialogMenu state `speech_idle`), reads the options from the menu's
+TopicMenuController list and its response ListBox (decomp layouts), and picks one with
+`DialogMenu::HandleSelection(-1, tile)` (0x007624F0), the call a mouse click makes. The menu ignores clicks
+within 500 ms of filling its list; the tool waits for that.
+
+`fnv_ai_packages` reads the base form's `TESAIForm` package list and each `TESPackage` (type at +0x20, flags
+at +0x1C, location, schedule PSDT at +0x38, conditions at +0x40), checks the schedule against `GameHour`,
+`GameDay`, `GameMonth` and `GetDayOfWeek`, and evaluates the conditions with the actor as subject. The first
+eligible package is the expected one; `matchesEngine` compares it with `GetCurrentPackage`. A running package
+that is not on the list came from elsewhere (a script package, a quest, combat, dialogue, a template NPC).
+
+`fnv_form_live_diff` reads the form's components at the offsets the decomp's class layouts give for its
+runtime class (`TESFullName`, `TESValueForm`, `TESWeightForm`, `TESHealthForm`, `TESAttackDamageForm`,
+`TESScriptableForm`), plus `TESGlobal` and `TESQuest` data, and compares them with `fnv_record_show`'s
+decoding of the winning record.
 
 ## Building a mod without GECK
 
@@ -279,6 +318,21 @@ first build and after a spec change that invalidated the cached script). Open: l
 straight into that room takes 2-3.5 minutes (the main thread is in DirectSound buffer creation, per
 `fnv_hang_doctor`); other cells take 10-15 s.
 
+Dialogue, AI packages and live diffs (2026-11-07, a fresh game started in the Prospector Saloon):
+- `fnv_dialogue_tree TrudyRef`: 5579 GREETING responses checked in about 10 s; 10 kept for Trudy (her 7
+  Goodsprings lines plus 3 shared ones), the engine and the per-condition check agreeing on every one;
+  `wouldSay` her say-once greeting ("Well, you've been causing quite a stir...", `GetDeadCount JoeCobb < 1`).
+- `fnv_dialogue_choose`: Trudy's menu listed 7 options with their info ids; "Does Goodsprings get many
+  visitors?" played her two lines, "Goodbye." forced the goodbye and the menu closed.
+- `fnv_ai_packages` on a Goodsprings settler: `GoodspringsSettlerSaloonPackage` expected and running
+  (`matchesEngine`); the sleep package out of schedule ("runs 22:00 for 8 h, it is 12.7"), flee and ambush
+  packages failing their quest-variable conditions. On Trudy, early in a new game: no package eligible, every
+  one gated on a Goodsprings quest variable.
+- `fnv_form_live_diff GameHour`: plugin 12.0, live 12.81; `GSTrudy`: name and script unchanged.
+- About 15 s after that conversation, with Trudy force-enabled while no package of hers was valid, the game
+  crashed in a pathfinding tasklet (`RouteBuilder::BuildRoute` > `AStarSearch` > scrap heap); no request was
+  being served. A state normal play never makes; not traced further.
+
 ## Launch notes
 
 - MO2 is started with ShellExecute. A detached `CreateProcess` gave the game no window focus and its
@@ -286,6 +340,10 @@ straight into that room takes 2-3.5 minutes (the main thread is in DirectSound b
 - The Python MCP client puts its server in a kill-on-close job object without breakaway; inside it MO2's
   hooked start of `nvse_loader.exe` fails with `ERROR_ACCESS_DENIED`. The bridge detects such a job and then
   opens a launch shortcut through Explorer instead. Claude Code's launcher (libuv) allows breakaway.
+- From the shell tools of a Claude desktop session, MO2's start of `nvse_loader.exe` failed with
+  `ERROR_ACCESS_DENIED` too, although the enclosing jobs allowed breakaway (a test child started with
+  `CREATE_BREAKAWAY_FROM_JOB` came up fine); cause not found. Starting the MCP client through WMI
+  (`Win32_Process.Create`) launched the game normally.
 - MCP clients may pass the server a short allow-list of environment variables; MO2's `basic_games` plugin
   then fails on a missing `ProgramW6432`. The bridge adds the user's missing standard variables
   (`CreateEnvironmentBlock`) before launching, never overriding any.

@@ -12,6 +12,7 @@ from .fnv_game import Game
 from .fnv_data import DataTools
 from .fnv_deep import DeepTools
 from .fnv_live import LiveService
+from .fnv_social import SocialTools
 from .fnv_scenario import ScenarioRunner, diff, load_snapshot, snapshot
 
 FNV_LIVE_TOOLS = {
@@ -73,6 +74,11 @@ FNV_LIVE_TOOLS = {
     'fnv_script_hot_swap': ('act', 'replace a running script with a new compile, keeping its variables (undoable)'),
     # milestone 9: end to end
     'fnv_scripts_compile': ('control', "compile the project spec's scripts in game into geck-mcp-nv's script cache"),
+    # P1 completion: dialogue, AI packages, live form diff
+    'fnv_dialogue_tree': ('read', 'every response an NPC could give for a topic, each with its conditions evaluated'),
+    'fnv_dialogue_choose': ('act', 'start a conversation with an NPC and pick responses, for testing dialogue end to end'),
+    'fnv_ai_packages': ('read', "an actor's packages in order with schedule and conditions: which runs now and why"),
+    'fnv_form_live_diff': ('read', 'a form in memory now versus its winning plugin record: what changed at runtime'),
     # milestone 10: setup
     'fnv_setup_check': ('read', 'is this machine ready for the fnv tools? each prerequisite with its state and the fix'),
 }
@@ -89,6 +95,7 @@ def register(server, project, annotations, result_type):
     deep = DeepTools(live)
     live.deep = deep
     data = DataTools(project, live)
+    social = SocialTools(live, data)
     read, act, control = annotations
 
     def service_call(name, fn, kind):
@@ -533,6 +540,48 @@ def register(server, project, annotations, result_type):
         installed and loaded (its forms must exist). Each entry is checked with the builder's verification and
         records an in-game provenance. Scripts with Quest.variable references cannot be compiled in game."""
         return await invoke('fnv_scripts_compile', lambda: data.compile_spec_scripts(only), 'control')
+
+    # ------------------------------------------------------------------ P1 completion
+    @server.tool(annotations=read)
+    async def fnv_dialogue_tree(speaker: Ref, topic: Annotated[str, Field(min_length=1, max_length=200, description=(
+            'topic EditorID or form id (DIAL); GREETING by default'))] = 'GREETING',
+                                scope: Literal['speaker', 'available', 'all'] = 'speaker',
+                                include_text: bool = True,
+                                limit: Annotated[int, Field(ge=1, le=300)] = 60) -> result_type:
+        """All responses the speaker could give for a topic, from every quest that adds to it: each response's
+        prompt, quest and priority, flags (say once, goodbye, random...), speech challenge, response text, every
+        condition with its current value and pass/fail, and the engine's own verdict (TESTopicInfo::CheckCondition,
+        proven, run with the speaker and the player). wouldSay is the response the engine would pick now. scope:
+        speaker (default) keeps the responses written for this speaker (their GetIsID / GetIsVoiceType / GetInFaction
+        conditions pass) and any available now; available keeps only those; all lists every response of the topic."""
+        return await invoke('fnv_dialogue_tree', lambda: social.dialogue_tree(speaker, topic, include_text, limit, scope))
+
+    @server.tool(annotations=act)
+    async def fnv_dialogue_choose(speaker: Ref | None = None,
+                                  choices: list[Annotated[str, Field(max_length=200)]] | None = None,
+                                  start: bool = True, close: bool = False,
+                                  timeout_seconds: Annotated[int, Field(ge=3, le=180)] = 30) -> result_type:
+        """Test dialogue end to end: the player talks to the speaker (start), then each choice is picked in order
+        once the speaker has finished talking. A choice is an option index (0 = first shown), a prompt substring, or
+        an info form id. The pick goes through DialogMenu::HandleSelection, the call a click makes. Returns each
+        step's options, the pick, the speaker's answer (response text) and the menu state. With no choices it
+        returns the options shown. close ends the conversation afterwards."""
+        return await invoke('fnv_dialogue_choose',
+                            lambda: social.dialogue_choose(speaker, choices, start, timeout_seconds, close), 'act')
+
+    @server.tool(annotations=read)
+    async def fnv_ai_packages(actor: Ref) -> result_type:
+        """Every AI package on the actor's list, in order: type, flags, schedule (and whether it is in schedule now,
+        against the game clock), location, each condition with its current value, and whether it runs, is eligible,
+        is shadowed by an earlier one, or why not. Compared with the package the engine is running now."""
+        return await invoke('fnv_ai_packages', lambda: social.ai_packages(actor))
+
+    @server.tool(annotations=read)
+    async def fnv_form_live_diff(form: Ref) -> result_type:
+        """A form as it is in memory now versus its winning plugin record: name, value, weight, health, damage,
+        script (from the decomp's component layouts), global values and quest data. Lists the fields that differ,
+        meaning scripts, console commands or the engine changed them at runtime."""
+        return await invoke('fnv_form_live_diff', lambda: social.form_live_diff(form))
 
     @server.tool(annotations=read)
     async def fnv_setup_check() -> result_type:
