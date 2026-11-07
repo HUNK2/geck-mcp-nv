@@ -71,6 +71,10 @@ FNV_LIVE_TOOLS = {
     'fnv_record_find': ('read', 'records in every active plugin by EditorID, name, form id or type'),
     'fnv_record_show': ('read', 'one record decoded, with every plugin that edits it and what each changed'),
     'fnv_script_lint': ('read', 'check script source against the vanilla, xNVSE and JIP LN command tables'),
+    'fnv_record_users': ('read', 'what references a record: placed refs, scripts, leveled lists, conditions, dialogue'),
+    'fnv_conflicts': ('read', 'records several plugins edit: winner, fields each override changes, changes lost'),
+    'fnv_asset_check': ('read', 'meshes, textures and sounds a plugin names that no archive or loose folder has'),
+    'fnv_profile_set': ('control', 'enable or disable mods and plugins in the MO2 dev profile (game closed, backed up)'),
     'fnv_compile_ingame': ('read', 'compile script source with the running game: errors, variables, bytecode'),
     'fnv_script_hot_swap': ('act', 'replace a running script with a new compile, keeping its variables (undoable)'),
     # milestone 9: end to end
@@ -104,6 +108,19 @@ FNV_LIVE_TOOLS = {
     'fnv_pathing': ('read', "an actor's path: mover state, request start/goal on the navmesh, nodes, why it fails"),
     'fnv_raycast': ('read', "cast a ray through the game's physics world: hit object, reference, point; ground height"),
     'fnv_cell_grid': ('read', 'loaded exterior grid, current interior, cell buffers, each cell with why it is loaded'),
+    # phase 2: behaviour control and engine calls
+    'fnv_hook_set': ('act', 'change an engine function: skip it with a result, replace its result, change an argument, run a script'),
+    'fnv_patch': ('act', "write bytes, NOPs, ret or jmp/call into the game's code, journaled, checked against the clean exe"),
+    'fnv_tracepoint': ('read', 'record calls of a function when conditions hold: arguments as objects, caller, call stack'),
+    'fnv_engine_get': ('read', 'call a proven read-only engine getter with typed arguments (no full control needed)'),
+    'fnv_globals': ('read', 'global variables from the data handler, filtered; set values (journaled)'),
+    'fnv_dialogue': ('read', 'the conversation now: speaker, spoken topic and line, the choices shown and their state'),
+    'fnv_heap': ('read', "memory: the 2 GB address space, the game's pools, form and actor counts, growth over time"),
+    'fnv_world_edit': ('act', 'move, rotate, scale, enable, disable, delete or duplicate a ref; weather; image space'),
+    'fnv_scene_graph': ('read', "a ref's 3D node tree: transforms, geometry, shaders, texture paths, controllers"),
+    'fnv_ui_tiles': ('read', "a menu's live UI tile tree with trait values named by the game's trait table"),
+    'fnv_vats_odds': ('read', 'VATS hit chance per target and limb from the game formula, term by term, with perks'),
+    'fnv_frame_profile': ('read', 'time per frame by subsystem (scripts, AI wait, render, audio, cells...) from timing hooks'),
     # milestone 10: setup
     'fnv_setup_check': ('read', 'is this machine ready for the fnv tools? each prerequisite with its state and the fix'),
 }
@@ -126,6 +143,14 @@ def register(server, project, annotations, result_type):
     from .fnv_engine_ai import EngineAITools
     engine_ai = EngineAITools(agent)
     live.engine_ai = engine_ai
+    from .fnv_records import RecordsTools
+    records = RecordsTools(data)
+    from .fnv_control import ControlTools
+    control_tools = ControlTools(agent)
+    live.control_tools = control_tools
+    from .fnv_world import WorldTools
+    world = WorldTools(agent)
+    live.world = world
     read, act, control = annotations
 
     def service_call(name, fn, kind):
@@ -539,6 +564,50 @@ def register(server, project, annotations, result_type):
         in load order, and which subrecords each override changed."""
         return await invoke('fnv_record_show', lambda: data.record_show(record, all_versions, max_bytes))
 
+    RecordRef = Annotated[str, Field(min_length=1, max_length=200, description=(
+        'EditorID, load-order form id, or Plugin.esp:LOCALID'))]
+
+    @server.tool(annotations=read)
+    async def fnv_record_users(record: RecordRef, types: list[Annotated[str, Field(pattern=r'^[A-Za-z_]{4}$')]] | None = None,
+                               limit: Annotated[int, Field(ge=1, le=500)] = 100,
+                               offset: Annotated[int, Field(ge=0)] = 0) -> result_type:
+        """Everything in the load order that references a record: placed references of it, scripts (SCRO), leveled
+        lists, containers and inventories, conditions (dialogue, packages, perks), packages, form lists, enable
+        parents, owners, door links and any other field holding its form id. Each user says how it uses the record,
+        which plugins' versions reference it and whether the winning version still does. The first call indexes the
+        load order's references (seconds; cached until a plugin changes)."""
+        return await invoke('fnv_record_users', lambda: records.record_users(record, types, limit, offset))
+
+    @server.tool(annotations=read)
+    async def fnv_conflicts(plugin: Annotated[str, Field(max_length=120)] | None = None,
+                            record_type: Annotated[str, Field(pattern=r'^[A-Za-z_]{4}$')] | None = None,
+                            include_identical: bool = False, limit: Annotated[int, Field(ge=1, le=200)] = 50,
+                            offset: Annotated[int, Field(ge=0)] = 0) -> result_type:
+        """Records that more than one active plugin edits, worst first: the plugins in load order, the winner, the
+        subrecords each override changes and the changes an earlier plugin makes that the winner loses (the usual
+        reason a mod seems not to work). plugin limits it to records that plugin touches; identical overrides are
+        skipped unless asked for."""
+        return await invoke('fnv_conflicts', lambda: records.conflicts(plugin, record_type, limit, offset, include_identical))
+
+    @server.tool(annotations=read)
+    async def fnv_asset_check(plugin: Annotated[str, Field(min_length=1, max_length=1000, description=(
+            'A plugin name in the load order or a plugin file path'))],
+                              include_nif_textures: bool = True,
+                              limit: Annotated[int, Field(ge=1, le=1000)] = 200) -> result_type:
+        """Asset files a plugin names (meshes, textures, icons, sounds, music) that exist in none of the enabled
+        MO2 mods, the game Data folder or any BSA archive; also textures named inside the plugin's loose meshes that
+        are missing. Each missing file lists the records using it."""
+        return await invoke('fnv_asset_check', lambda: records.asset_check(plugin, include_nif_textures, limit))
+
+    @server.tool(annotations=control)
+    async def fnv_profile_set(mods: dict[Annotated[str, Field(min_length=1, max_length=200)], bool] | None = None,
+                              plugins: dict[Annotated[str, Field(min_length=1, max_length=200)], bool] | None = None,
+                              dry_run: bool = False) -> result_type:
+        """Enable or disable MO2 mods ({"Mod Name": true}) and plugins ({"Mod.esp": false}) in the dev profile.
+        Refuses while the game runs. Backs up modlist.txt, plugins.txt and loadorder.txt first and reports plugins
+        whose masters are no longer active. dry_run shows the changes without writing."""
+        return await invoke('fnv_profile_set', lambda: records.profile_set(mods, plugins, live.game, dry_run), 'control')
+
     @server.tool(annotations=read)
     async def fnv_script_lint(source: Annotated[str, Field(min_length=1, max_length=200000)],
                               check_forms: bool = True) -> result_type:
@@ -851,6 +920,157 @@ def register(server, project, annotations, result_type):
         """Which cells are loaded and why: the exterior grid around the player (uGridsToLoad), the current
         interior, the interior and exterior cell buffers, each cell with its grid coordinates and load state."""
         return await invoke('fnv_cell_grid', lambda: engine_ai.cell_grid())
+
+    # ------------------------------------------------------------------ phase 2: control
+    Filter = dict[str, Any]
+
+    @server.tool(annotations=act)
+    async def fnv_hook_set(function: Annotated[str, Field(min_length=1, max_length=300, description=(
+            'Engine function: proven name (Actor::GetLevel) or address'))],
+                           action: Literal['skip', 'result', 'arg', 'script', 'read', 'remove', 'list'] = 'skip',
+                           value: Any = None,
+                           value_type: Literal['int', 'float', 'bool', 'ptr', 'ref', 'form'] | None = None,
+                           arg: Annotated[int, Field(ge=0, le=31)] | None = None,
+                           filter: Filter | None = None,
+                           limit: Annotated[int, Field(ge=0, le=1000000)] = 0,
+                           script: Annotated[str, Field(max_length=254)] | None = None,
+                           pop_bytes: Annotated[int, Field(ge=0, le=1024)] | None = None,
+                           allow_unproven: bool = False) -> result_type:
+        """Change what an engine function does, live: skip = do not run it and return value (pops its stack
+        arguments per its calling convention; float results go in st0); result = run it and replace the integer or
+        pointer result; arg = replace parameter `arg` with value before it runs; script = run a console/script line
+        on the main thread each time it is called. Works with any action: filter {on: this|caller|param0..7, ref|value}
+        (only matching calls), limit (only the first N calls), script (also run a line). read = the calls it
+        changed so far; remove = take it out. Journaled: fnv_undo removes it. Proven functions only unless
+        allow_unproven."""
+        if action in ('read', 'list'):
+            return await invoke('fnv_hook_set', lambda: control_tools.hook_set(function, action, allow_unproven=allow_unproven))
+        return await invoke('fnv_hook_set', lambda: control_tools.hook_set(function, action, value, value_type, arg, filter,
+                                                                           limit, script, pop_bytes, allow_unproven), 'act')
+
+    @server.tool(annotations=act)
+    async def fnv_patch(address: Annotated[str, Field(min_length=1, max_length=300, description=(
+            '0x address or a function name (patches its first bytes)'))],
+                        bytes: Annotated[str, Field(max_length=200)] | None = None,
+                        nop: Annotated[int, Field(ge=1, le=64)] | None = None,
+                        ret: Annotated[int, Field(ge=0, le=1024)] | None = None,
+                        jmp: Annotated[str, Field(max_length=300)] | None = None,
+                        call: Annotated[str, Field(max_length=300)] | None = None,
+                        expect: Annotated[str, Field(max_length=200)] | None = None,
+                        force: bool = False) -> result_type:
+        """Patch the running game's code at an address: raw bytes (hex), N NOPs, a ret (with the bytes to pop), or a
+        jmp/call to an address or function. Refuses where a companion hook sits, and where another module already
+        changed the bytes (compared with the clean exe) unless force. expect = the bytes that must be there now.
+        Journaled with the original bytes: fnv_undo restores them."""
+        return await invoke('fnv_patch', lambda: control_tools.patch(address, bytes, nop, ret, jmp, call, expect, force), 'act')
+
+    @server.tool(annotations=read)
+    async def fnv_tracepoint(function: Annotated[str, Field(min_length=1, max_length=300)],
+                             action: Literal['start', 'read', 'stop', 'list'] = 'start',
+                             when: list[Filter] | None = None,
+                             limit: Annotated[int, Field(ge=1, le=200)] = 30,
+                             stack: bool = True, allow_unproven: bool = False) -> result_type:
+        """A breakpoint that never stops the game: record the calls of an engine function that meet conditions
+        (when: [{on: this|caller|param0..7, ref|value}], all must hold), each with its arguments decoded as objects,
+        the result, the time it took, the caller and the call stack (functions it came through). Read while it runs;
+        commonStacks groups the hits by the path that led to them."""
+        return await invoke('fnv_tracepoint', lambda: control_tools.tracepoint(function, action, when, limit, allow_unproven,
+                                                                               stack))
+
+    @server.tool(annotations=read)
+    async def fnv_engine_get(function: Annotated[str, Field(min_length=1, max_length=300, description=(
+            'A proven getter: Actor::GetLevel, TESObjectREFR::GetDistanceFromReference, ...'))],
+                             this: Ref | None = None, args: list[Any] | None = None) -> result_type:
+        """Call a proven read-only engine getter (Get/Is/Has/Can/Count/Find... names whose direct callees change
+        nothing) with typed arguments: plain values are typed from the decomp signature, or give {type, value} with
+        type int, bool, float, double, ptr, ref or form. Pointer results are described (form, class). For anything
+        else use fnv_engine_call."""
+        return await invoke('fnv_engine_get', lambda: control_tools.engine_get(function, this, args))
+
+    # ------------------------------------------------------------------ phase 2: world, UI, memory
+    @server.tool(annotations=read)
+    async def fnv_globals(query: Annotated[str, Field(max_length=120)] | None = None,
+                          set: dict[Annotated[str, Field(min_length=1, max_length=120)], float] | None = None,
+                          limit: Annotated[int, Field(ge=1, le=2000)] = 200) -> result_type:
+        """Global variables as the running game holds them (TESDataHandler's list): editor id, form id, type and
+        value, filtered by a name substring. set {"GameHour": 12} writes values (shorts and longs are whole
+        numbers); each write is journaled and undoable."""
+        return await invoke('fnv_globals', lambda: world.globals(query, set, limit), 'act' if set else 'read')
+
+    @server.tool(annotations=read)
+    async def fnv_dialogue() -> result_type:
+        """The conversation on screen now: speaker, dialogue state, the topic being spoken and its info, the NPC
+        line and name as shown, and the player's choices in order (prompt, topic, info, quest, already heard). Says
+        why other topics are not listed; fnv_dialogue_tree evaluates a topic's conditions."""
+        return await invoke('fnv_dialogue', world.dialogue)
+
+    @server.tool(annotations=read)
+    async def fnv_heap(seconds: Annotated[float, Field(ge=0, le=120)] = 0) -> result_type:
+        """Memory of the running game: its address space (committed, reserved, free, largest free block, the 2 GB
+        limit of the non-large-address-aware exe), the game's memory pools by use, counts of forms and of high /
+        middle / low process actors. seconds > 0 samples twice and reports the growth (leak finding)."""
+        return await invoke('fnv_heap', lambda: world.heap(seconds))
+
+    @server.tool(annotations=act)
+    async def fnv_world_edit(action: Literal['move', 'rotate', 'scale', 'transform', 'enable', 'disable', 'delete',
+                                             'duplicate', 'weather', 'imagespace', 'imagespace_stop'],
+                             ref: Ref | None = None,
+                             position: list[float | None] | None = None,
+                             rotation: list[float | None] | None = None,
+                             scale: Annotated[float, Field(gt=0, le=10)] | None = None,
+                             fade: bool = False,
+                             weather: Annotated[str, Field(max_length=200)] | None = None,
+                             override: bool = True,
+                             imagespace: Annotated[str, Field(max_length=200)] | None = None,
+                             strength: float = 1.0,
+                             distance: Annotated[int, Field(ge=0, le=5000)] = 0,
+                             count: Annotated[int, Field(ge=1, le=20)] = 1) -> result_type:
+        """Edit the live world with the functions the console commands use: move (position [x, y, z], null keeps an
+        axis), rotate (degrees), scale, transform (any of them), enable, disable (fade), delete (MarkForDelete),
+        duplicate (PlaceAtMe of the same base, distance, count), weather (force a weather form, or "release"),
+        imagespace / imagespace_stop (an image-space modifier at a strength). Journaled; fnv_undo restores
+        position, angle, scale, enable state, weather and removes duplicates."""
+        return await invoke('fnv_world_edit', lambda: world.world_edit(action, ref, position, rotation, scale, fade, weather,
+                                                                        override, imagespace, strength, distance, count), 'act')
+
+    @server.tool(annotations=read)
+    async def fnv_scene_graph(ref: Ref = 'player', depth: Annotated[int, Field(ge=0, le=30)] = 6,
+                              max_nodes: Annotated[int, Field(ge=1, le=2000)] = 300, first_person: bool = False,
+                              name_filter: Annotated[str, Field(max_length=120)] | None = None) -> result_type:
+        """The 3D node tree of a loaded reference: each node's class, name, hidden flag, local and world position
+        and scale, children; geometry with vertex and triangle counts, skinning, the shader and its texture paths;
+        animation controllers and active sequences; extra data (BSX flags, strings). Lists every texture in use and the
+        model path. first_person=true reads the player's first-person skeleton."""
+        return await invoke('fnv_scene_graph', lambda: world.scene_graph(ref, depth, max_nodes, first_person, name_filter))
+
+    @server.tool(annotations=read)
+    async def fnv_ui_tiles(menu: Annotated[str, Field(min_length=1, max_length=40, description=(
+            'hud, dialog, inventory, pipboy menus by name, a menu id 1001..1084, or root'))] = 'hud',
+                           path: Annotated[str, Field(max_length=200)] | None = None,
+                           depth: Annotated[int, Field(ge=0, le=30)] = 8,
+                           max_tiles: Annotated[int, Field(ge=1, le=3000)] = 400,
+                           traits: list[Annotated[str, Field(max_length=60)]] | None = None) -> result_type:
+        """A menu's live UI tile tree: each tile's path, class (TileRect, TileImage, TileText, ...) and trait
+        values (_x, _y, _visible, _string, user traits...) named with the game's own trait table. path filters by
+        a substring of the tile path; traits keeps only those trait names. For debugging UI mods."""
+        return await invoke('fnv_ui_tiles', lambda: world.ui_tiles(menu, path, depth, max_tiles, traits))
+
+    @server.tool(annotations=read)
+    async def fnv_vats_odds(target: Ref | None = None, limb: Annotated[int, Field(ge=-1, le=14)] | None = None,
+                            include_terms: bool = True) -> result_type:
+        """VATS hit chance for every target and limb VATS offers now (or a given target), computed with the game's
+        CombatFormulas::GetVATSChanceToHit and the perk layer, with the percent the menu shows next to what it
+        stored. terms explains the gun formula: spread cone at the distance, target area, visibility, limb to-hit
+        and the settings involved. Without VATS open, pass target (and limb) to compute as if fully visible."""
+        return await invoke('fnv_vats_odds', lambda: world.vats_odds(target, limb, include_terms))
+
+    @server.tool(annotations=read)
+    async def fnv_frame_profile(seconds: Annotated[float, Field(ge=0.5, le=30)] = 3.0) -> result_type:
+        """Where frame time goes: timing hooks on the main loop and its children (player update, input, IO, actor
+        scripts, quest/cell scripts, process lists, cell streaming, culling, scene update, render, audio, AI wait,
+        post-render, delayed actions) for a few seconds, then removed. ms per frame, share of the frame and the
+        worst call per subsystem, with fps."""
+        return await invoke('fnv_frame_profile', lambda: world.frame_profile(seconds))
 
     @server.tool(annotations=read)
     async def fnv_setup_check() -> result_type:

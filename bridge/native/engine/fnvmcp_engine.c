@@ -368,6 +368,14 @@ static void run_due(bool all) {
 #define HF_EXIT 1u
 #define HF_RECORD 2u
 #define HF_TABLE 4u
+#define HF_STACK 8u /* record: words on the stack that may be return addresses into the exe, instead of the snapshot */
+/* behaviour actions (hookact), applied to calls that pass the filter */
+#define ACT_NONE 0u
+#define ACT_SKIP 1u       /* do not run the function: return act_value in eax, pop act_aux bytes */
+#define ACT_SKIP_FLOAT 2u /* do not run the function: return the float bits act_value in st0, pop act_aux bytes */
+#define ACT_RESULT 3u     /* run it, then replace eax with act_value (needs exit capture) */
+#define ACT_ARG 4u        /* replace stack argument act_aux (0..31), ecx (100) or edx (101) with act_value first */
+#define ACT_SCRIPT 5u     /* only run the script line */
 typedef struct { uint32_t key, count; uint64_t total; uint32_t max, pad; } HookStat;
 typedef struct {
     uint32_t id, target, flags, nargs, stolen, active;
@@ -379,8 +387,12 @@ typedef struct {
     uint32_t (*records)[HOOK_WORDS];
     HookStat *table;
     char label[40];
+    volatile uint32_t act_mode, act_value, act_aux, act_limit;
+    volatile LONG act_hits, script_pending;
+    unsigned char *skip_stub;
+    char script[256];
 } Hook;
-typedef struct { uint32_t ret_slot, ret; Hook *hook; uint64_t t0; LONG seq; uint32_t ecx, a0, a1; } ShadowFrame;
+typedef struct { uint32_t ret_slot, ret; Hook *hook; uint64_t t0; LONG seq; uint32_t ecx, a0, a1, override; } ShadowFrame;
 typedef struct { int count; ShadowFrame frames[SHADOW]; } Shadow;
 static Hook *hooks[HOOKS];
 static int hook_count;
@@ -439,6 +451,7 @@ static uint32_t hook_select(const uint32_t *fr, int selector) {
     if (selector == 10) return fr[10];               /* return address (the caller) */
     if (selector == 11) return fr[6];                /* edx */
     if (selector == 14) return (uint32_t)(uintptr_t)&fr[19]; /* address of stack argument 8: snap args 8..31 */
+    if (selector == 15) return (uint32_t)(uintptr_t)&fr[10]; /* esp at entry (the return address slot) */
     if (selector == 12 || selector == 13) {
         /* The caller's first stack argument: [ebp + 8] for a standard frame, [ebx + 8] for MSVC's aligned-stack
          * frame (push ebx; mov ebx, esp; and esp, -16), whose arguments stay addressed through ebx. */
@@ -464,6 +477,18 @@ static void hook_stat(Hook *h, uint32_t key, uint64_t elapsed) {
     h->table_full++;
     InterlockedExchange(&h->lock, 0);
 }
+static void stack_scan(const uint32_t *fr, uint32_t *out, unsigned slots) {
+    /* Words above the return address that point into the exe's code: candidate return addresses of the
+     * callers further up (the bridge keeps those preceded by a call instruction). */
+    unsigned n = 0;
+    uint32_t words[256];
+    if (!read_bytes((uint32_t)(uintptr_t)&fr[11], words, sizeof(words))) {
+        if (!read_bytes((uint32_t)(uintptr_t)&fr[11], words, 64 * 4)) return;
+        for (unsigned i = 64; i < 256; i++) words[i] = 0;
+    }
+    for (unsigned i = 0; i < 256 && n < slots; i++)
+        if (words[i] >= 0x00401000u && words[i] < 0x01100000u) out[n++] = words[i];
+}
 uint32_t fnvmcp_on_enter(uint32_t *fr) {
     Hook *h = (Hook *)(uintptr_t)fr[9];
     DWORD error = GetLastError();
@@ -471,7 +496,19 @@ uint32_t fnvmcp_on_enter(uint32_t *fr) {
     if (!h->active || (h->filter_sel && hook_select(fr, h->filter_sel) != h->filter_value)) goto done;
     LARGE_INTEGER now;
     QueryPerformanceCounter(&now);
-    Shadow *s = (h->flags & HF_EXIT) ? shadow_get() : NULL;
+    uint32_t act = h->act_mode, original_arg = 0;
+    if (act) {
+        LONG hit = InterlockedIncrement(&h->act_hits);
+        if (h->act_limit && (uint32_t)hit > h->act_limit) act = ACT_NONE;
+        else if (h->script[0]) InterlockedIncrement(&h->script_pending);
+    }
+    if (act == ACT_ARG) {
+        uint32_t *slot = h->act_aux == 100 ? &fr[7] : h->act_aux == 101 ? &fr[6] : &fr[11 + (h->act_aux & 31)];
+        original_arg = *slot;
+        *slot = h->act_value;
+    }
+    bool skip = (act == ACT_SKIP || act == ACT_SKIP_FLOAT) && h->skip_stub;
+    Shadow *s = (h->flags & HF_EXIT) && !skip ? shadow_get() : NULL;
     LONG seq = 0;
     if (h->flags & HF_RECORD) {
         seq = InterlockedIncrement(&h->seq);
@@ -492,11 +529,18 @@ uint32_t fnvmcp_on_enter(uint32_t *fr) {
             if (h->deref_sel[i]) read_u32(hook_select(fr, h->deref_sel[i]), &r[20 + i]);
         }
         r[22] = (uint32_t)frame;
-        r[23] = s ? (uint32_t)s->count : 0;
+        r[23] = (s ? (uint32_t)s->count : 0) | (act << 24);
         memset(&r[24], 0, 96);
-        if (h->snap_sel && h->snap_len) read_bytes(hook_select(fr, h->snap_sel), &r[24], h->snap_len);
+        if (h->flags & HF_STACK) stack_scan(fr, &r[24], 24);
+        else if (h->snap_sel && h->snap_len) read_bytes(hook_select(fr, h->snap_sel), &r[24], h->snap_len);
+        if (act == ACT_ARG) r[9] = original_arg; /* edx slot is unused at entry: the value the caller passed */
+        if (skip) { r[8] = h->act_value; r[1] = 3; }
         MemoryBarrier();
         r[0] = (uint32_t)seq;
+    }
+    if (skip) {
+        SetLastError(error);
+        return (uint32_t)(uintptr_t)h->skip_stub;
     }
     if (s && s->count < SHADOW) {
         ShadowFrame *f = &s->frames[s->count++];
@@ -508,6 +552,7 @@ uint32_t fnvmcp_on_enter(uint32_t *fr) {
         f->ecx = fr[7];
         f->a0 = fr[11];
         f->a1 = fr[12];
+        f->override = act == ACT_RESULT;
         fr[10] = (uint32_t)(uintptr_t)fnvmcp_exit_stub;
     }
 done:
@@ -535,11 +580,14 @@ uint32_t fnvmcp_on_exit(uint32_t *fr) {
     QueryPerformanceCounter(&now);
     uint64_t elapsed = (uint64_t)now.QuadPart - f.t0;
     Hook *h = f.hook;
+    uint32_t returned = fr[8];
+    if (f.override) fr[8] = h->act_value;
     if (f.seq) {
         uint32_t *r = h->records[(uint32_t)(f.seq - 1) % HOOK_RING];
         if (r[0] == (uint32_t)f.seq) {
-            r[8] = fr[8];
-            r[9] = fr[6];
+            r[8] = returned;
+            if ((r[23] >> 24) != ACT_ARG) /* with a changed argument r[9] keeps the value the caller passed */
+                r[9] = f.override ? fr[8] : fr[6]; /* with a replaced result: the value the caller got */
             r[10] = (uint32_t)elapsed;
             r[11] = (uint32_t)(elapsed >> 32);
             MemoryBarrier();
@@ -572,11 +620,13 @@ static void emit_hook(const Hook *h) {
     emit(",\"active\":%s,\"flags\":%u,\"calls\":%ld,\"seq\":%ld,\"hook\":\"0x%08x\",\"seqAddress\":\"0x%08x\","
          "\"callsAddress\":\"0x%08x\",\"records\":\"0x%08x\",\"ring\":%u,\"recordWords\":%u,\"table\":\"0x%08x\","
          "\"tableSize\":%u,\"tableUsed\":%ld,\"tableFull\":%ld,\"trampoline\":\"0x%08x\",\"stolen\":%u,"
-         "\"qpcFrequency\":%lld,\"filter\":%d,\"filterValue\":\"0x%08x\"}",
+         "\"qpcFrequency\":%lld,\"filter\":%d,\"filterValue\":\"0x%08x\",\"action\":%u,\"actionValue\":\"0x%08x\","
+         "\"actionAux\":%u,\"actionLimit\":%u,\"actionHits\":%ld}",
          h->active ? "true" : "false", h->flags, h->calls, h->seq, (uint32_t)(uintptr_t)h,
          (uint32_t)(uintptr_t)&h->seq, (uint32_t)(uintptr_t)&h->calls, (uint32_t)(uintptr_t)h->records, HOOK_RING,
          HOOK_WORDS, (uint32_t)(uintptr_t)h->table, HOOK_TABLE, h->table_used, h->table_full,
-         (uint32_t)(uintptr_t)h->trampoline, h->stolen, (long long)qpc_frequency.QuadPart, h->filter_sel, h->filter_value);
+         (uint32_t)(uintptr_t)h->trampoline, h->stolen, (long long)qpc_frequency.QuadPart, h->filter_sel, h->filter_value,
+         h->act_mode, h->act_value, h->act_aux, h->act_limit, h->act_hits);
 }
 /* hook <target> <stolen> <relocs: comma list of rel32 offsets or -> <flags> <filter_sel> <filter_value>
  *      <key_sel> <nargs> <deref0_sel> <deref1_sel> <snap_sel> <snap_len> <label hex> */
@@ -591,7 +641,7 @@ static void op_hook(int argc, char **argv) {
     long label = unhex(argv[13]);
     if (label < 0) return fail("bad_arguments");
     for (int i = 0; i < 5; i++)
-        if (v[i] > 14) return fail("bad_selector");
+        if (v[i] > 15) return fail("bad_selector");
     if (hook_count >= HOOKS) { /* forget removed hooks (their memory stays valid) */
         int kept = 0;
         for (int i = 0; i < hook_count; i++)
@@ -680,6 +730,7 @@ static void op_unhook(int argc, char **argv) {
     uint32_t value = (uint32_t)(uintptr_t)h->entry - (h->target + 5);
     memcpy(expected + 1, &value, 4);
     h->active = 0;
+    h->act_mode = ACT_NONE;
     if (!read_bytes(h->target, now, 5)) return fail("unreadable");
     if (memcmp(now, expected, 5)) return fail("overwritten_by_another_patch");
     if (!code_write(h->target, h->original, h->stolen)) return fail("unwritable");
@@ -703,10 +754,68 @@ static void op_hookctl(int argc, char **argv) {
     emit_hook(h);
     emit("}");
 }
+/* hookact <id> <mode> <value> <aux> <limit> <script hex|->: a behaviour action for calls that pass the filter
+ * (ACT_*). limit 0 = every call, else only the first <limit> calls. The script line runs on the main thread
+ * once per triggering call (at most 8 per frame). */
+static void op_hookact(int argc, char **argv) {
+    uint32_t id, mode, value, aux, limit;
+    if (argc != 7 || !parse_u32(argv[1], &id) || !parse_u32(argv[2], &mode) || mode > ACT_SCRIPT ||
+        !parse_u32(argv[3], &value) || !parse_u32(argv[4], &aux) || !parse_u32(argv[5], &limit))
+        return fail("bad_arguments");
+    Hook *h = hook_find(id);
+    if (!h) return fail("unknown_hook");
+    if (!h->stolen) return fail("already_removed");
+    if (mode == ACT_RESULT && !(h->flags & HF_EXIT)) return fail("needs_exit_capture");
+    if (mode == ACT_ARG && aux > 31 && aux != 100 && aux != 101) return fail("bad_arguments");
+    if ((mode == ACT_SKIP || mode == ACT_SKIP_FLOAT) && aux > 0x400) return fail("bad_arguments");
+    long script = 0;
+    if (strcmp(argv[6], "-")) {
+        script = unhex(argv[6]);
+        if (script < 0 || script >= (long)sizeof(h->script)) return fail("bad_arguments");
+    }
+    h->act_mode = ACT_NONE;
+    MemoryBarrier();
+    if (mode == ACT_SKIP || mode == ACT_SKIP_FLOAT) {
+        if (!h->skip_stub) {
+            if (hook_code_used + 16 > 65536) return fail("out_of_memory");
+            h->skip_stub = hook_code + hook_code_used;
+            hook_code_used += 16;
+        }
+        unsigned char stub[16], *q = stub;
+        if (mode == ACT_SKIP) { *q++ = 0xB8; memcpy(q, &value, 4); q += 4; } /* mov eax, value */
+        else { /* fld dword [act_value] */
+            uint32_t at = (uint32_t)(uintptr_t)&h->act_value;
+            *q++ = 0xD9; *q++ = 0x05; memcpy(q, &at, 4); q += 4;
+        }
+        if (aux) { *q++ = 0xC2; *q++ = (unsigned char)(aux & 0xFF); *q++ = (unsigned char)(aux >> 8); } /* ret aux */
+        else *q++ = 0xC3;
+        if (!code_write((uint32_t)(uintptr_t)h->skip_stub, stub, (size_t)(q - stub))) return fail("unwritable");
+    }
+    memset(h->script, 0, sizeof(h->script));
+    if (script) memcpy(h->script, argv[6], (size_t)script);
+    h->act_value = value;
+    h->act_aux = aux;
+    h->act_limit = limit;
+    InterlockedExchange(&h->act_hits, 0);
+    InterlockedExchange(&h->script_pending, 0);
+    MemoryBarrier();
+    h->act_mode = mode;
+    emit("{\"ok\":true,\"hook\":");
+    emit_hook(h);
+    emit("}");
+}
+static void run_hook_scripts(void) {
+    for (int i = 0; i < hook_count; i++) {
+        Hook *h = hooks[i];
+        if (!h->script_pending || !h->script[0] || !console) continue;
+        LONG n = InterlockedExchange(&h->script_pending, 0);
+        for (LONG k = 0; k < n && k < 8; k++) console->RunScriptLine(h->script, NULL);
+    }
+}
 /* hookfilter <id> <selector> <value>: record only calls whose selected register/argument has this value. */
 static void op_hookfilter(int argc, char **argv) {
     uint32_t id, selector, value;
-    if (argc != 4 || !parse_u32(argv[1], &id) || !parse_u32(argv[2], &selector) || selector > 14 || !parse_u32(argv[3], &value))
+    if (argc != 4 || !parse_u32(argv[1], &id) || !parse_u32(argv[2], &selector) || selector > 15 || !parse_u32(argv[3], &value))
         return fail("bad_arguments");
     Hook *h = hook_find(id);
     if (!h) return fail("unknown_hook");
@@ -1127,6 +1236,7 @@ static void serve_op(char *op) {
     else if (!strcmp(argv[0], "hookctl")) op_hookctl(argc, argv);
     else if (!strcmp(argv[0], "hooks")) op_hooks();
     else if (!strcmp(argv[0], "hookfilter")) op_hookfilter(argc, argv);
+    else if (!strcmp(argv[0], "hookact")) op_hookact(argc, argv);
     else fail("unknown_op");
 }
 /* Serves one request line on the main thread; ops run in order within the same frame. */
@@ -1256,6 +1366,7 @@ static void on_message(Message *m) {
         last_frame_tick = GetTickCount64();
         if (deferred_init) route_console(); /* script errors reach the log even between requests */
         run_due(false);
+        run_hook_scripts();
         if (scripts && scripts->CallFunction) run_periodic();
         if (InterlockedCompareExchange(&pending, 2, 1) == 1) {
             InterlockedExchange(&serving_request, 1);

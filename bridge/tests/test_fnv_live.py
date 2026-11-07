@@ -562,7 +562,49 @@ class CompanionPipeTests(unittest.TestCase):
         self.assertEqual(r[12], 4)
         self.assertEqual(list(r[24:27]), [0x108, 0x109, 0x10A])  # stack arguments 8, 9, 10
         self.assertTrue(self.link.one('unhook', w(h['id']))['ok'])
-        self.assertEqual(self.link.one('hookfilter', w(h['id']), '15', '0')['error'], 'bad_arguments')
+        self.assertEqual(self.link.one('hookfilter', w(h['id']), '16', '0')['error'], 'bad_arguments')
+
+    def test_hook_actions(self):
+        # hookact: skip with a result (popping thiscall's stack arguments), replace the result at exit, change an
+        # argument, a hit limit, and a skipped float function.
+        t, w = self.targets, fnv_link.word
+        f = lambda v: w(struct.unpack('<I', struct.pack('<f', v))[0])
+        h = self._hook(t['msvcThis'], fnv_deep.HF_RECORD | fnv_deep.HF_EXIT, nargs=2, label='skip')
+        self.assertTrue(self.link.one('hookact', w(h['id']), '1', w(99), w(8), '0', '-')['ok'])
+        self.assertEqual(self.link.one('call', w(t['msvcThis']), 'i', w(t['self']), '0', '7', '3')['eax'], '0x00000063')
+        (r,) = self._records(h)
+        self.assertEqual((r[1], r[8], r[23] >> 24), (3, 99, 1))
+        self.assertTrue(self.link.one('unhook', w(h['id']))['ok'])
+
+        h = self._hook(t['msvcSeh'], fnv_deep.HF_RECORD | fnv_deep.HF_EXIT, nargs=1, label='result')
+        self.assertEqual(self.link.one('hookact', w(h['id']), '3', w(1000), '0', '1', '-')['ok'], True)
+        self.assertEqual(self.link.one('call', w(t['msvcSeh']), 'i', '0', '0', '4')['eax'], '0x000003e8')
+        self.assertEqual(self.link.one('call', w(t['msvcSeh']), 'i', '0', '0', '4')['eax'], '0x00000005')  # limit 1
+        first, second = self._records(h)
+        self.assertEqual((first[8], first[9]), (5, 1000))  # the function returned 5, the caller got 1000
+        self.assertEqual(second[8], 5)
+        self.assertTrue(self.link.one('hookact', w(h['id']), '4', w(41), '0', '0', '-')['ok'])
+        self.assertEqual(self.link.one('call', w(t['msvcSeh']), 'i', '0', '0', '4')['eax'], '0x0000002a')
+        self.assertEqual(self._records(h)[-1][9], 4)  # the argument the caller passed
+        self.assertEqual(self.link.one('hookact', w(h['id']), '9', '0', '0', '0', '-')['error'], 'bad_arguments')
+        self.assertTrue(self.link.one('unhook', w(h['id']))['ok'])
+        self.assertEqual(self.link.one('call', w(t['msvcSeh']), 'i', '0', '0', '4')['eax'], '0x00000005')
+
+        h = self._hook(t['msvcFloat'], fnv_deep.HF_RECORD, nargs=1, label='fskip')
+        self.assertEqual(self.link.one('hookact', w(h['id']), '3', '0', '0', '0', '-')['error'], 'needs_exit_capture')
+        self.assertTrue(self.link.one('hookact', w(h['id']), '2', f(7.5), '0', '0', '-')['ok'])
+        self.assertEqual(self.link.one('call', w(t['msvcFloat']), 'f', '0', '0', f(2.5))['st0'], 7.5)
+        self.assertTrue(self.link.one('hookact', w(h['id']), '0', '0', '0', '0', '-')['ok'])
+        self.assertEqual(self.link.one('call', w(t['msvcFloat']), 'f', '0', '0', f(2.5))['st0'], 2.5)
+        self.assertTrue(self.link.one('unhook', w(h['id']))['ok'])
+
+    def test_hook_stack_scan(self):
+        t, w = self.targets, fnv_link.word
+        h = self._hook(t['msvcSeh'], fnv_deep.HF_RECORD | 8, nargs=1, label='stack')
+        self.link.one('call', w(t['msvcSeh']), 'i', '0', '0', '4')
+        (r,) = self._records(h)
+        self.assertTrue(all(0x00401000 <= x < 0x01100000 for x in r[24:48] if x))
+        self.assertTrue(self.link.one('unhook', w(h['id']))['ok'])
 
     def test_console_eval_events(self):
         out = self.link.console('player.additem f 5')

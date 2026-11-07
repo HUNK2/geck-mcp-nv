@@ -28,6 +28,7 @@ FNV_TOOLS = {
     'fnv_class_vtable': 'offline read: vtable slots with implementing functions (exe RTTI) and header declarations',
     'fnv_class_tree': 'offline read: base and derived classes from the game RTTI',
     'fnv_command_info': 'offline read: console/script command parameters, handlers and what they call',
+    'fnv_script_explain': 'offline read: what the commands in a script line really do in the engine (handler, calls, settings, code)',
     'fnv_global_find': 'offline read: settings and static objects with addresses (proven initializers)',
     'fnv_setting_info': 'offline read: one game/INI setting, its address and the functions that use it',
     'fnv_string_xrefs': 'offline read: functions whose decomp code contains a string',
@@ -292,6 +293,85 @@ class FnvService:
             return {'query': name, 'results': out, 'identity': e.identity()}
         return self.run('fnv_command_info', action)
 
+    def script_explain(self, source, depth=2, code_lines=60):
+        """What the commands in a script line (or a whole script, or one command name) really do in the engine."""
+        import re as _re
+
+        def action():
+            e = self.engine()
+            by_key = {}
+            for c in e.commands:
+                for key in (c['name'], c.get('short')):
+                    if key:
+                        by_key.setdefault(key.lower(), []).append(c)
+            settings_by_fn = {}
+            for s in e.statics:
+                if s.get('kind') == 'Setting':
+                    for a in s.get('usedBy') or []:
+                        settings_by_fn.setdefault(parse_address(a), []).append(s.get('setting') or s['name'])
+            words, seen = [], set()
+            for n, raw in enumerate(source.replace('\r', '').split('\n'), 1):
+                text = raw.split(';', 1)[0]
+                text = _re.sub(r'"[^"]*"', ' ', text)
+                for token in _re.findall(r'[A-Za-z_][\w.]*', text):
+                    name = token.rpartition('.')[2].lower()
+                    if name in by_key and name not in seen and name not in ('set', 'to', 'if', 'else', 'endif', 'begin',
+                                                                            'end', 'return', 'let', 'scn'):
+                        seen.add(name)
+                        words.append((n, token, name))
+            if not words:
+                raise EngineMapError('NOT_FOUND', 'No script command found in the text',
+                                     {'similar': [c['name'] for c in e.find_commands(source.strip()[:60])][:15]})
+            out = []
+            for line, token, name in words[:12]:
+                for c in by_key[name][:2]:
+                    item = {k: c.get(k) for k in ('name', 'short', 'source', 'opcode', 'params', 'returnType', 'help',
+                                                  'condition', 'definedIn') if c.get(k) is not None}
+                    item['line'] = line
+                    if token.count('.'):
+                        item['calledOn'] = token.rpartition('.')[0]
+                    handlers = {}
+                    for role, addr_text in (c.get('handlers') or {}).items():
+                        address = parse_address(addr_text)
+                        if address not in e.functions:
+                            handlers[role] = {'address': addr_text}
+                            continue
+                        h = e.summary(address)
+                        if role == 'parse' and (h.get('name') or '').endswith('StandardCompile'):
+                            h['note'] = "the game's standard argument parser (shared by most commands)"
+                            handlers[role] = h
+                            continue
+                        calls, capped = e.walk(address, 'callees', depth, 200)
+                        named = [x for x in calls if x.get('status') in ('proven', 'class_proven', 'probable')]
+                        h['engineCalls'] = named[:60]
+                        h['engineCallsTotal'] = len(calls)
+                        used = set(settings_by_fn.get(address, []))
+                        for x in calls:
+                            if x.get('depth', 1) > 1:
+                                continue
+                            a = parse_address(x.get('address', ''))
+                            used.update(settings_by_fn.get(a, []))
+                        h['settingsRead'] = sorted(used)[:40]
+                        code = e.code(address, max_lines=code_lines)
+                        if isinstance(code, dict):
+                            h['code'] = code.get('code')
+                            h['codeTruncated'] = code.get('truncated')
+                        handlers[role] = h
+                    if handlers:
+                        item['handlers'] = handlers
+                        item['summary'] = _command_summary(item)
+                    elif c.get('source') != 'vanilla':
+                        item['handlerNote'] = ('Implemented in the %s plugin (%s), not in the game exe; see that '
+                                               'source for its code' % (c.get('source'), c.get('definedIn') or '?'))
+                    out.append(item)
+            return {'commands': out, 'more': max(0, len(words) - 12), 'identity': e.identity(),
+                    'note': 'execute = what the command does when a script or the console runs it; eval = how it is '
+                            'computed as a condition (dialogue, packages, perks); parse = how its arguments compile. '
+                            'engineCalls are the named functions reached from the handler (depth %d); settingsRead are '
+                            'game settings the handler and its direct callees read.'
+                            % depth}
+        return self.run('fnv_script_explain', action)
+
     def global_find(self, query, kind=None, limit=25):
         def action():
             e = self.engine()
@@ -447,6 +527,19 @@ def _source_kind(proof):
     return by or 'unknown'
 
 
+def _command_summary(item):
+    """One plain line from a command's handler names: the main engine functions it reaches."""
+    parts = []
+    for role, h in item.get('handlers', {}).items():
+        if h.get('note'):
+            continue
+        calls = [c.get('name') for c in h.get('engineCalls', []) if c.get('depth', 1) == 1 and c.get('name')]
+        calls = [c for c in calls if not c.startswith(('FUN_', 'Script::', 'ExtractArgs'))][:6]
+        parts.append('%s %s%s' % (role, h.get('name') or h.get('address'),
+                                  (' -> ' + ', '.join(calls)) if calls else ''))
+    return '; '.join(parts)
+
+
 def register(server, project, observe, result_type):
     """Add the fnv_* tools to the bridge's MCP server."""
     import json
@@ -534,6 +627,17 @@ def register(server, project, observe, result_type):
         """A console/script command by name or short name (vanilla, xNVSE, JIP LN...): parameters, return type,
         help text; for vanilla commands the handler functions and what each calls."""
         return await invoke(service.command_info, name)
+
+    @server.tool(annotations=observe)
+    async def fnv_script_explain(source: Annotated[str, Field(min_length=1, max_length=20000, description=(
+            'A script line, a whole script, or a command name'))],
+                                 depth: Annotated[int, Field(ge=1, le=3)] = 2,
+                                 code_lines: Annotated[int, Field(ge=0, le=400)] = 60) -> result_type:
+        """What each script command in the text really does inside the game: its parameters, its handlers (execute,
+        condition eval, argument parser) as engine functions with proof status, the named engine functions they
+        reach, the game settings they read and the start of their decompiled code. For xNVSE / JIP LN commands it
+        says which plugin implements them."""
+        return await invoke(service.script_explain, source, depth, code_lines)
 
     @server.tool(annotations=observe)
     async def fnv_global_find(query: Annotated[str, Field(min_length=1, max_length=200)],

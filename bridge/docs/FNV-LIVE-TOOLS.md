@@ -144,6 +144,10 @@ missing. In short:
 | `fnv_hooks` | read | The watch hooks installed; remove one or all |
 | `fnv_loadorder` | read | The dev profile's plugins in order: index, the real file behind MO2's virtual folder, masters, problems |
 | `fnv_record_find` | read | Records in every active plugin by EditorID, name, form id or `Plugin.esp:LOCALID`; defining and winning plugin, override count |
+| `fnv_record_users` | read | Everything that references a record: placed refs, scripts (SCRO), leveled lists, containers, conditions (typed by the game's condition-function table), packages, form lists, any form field; whether the winning version still does |
+| `fnv_conflicts` | read | Records several active plugins edit, worst first: plugins in load order, winner, subrecords each override changes, earlier changes the winner loses |
+| `fnv_asset_check` | read | Meshes, textures, icons and sounds a plugin names that no enabled mod, the Data folder or any BSA has; textures inside its loose meshes too |
+| `fnv_profile_set` | control | Enable or disable MO2 mods and plugins in the dev profile (game closed), with a backup of the three profile files |
 | `fnv_record_show` | read | One record decoded (strings, form references with EditorIDs, script header and source, common DATA layouts), every version in load order, and what each override changed |
 | `fnv_script_lint` | read | Script source checked offline: structure, block types, variables, unknown commands, argument counts, EditorIDs of the wrong type or in no plugin |
 | `fnv_compile_ingame` | read | Compile with the running game's compiler: its errors with line numbers, or the variables, references, statements and bytecode |
@@ -175,6 +179,18 @@ missing. In short:
 | `fnv_pathing` | read | An actor's path: mover state, the pathing request (start, goal, navmesh, door rules), the solution's points, the path handler's state (waiting, blocked, avoidance failed) and the reasons found |
 | `fnv_raycast` | read | A ray through the game's Havok world (`TES::Pick`) between points or refs: hit, hit point, hit object and its reference; `ground_at` gives the terrain height |
 | `fnv_cell_grid` | read | Loaded exterior grid, current interior, interior and exterior cell buffers: each cell with its grid coordinates, load state and why it is loaded |
+| `fnv_hook_set` | act | Change an engine function live: skip it with a result (float results in st0), replace its result, change one argument, or run a script line on each call; filter, hit limit, read the changed calls, journaled |
+| `fnv_patch` | act | Bytes, NOPs, a ret or a jmp/call into the game's code; refuses over companion hooks and foreign patches (clean exe compare) unless forced; journaled with the original bytes |
+| `fnv_tracepoint` | read | Record a function's calls that meet conditions, with arguments as objects, result, time, caller and the call stack; groups hits by path |
+| `fnv_engine_get` | read | Call a proven getter (Get/Is/Has/Can/...) whose direct callees change nothing, with typed arguments; pointer results described |
+| `fnv_globals` | read | Global variables from the data handler's list, filtered; set values (journaled) |
+| `fnv_dialogue` | read | The conversation on screen: speaker, state, spoken topic and info, the line and name as shown, the choices in order with topic, info, quest and heard flag |
+| `fnv_heap` | read | The game's address space (2 GB unless large address aware, largest free block), memory pools by use, form and process-level actor counts; growth over N seconds |
+| `fnv_world_edit` | act | Move, rotate, scale, enable, disable, delete or duplicate a ref with the functions the console commands use; force or release weather; trigger or stop an image-space modifier; undoable |
+| `fnv_scene_graph` | read | A loaded ref's node tree: classes (MSVC RTTI or Gamebryo NiRTTI), names, hidden flag, transforms, geometry counts, skinning, shader and texture paths, controllers and sequences, extra data |
+| `fnv_ui_tiles` | read | A menu's live tile tree with trait values named by the game's trait table |
+| `fnv_vats_odds` | read | VATS hit chance per target and limb from CombatFormulas::GetVATSChanceToHit and the ep 8 perk layer, the percent the menu shows, and the gun formula term by term |
+| `fnv_frame_profile` | read | Time per frame by subsystem from timing hooks on the main loop's children, removed afterwards |
 
 Act tools journal every change in `state/fnv/journal.jsonl` and back up the dev profile's saves before the
 first change of a game session (`state/fnv/save-backups`, newest 10 kept). Console lines, scripts and
@@ -410,6 +426,49 @@ itself reports.
 - **fnv_cell_grid** reads `TES` (grid +0x08, center +0x24, interior +0x34, buffers +0x38/+0x3C), the
   `GridCellArray` (dimension +0x0C, cells +0x10) and each cell's state byte at +0x26
   (`TESObjectCELL::GetState`; the decomp's helper is misleadingly called `GetByteAtOffset38`).
+
+## Phase 2 tools (2026-11-07 night)
+
+Built from the decomp (three Sonnet research passes over the main loop, VATS, scene graph, UI tiles, dialogue,
+memory and world edits) and checked in the running game on the dev profile:
+
+- **Behaviour hooks** (`fnv_hook_set`): the companion's `hookact` op adds an action to a watch hook. skip returns
+  through a per-hook stub (`mov eax, value` or `fld dword [value]`, then `ret n` with the bytes the calling
+  convention pops), result replaces eax at exit, arg rewrites a stack word or ecx/edx before the trampoline, script
+  queues a console line for the main thread (at most 8 per frame). A filter and a hit limit apply to every action.
+  Checked: Actor::GetLevel skipped with 42 for the player only (engine call and `player.GetLevel` gave 42, a gecko
+  kept 7), result 30 with a player filter, fnv_undo removing the hook.
+- **Patches** (`fnv_patch`): `B8 05 00 00 00 C3` over GetLevel's first six bytes made every actor level 5; a second
+  patch with a wrong `expect` was refused; fnv_undo restored `55 8B EC 51 89 4D`.
+- **Tracepoints** (`fnv_tracepoint`): the hook record's snapshot area holds up to 24 stack words that point into the
+  exe (`HF_STACK`); the bridge keeps those preceded by a call instruction. GetLevel on the gecko: 67 hits, all from
+  CalculateDetectionLevel (0x008A0D10). Deeper frames can be stale stack values.
+- **fnv_engine_get**: Actor::GetLevel on the player returned 1.
+- **fnv_globals**: TimeScale 30 set to 60 (`GetGlobalValue` agreed) and undone.
+- **fnv_dialogue**: a conversation with a spawned Sunny Smiles: GREETING, the line on screen, quest
+  VFreeformGoodsprings and her choices in order.
+- **fnv_heap**: 1856 of 2048 MB of address space used after loading the test save, largest free block 14 MB; 133552
+  forms; 18 high-process actors. Windows reserves the region above 2 GB for a non-large-address-aware 32-bit process,
+  so the walker stops at the limit the loaded image's header gives.
+- **fnv_world_edit**: transform (position, Z angle, scale 2.0), duplicate, disable on a gecko, then undo of all three;
+  HVDustStorm forced (seen in a screenshot) and undone (current weather back, override cleared).
+- **fnv_scene_graph**: the player's 97 nodes (BSFadeNode, NiNode, BSFaceGenNiNode, NiTriShape, NiTriStrips), skinned
+  shapes with vertex and triangle counts, PPLighting texture sets (HandMale.dds, _n, _sk), locomotion sequences, BSX
+  flags. Gamebryo classes have no MSVC RTTI: their names come from NiObject::GetRTTI (vtable slot 2).
+- **fnv_ui_tiles**: HUDMainMenu with 401 trait names read from the game's own trait map (0x011F32F4).
+- **fnv_vats_odds**: 9mm pistol on a gecko at 210 units: head 0.4907 from the engine, and the recomputed terms give
+  49.07% too; the torso term is 147% and caps at 95. The menu number uses single precision (Direct3D's x87 control
+  word), so 0.95 shows as 95. Not yet compared with an open VATS menu: injected input did not open VATS here.
+- **fnv_frame_profile**: 60 fps, 16.4 ms frames, render 13.7 ms (vsync wait included); with iNumHWThreads 12 the AI
+  and process-list children run off the main thread and are listed as not called.
+- Offline: record users of GSSunnySmiles (her ACHR, 159 dialogue conditions, a package, a quest) and Caps001 (the
+  first index of the whole load order takes about 10 s); conflicts in the vanilla DLC set (76 with lost changes);
+  6 missing assets in HonestHearts.esm; profile_set dry run.
+
+Hazard seen: reverting the session right after closing a conversation with the spawned Sunny Smiles copy (disable and
+MarkForDelete of her and of a spawned gecko in one frame) crashed the game in
+Script::RunDelayedScriptActionsOnReferences (0x005AA720) with an illegal instruction. The undo lines come from the
+spawn tool; the cause is not pinned down.
 
 ## Saves: fnv_save_inspect and fnv_save_diff (offline)
 

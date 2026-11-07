@@ -13,6 +13,7 @@ on the running game (control, tests, live inspection, full control) are in [FNV-
 | `fnv_name_status` | Is this name proven, and by what evidence? |
 | `fnv_class_layout` / `fnv_class_vtable` / `fnv_class_tree` | Fields with offsets and types; each vtable slot's function; base and derived classes (RTTI) |
 | `fnv_command_info` | A console/script command: parameters, return type, handlers and what they call |
+| `fnv_script_explain` | The commands in a script line or script: handlers (execute, condition eval, parser), the named engine functions they reach, the settings they read and the start of their code |
 | `fnv_global_find` / `fnv_setting_info` | Settings and static objects: address, default value, which functions use them |
 | `fnv_string_xrefs` | Functions whose code contains a string |
 | `fnv_crash_latest` / `fnv_crash_explain` | The newest crash log, parsed, and explained in engine terms |

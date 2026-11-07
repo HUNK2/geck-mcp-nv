@@ -1179,6 +1179,10 @@ class LiveService:
             self.link.write(int(undo['address'], 16), bytes.fromhex(undo['hex']))
         elif undo['op'] == 'console':
             self.console(undo['line'])
+        elif undo['op'] == 'unhook':
+            for h in self.link.one('hooks').get('hooks') or []:
+                if h.get('label') == undo['label'] and h.get('stolen'):
+                    self.link.one('unhook', word(h['id']))
         elif undo['op'] == 'swap_script':
             from .fnv_data import swap_script_code
             swap_script_code(self, int(undo['target'], 16), int(undo['holder'], 16))
