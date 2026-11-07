@@ -96,6 +96,14 @@ FNV_LIVE_TOOLS = {
     'fnv_rng': ('act', "the game's random number generator: state, or seed it for repeatable rolls"),
     'fnv_time': ('act', 'read the calendar, jump to an hour, advance hours, change the timescale'),
     'fnv_leveled_roll': ('read', "roll a leveled list many times with the game's own code: chances per form"),
+    # engine AI wave (decomp-built)
+    'fnv_detection': ('read', 'why an NPC sees (or does not see) someone: detection records and the formula inputs'),
+    'fnv_reaction': ('read', 'how two actors relate: hostile or not, fight reaction, faction pair, disposition, the rule'),
+    'fnv_combat': ('read', "an actor's combat controller: target, procedure, action, weapon, group targets, style"),
+    'fnv_perk_entries': ('read', 'record perk entry-point checks: value before, perk entries applied, value after'),
+    'fnv_pathing': ('read', "an actor's path: mover state, request start/goal on the navmesh, nodes, why it fails"),
+    'fnv_raycast': ('read', "cast a ray through the game's physics world: hit object, reference, point; ground height"),
+    'fnv_cell_grid': ('read', 'loaded exterior grid, current interior, cell buffers, each cell with why it is loaded'),
     # milestone 10: setup
     'fnv_setup_check': ('read', 'is this machine ready for the fnv tools? each prerequisite with its state and the fix'),
 }
@@ -115,6 +123,9 @@ def register(server, project, annotations, result_type):
     social = SocialTools(live, data)
     agent = AgentTools(live, deep, social, data)
     live.agent = agent
+    from .fnv_engine_ai import EngineAITools
+    engine_ai = EngineAITools(agent)
+    live.engine_ai = engine_ai
     read, act, control = annotations
 
     def service_call(name, fn, kind):
@@ -775,6 +786,71 @@ def register(server, project, annotations, result_type):
         count comes out and how often nothing, next to the list's entries, chance none and flags. With seed the
         rolls repeat exactly. Changes nothing in the world (it only draws random numbers)."""
         return await invoke('fnv_leveled_roll', lambda: agent.leveled_roll(form, level, rolls, seed))
+
+    # ------------------------------------------------------------------ engine AI wave
+    @server.tool(annotations=read)
+    async def fnv_detection(observer: Ref, target: Ref = 'player', recompute: bool = True) -> result_type:
+        """Why does this NPC see (or not see) the target? The detection records the game keeps on the observer's
+        process (lost/unseen/noticed/seen, score, line of sight in the view cone), the reverse direction, light,
+        sneak, distance and the detection settings. With recompute (NPC observers) the game's own
+        CalculateDetectionLevel runs now and the 25 inputs it gives the detection formula are captured: perception,
+        sneak, line of sight, view cone, distance, light, invisibility, movement, levels, armor penalty."""
+        return await invoke('fnv_detection', lambda: engine_ai.detection(observer, target, recompute))
+
+    @server.tool(annotations=read)
+    async def fnv_reaction(actor: Ref, other: Ref = 'player') -> result_type:
+        """How two actors relate and why: hostile or not (the engine's IsHostileTo, the check behind
+        GetShouldAttack), the faction fight reaction (neutral/enemy/ally/friend), the faction pair that decides
+        it, disposition, crime anger, teammates, aggression and the rule branch that decided hostility."""
+        return await invoke('fnv_reaction', lambda: engine_ai.reaction(actor, other))
+
+    @server.tool(annotations=read)
+    async def fnv_combat(actor: Ref) -> result_type:
+        """An actor's combat state from its combat controller: target, current procedure (attack ranged/melee,
+        cover, search, flee...), current action, weapon, combat style, and the combat group's targets (last known
+        position, attackers) and members."""
+        return await invoke('fnv_combat', lambda: engine_ai.combat(actor))
+
+    @server.tool(annotations=read)
+    async def fnv_perk_entries(action: Literal['start', 'read', 'stop', 'evaluate'] = 'read',
+                               entry_point: Annotated[int, Field(ge=0, le=73)] | None = None,
+                               limit: Annotated[int, Field(ge=1, le=500)] = 50,
+                               value: float | None = None, actor: Ref = 'player',
+                               filters: list[Ref] | None = None) -> result_type:
+        """Which perks changed a calculation and by how much. start hooks the game's perk entry-point dispatcher
+        (optionally one entry point, e.g. 0 weapon damage, 8 to-hit chance, 9 XP, 17 buy price); read lists each
+        check where a perk applied: the entry point, the actor and filter forms, the value before, each perk entry
+        (perk, rank, set/add/multiply, value) and the value after; stop removes the hooks. evaluate runs one value
+        entry point now with your value (and its filter forms, e.g. [weapon, target] for weapon damage) through the
+        game's own dispatcher and returns the result and the perks that changed it."""
+        return await invoke('fnv_perk_entries', lambda: engine_ai.perk_entries(action, entry_point, limit, value,
+                                                                                actor, filters))
+
+    @server.tool(annotations=read)
+    async def fnv_pathing(actor: Ref) -> result_type:
+        """The path an actor is following and why it fails: mover state (building, moving, failed), the pathing
+        request (start and goal with their navmesh triangle, door rules), the solution's path points, the path
+        handler's state (waiting, blocked, avoidance failed) and the reasons found."""
+        return await invoke('fnv_pathing', lambda: engine_ai.pathing(actor))
+
+    @server.tool(annotations=read)
+    async def fnv_raycast(start: dict[str, float] | None = None, end: dict[str, float] | None = None,
+                          from_ref: Ref | None = None, to_ref: Ref | None = None,
+                          layer: Literal['line_of_sight', 'path_pick', 'projectile'] = 'line_of_sight',
+                          ground_at: dict[str, float] | None = None) -> result_type:
+        """Cast a ray through the game's Havok world (the engine's own TES::Pick): from start to end positions, or
+        from one ref to another (eye height); returns whether it hits, the hit object and its reference, and the
+        hit point. ground_at {x, y} instead returns the terrain height there."""
+        if ground_at:
+            return await invoke('fnv_raycast', lambda: engine_ai.ground_height(ground_at.get('x', 0.0),
+                                                                                ground_at.get('y', 0.0)))
+        return await invoke('fnv_raycast', lambda: engine_ai.raycast(start, end, from_ref, to_ref, layer))
+
+    @server.tool(annotations=read)
+    async def fnv_cell_grid() -> result_type:
+        """Which cells are loaded and why: the exterior grid around the player (uGridsToLoad), the current
+        interior, the interior and exterior cell buffers, each cell with its grid coordinates and load state."""
+        return await invoke('fnv_cell_grid', lambda: engine_ai.cell_grid())
 
     @server.tool(annotations=read)
     async def fnv_setup_check() -> result_type:

@@ -33,6 +33,8 @@ FNV_TOOLS = {
     'fnv_string_xrefs': 'offline read: functions whose decomp code contains a string',
     'fnv_crash_latest': 'offline read: newest crash log parsed (exception, registers, call stack, modules)',
     'fnv_crash_explain': 'offline read: crash log stack in decomp names and DLL offsets, forms involved, likely culprit',
+    'fnv_save_inspect': 'offline read: a .fos save decoded with the game save code: header, plugins, location, globals, changed forms',
+    'fnv_save_diff': 'offline read: two saves compared: changed forms, quest stages, positions, globals',
 }
 
 
@@ -383,6 +385,52 @@ class FnvService:
         return self.run('fnv_crash_explain', action)
 
 
+    # ----------------------------------------------------------------------------- saves
+    def saves_dir(self):
+        from pathlib import Path
+        fnv = getattr(self.project, 'fnv', None)
+        if not fnv or not fnv.mo2_root or not fnv.mo2_profile:
+            raise ValueError('Set fnv.mo2_root and fnv.mo2_profile in the project file, or pass a full path')
+        return Path(fnv.mo2_root) / 'profiles' / fnv.mo2_profile / 'saves'
+
+    def _save_path(self, name):
+        from . import fnv_save
+        from pathlib import Path
+        if Path(name).is_absolute():
+            return fnv_save.resolve_path(name, Path(name).parent)
+        return fnv_save.resolve_path(name, self.saves_dir())
+
+    def _namer(self):
+        from . import fnv_save
+        from .fnv_data import DataTools
+        try:
+            return fnv_save.Namer(DataTools(self.project))
+        except Exception:
+            return None
+
+    def save_inspect(self, save, types=None, forms=None, limit=100, offset=0, screenshot=False):
+        from . import fnv_save
+
+        def action():
+            path = self._save_path(save)
+            shot = None
+            if screenshot:
+                from pathlib import Path
+                folder = Path(self.project.state_dir) / 'fnv' / 'screenshots'
+                folder.mkdir(parents=True, exist_ok=True)
+                shot = folder / (path.stem + '.save.png')
+            return fnv_save.inspect(path, types, forms, limit, offset, shot, namer=self._namer())
+        return self.run('fnv_save_inspect', action)
+
+    def save_diff(self, before, after, types=None, forms=None, limit=200):
+        from . import fnv_save
+
+        def action():
+            return fnv_save.diff(self._save_path(before), self._save_path(after), types, forms, limit,
+                                 namer=self._namer())
+        return self.run('fnv_save_diff', action)
+
+
 def _source_kind(proof):
     by = proof.get('by') or ''
     identity = proof.get('identity') or ''
@@ -519,6 +567,32 @@ def register(server, project, observe, result_type):
         """Explain the newest (or given) crash log: each stack frame as a decomp function with proof status
         or as plugin DLL + offset, the forms involved, and the likely culprit with reasons."""
         return await invoke(service.crash_explain, path, max_frames)
+
+    SaveName = Annotated[str, Field(min_length=1, max_length=1000,
+                                    description='Save file: full path, file name in the dev profile saves folder, '
+                                                'name without .fos, or a test-save name')]
+    TypeList = list[Annotated[str, Field(pattern=r'^[A-Za-z_]{4}$')]] | None
+    FormList = list[Annotated[str, Field(pattern=r'^(0x)?[0-9A-Fa-f]{1,8}$')]] | None
+
+    @server.tool(annotations=observe)
+    async def fnv_save_inspect(save: SaveName, types: TypeList = None, forms: FormList = None,
+                               limit: Annotated[int, Field(ge=1, le=500)] = 100, offset: Offset = 0,
+                               screenshot: bool = False) -> result_type:
+        """Read a .fos save the way the game's save code writes it: header (name, level, location, play time),
+        plugin list, player location, every global variable, and the changed-form table, each form with its
+        change flags by name (moved, inventory, stages...). Reference positions and quest bodies (stages done,
+        log dates, objectives, script variables) are decoded. Filter by record types (QUST, ACHR, REFR...) or
+        form ids. screenshot=true writes the save's thumbnail as PNG."""
+        return await invoke(service.save_inspect, save, types, forms, limit, offset, screenshot)
+
+    @server.tool(annotations=observe)
+    async def fnv_save_diff(before: SaveName, after: SaveName, types: TypeList = None, forms: FormList = None,
+                            limit: Annotated[int, Field(ge=1, le=1000)] = 200) -> result_type:
+        """Compare two saves exactly: header, plugins, player location, global variables that changed, and
+        changed forms added, removed or different (quest stages and objectives and reference positions field by
+        field, other bodies byte for byte). Shows what a test, a mod or a play session really changed in the
+        saved game. Narrow with types (e.g. ["QUST"]) or forms."""
+        return await invoke(service.save_diff, before, after, types, forms, limit)
 
     # Live tools (game control, tests, inspection, full control) on the engine companion.
     from mcp.types import ToolAnnotations

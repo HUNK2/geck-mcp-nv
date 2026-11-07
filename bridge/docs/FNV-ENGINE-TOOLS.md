@@ -16,6 +16,7 @@ on the running game (control, tests, live inspection, full control) are in [FNV-
 | `fnv_global_find` / `fnv_setting_info` | Settings and static objects: address, default value, which functions use them |
 | `fnv_string_xrefs` | Functions whose code contains a string |
 | `fnv_crash_latest` / `fnv_crash_explain` | The newest crash log, parsed, and explained in engine terms |
+| `fnv_save_inspect` / `fnv_save_diff` | A `.fos` save decoded with the game's save format (header, plugins, location, globals, changed forms, quests), and two saves compared |
 
 Every result carries the engine map's identity (game build, decomp commit, proof file hash, whether the
 exe passed the build check). Names have a status: **proven** names come from fnvsym's proof table and are

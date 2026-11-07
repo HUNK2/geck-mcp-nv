@@ -546,10 +546,23 @@ class CompanionPipeTests(unittest.TestCase):
         self.assertEqual(self.link.one('hook', w(t['msvcThis']), '6', '-', '1', '0', '0', '0', '0', '0', '0', '0', '0',
                                        fnv_link.hexs('again'))['error'], 'already_hooked')
         for label, x in listed.items():
-            self.assertTrue(self.link.one('unhook', w(x['id']))['ok'])
+            if label in ('this', 'seh', 'chain', 'float'):  # hooks of other tests on this host are already removed
+                self.assertTrue(self.link.one('unhook', w(x['id']))['ok'])
         self.assertEqual(self.link.read(t['msvcThis'], 8), original)
         self.assertEqual(self.link.one('call', w(t['msvcThis']), 'i', w(t['self']), '0', '7', '3')['eax'], '0x0000001b')
         self.assertEqual(self.link.one('unhook', w(listed['this']['id']))['error'], 'already_removed')
+
+    def test_hook_snapshot_of_stack_arguments(self):
+        # Selector 14 snapshots the stack from argument 8 on: arguments beyond the 8 a record holds.
+        t, w = self.targets, fnv_link.word
+        h = self._hook(t['msvcSeh'], fnv_deep.HF_RECORD | fnv_deep.HF_EXIT, nargs=1, snap_sel=14, snap_len=12,
+                       label='stack')
+        self.link.one('call', w(t['msvcSeh']), 'i', '0', '0', '4', *[w(0x100 + i) for i in range(1, 12)])
+        (r,) = self._records(h)
+        self.assertEqual(r[12], 4)
+        self.assertEqual(list(r[24:27]), [0x108, 0x109, 0x10A])  # stack arguments 8, 9, 10
+        self.assertTrue(self.link.one('unhook', w(h['id']))['ok'])
+        self.assertEqual(self.link.one('hookfilter', w(h['id']), '15', '0')['error'], 'bad_arguments')
 
     def test_console_eval_events(self):
         out = self.link.console('player.additem f 5')

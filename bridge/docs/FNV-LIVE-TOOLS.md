@@ -168,6 +168,13 @@ missing. In short:
 | `fnv_rng` | act | The game's one Mersenne Twister: state, or seed it like `MersenneTwister::Seed` |
 | `fnv_time` | act | Read the calendar, jump to an hour, advance hours (day/month/year roll over), change the timescale; `engine_wait` runs the game's own one-hour wait step |
 | `fnv_leveled_roll` | read | Roll a leveled list many times with `TESLeveledList::CalculateCurrentForm` at a level: share of each form and count, and of nothing; repeatable with a seed |
+| `fnv_detection` | read | Why an NPC sees someone or not: the detection records on its process (lost/unseen/noticed/seen, score, line of sight in the view cone), both directions, light, sneak, distance, settings; for NPC observers the game's `CalculateDetectionLevel` recomputes and the 25 inputs of its detection formula are captured |
+| `fnv_reaction` | read | How two actors relate: hostile or not (the engine's `IsHostileTo`, behind `GetShouldAttack`), fight reaction, the faction pair that decides it, disposition, crime anger, teammates, aggression, and the rule branch that decided |
+| `fnv_combat` | read | An actor's combat controller: target, procedure, queued procedure, action, goal, weapon, combat style, and the combat group's targets (last known position, attackers) and members |
+| `fnv_perk_entries` | read | Record perk entry-point checks (value before, each perk entry that applied, value after), or `evaluate` one value entry point now with a value and its filter forms |
+| `fnv_pathing` | read | An actor's path: mover state, the pathing request (start, goal, navmesh, door rules), the solution's points, the path handler's state (waiting, blocked, avoidance failed) and the reasons found |
+| `fnv_raycast` | read | A ray through the game's Havok world (`TES::Pick`) between points or refs: hit, hit point, hit object and its reference; `ground_at` gives the terrain height |
+| `fnv_cell_grid` | read | Loaded exterior grid, current interior, interior and exterior cell buffers: each cell with its grid coordinates, load state and why it is loaded |
 
 Act tools journal every change in `state/fnv/journal.jsonl` and back up the dev profile's saves before the
 first change of a game session (`state/fnv/save-backups`, newest 10 kept). Console lines, scripts and
@@ -357,11 +364,63 @@ without a person clicking. Where the game has a function or a data structure for
   unnamed, so it needs `allow_unproven`) once per hour: process lists catch up, healing and hardcore needs
   run, as when the player waits. The step counts the player's wait counter (+0x654) down and fully heals at
   0, so the tool keeps it above 0 and restores it. Time changes are not undone: the game never runs its
-  clock backwards (a pathfinding crash followed a rewind on the test machine); load a test save to go back.
+  clock backwards; load a test save to go back. (A pathfinding crash followed a rewind once; later crashes point
+  to the 2 GB address space instead, see "Tested on".)
 - **fnv_leveled_roll** gets the list with `TESLeveledList::GetFormAsLeveledList` and rolls it with
   `TESLeveledList::CalculateCurrentForm` (both proven) at the level asked, nested lists resolved.
 - **fnv_move** uses `MoveTo`, `coc`, `SetPos` / `SetAngle` and JIP LN's `MoveToCell` (FNV has no
   `PositionCell` or `PositionWorld`); undo moves the ref back with `MoveToCell` and its old heading.
+
+## Engine AI tools: detection, relations, combat, perks, paths, rays, cells
+
+Built by reading the game's own code in the decomp, including functions nobody had named. Each result lists
+the functions it used and their status (`uses`); each was checked in the running game against what the game
+itself reports.
+
+- **fnv_detection** reads the observer's committed detection list through the process vtable
+  (`HighProcess::GetDetectionState`, +0x504) and decodes each `DetectionViewData` (level, score, line of sight
+  in the cone and in any direction, last seen position). With `recompute` and an NPC observer it calls
+  `Actor::CalculateDetectionLevel` (0x008A0D10) with `calc=1` and no record writes, while a hook on the
+  detection formula (0x00642ED0, 25 arguments; the decomp calls it `ComputeDamageResult`) captures the inputs
+  the game passed. Arguments 8 and up are read with the companion's stack snapshot (selector 14). The argument
+  names come from the formula's call site. The player as observer is never recomputed (that path writes
+  records).
+- **fnv_reaction** calls `Actor::IsHostileTo` (0x008B06D0) as `GetShouldAttack` does, the faction fight
+  reaction (0x008B87A0), `Actor::GetFactionReaction` (the deciding faction pair), `GetDisposition`,
+  `IsAngryWithPlayer` and `IsInCombatWithActor`, and re-derives which branch of `IsHostileTo` decided
+  (teammates, frenzied, crime, already fighting, aggression against the fight reaction).
+- **fnv_combat** gets the controller with `Actor::GetCombatController` and reads it: +0x84 procedure, +0x88
+  queued procedure, +0xA8 action, +0xAC goal, +0xBC self, +0xC0 target, +0xF0 weapon, +0xF4 style. Procedure,
+  action and goal are named by their RTTI class (`CombatProcedureAttackRanged`, `CombatGoalKillTarget`...).
+  The combat group's targets (+8, 0x68 bytes each) and members (+0x18) follow.
+- **fnv_perk_entries** hooks `ApplyPerkModifiers` (0x005E58F0, ep and actor and the value before) and
+  `BGSEntryPointFunction::ApplyFunction` (0x005E5B40, one call per matching entry), matches each apply to its
+  check by thread and time, and finds the perk by scanning the player's perk ranks (+0x87C) for the entry's
+  function data. `evaluate` calls the dispatcher itself with a scratch value. Only the player (and teammates,
+  through the player) has perk entries; abilities that change actor values (Strong Back) are not entry points.
+- **fnv_pathing** reads `Actor+0x190` (ActorMover: state, path failed, request, solution, handler), the
+  `PathingRequest` (start and goal locations, door rules), the `PathingSolution`'s detailed nodes (0x3C bytes,
+  position at +8) and the `DetailedActorPathHandler` (state, avoidance, blocked). The request's locations are
+  never resolved to a triangle (the builder resolves its own copies), so only "no navmesh at all" is reported
+  from them. The failure reason code is not stored; trace 0x009DC5E0 (`HandlePathResult`) to catch it.
+- **fnv_raycast** builds a `bhkPickData` in game memory and calls its constructor, `SetFrom`, `SetTo`,
+  `SetFilter` (fastcall: the layer goes in EDX) and `TES::Pick` (0x00458420). The hit fraction is at +0x40 and
+  the hit collidable at +0x80 (Havok's ray-cast output at +0x30); `FindReferenceFor3D` names the reference.
+  `ground_at` calls `TES::GetLandHeightAt`.
+- **fnv_cell_grid** reads `TES` (grid +0x08, center +0x24, interior +0x34, buffers +0x38/+0x3C), the
+  `GridCellArray` (dimension +0x0C, cells +0x10) and each cell's state byte at +0x26
+  (`TESObjectCELL::GetState`; the decomp's helper is misleadingly called `GetByteAtOffset38`).
+
+## Saves: fnv_save_inspect and fnv_save_diff (offline)
+
+Read a `.fos` exactly as the game writes it (format from `BGSSaveLoadGame::SaveGame` 0x00847850 and the
+change-form writers): header, thumbnail, plugin list, player location, every global variable and the
+change-form table with each form's change flags by name. Reference positions (initial data) and quest bodies
+(flags, stages done with log dates, objectives, script variables) are decoded; quest script variables and
+globals are named from the plugins' records. `fnv_save_diff` compares two saves: header, plugins, player
+location, globals, and forms added, removed or changed (decoded fields compared one by one, other bodies byte
+for byte). Every value in a save buffer is followed by a `|` spacer; form ids are 3-byte indexes into the
+save's form id array (0x800000 = created in game).
 
 ## Building a mod without GECK
 
@@ -468,6 +527,24 @@ Dialogue, AI packages and live diffs (2026-11-07, a fresh game started in the Pr
 - One fresh start hung before the main menu (main thread waiting in ntdll under
   `LoadedNode::ReadFromStream`, 4 s of CPU, no hooks installed); `fnv_restart` terminated it and the next
   start was normal (14.6 s to the save).
+
+- Engine AI wave (2026-11-07 evening): `fnv_detection` on Sunny Smiles against the player: the recomputed
+  score (-12, lost) matched the record the game keeps; the formula inputs matched the game (distance =
+  `GetDistance`, light 100 = the process light, levels 2 and 1). `fnv_combat` on a gecko fighting a bighorner:
+  target = `GetCombatTarget`, goal "hide from target", six geckos in its group, two group targets.
+  `fnv_reaction`: very aggressive against neutral gave hostile, as the rule says. `fnv_raycast` straight down
+  hit the terrain at 8368.3 where `GetLandHeightAt` gives 8368.31, and hit the player's spine bone above the
+  player. `fnv_perk_entries evaluate 9` with Swift Learner: 250 XP became 275 (multiply 1.1), as the game
+  computed. `fnv_pathing` on a raven: six detailed path points from its position to its goal. `fnv_cell_grid`:
+  the 5x5 grid around cell (-17, 0), all attached. `fnv_save_inspect` / `fnv_save_diff` on the dev saves: all
+  4507 change forms read, quests named (`NVDLC03MQ00` running, stage 10 done).
+- The game crashed four times on 2026-11-07 (14:50, 15:49, 16:22, 20:51), each in an engine worker thread
+  (pathfinding tasklet or AI linear task thread), three writing through a null pointer inside the scrap-heap
+  allocator, one with "not enough memory" as the last error; two happened with no tool request or hook
+  active. The game's exe is not large address aware (2 GB address space) and used 1860 MB of it right after
+  loading the test save with all DLCs. Running out of address space explains these crashes better than the
+  clock rewind blamed earlier. The usual fix is a 4 GB patch of FalloutNV.exe (the community "FNV 4GB
+  Patcher"); it is not installed on the test machine.
 
 ## Launch notes
 

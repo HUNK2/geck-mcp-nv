@@ -1445,7 +1445,7 @@ class AgentTools:
         dirty = self.live.reads([(self.CALENDAR + 0x1C, 1)])[0]
         self.link.write(self.CALENDAR + 0x1C, b'\x01')  # the calendar resyncs its day counter
         # Not undoable on purpose: the game never runs its clock backwards, and rewinding it hands AI schedules and
-        # low-process patrols negative time (a pathfinding crash followed a rewind on the test machine).
+        # low-process patrols negative time.
         entry = self.live.journal.add({'kind': 'time', 'hours': hours, 'lines': lines, 'previous': old, 'undo': None})
         return {'advancedHours': hours, 'how': 'globals', 'lines': lines, 'journalId': entry['id'],
                 'dirtyFlagWas': dirty[0] if dirty else None,

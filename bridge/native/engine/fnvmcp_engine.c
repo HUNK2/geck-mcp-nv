@@ -438,6 +438,7 @@ static uint32_t hook_select(const uint32_t *fr, int selector) {
     if (selector >= 2 && selector <= 9) return fr[11 + selector - 2]; /* stack argument 0..7 */
     if (selector == 10) return fr[10];               /* return address (the caller) */
     if (selector == 11) return fr[6];                /* edx */
+    if (selector == 14) return (uint32_t)(uintptr_t)&fr[19]; /* address of stack argument 8: snap args 8..31 */
     if (selector == 12 || selector == 13) {
         /* The caller's first stack argument: [ebp + 8] for a standard frame, [ebx + 8] for MSVC's aligned-stack
          * frame (push ebx; mov ebx, esp; and esp, -16), whose arguments stay addressed through ebx. */
@@ -590,7 +591,7 @@ static void op_hook(int argc, char **argv) {
     long label = unhex(argv[13]);
     if (label < 0) return fail("bad_arguments");
     for (int i = 0; i < 5; i++)
-        if (v[i] > 13) return fail("bad_selector");
+        if (v[i] > 14) return fail("bad_selector");
     if (hook_count >= HOOKS) { /* forget removed hooks (their memory stays valid) */
         int kept = 0;
         for (int i = 0; i < hook_count; i++)
@@ -705,7 +706,7 @@ static void op_hookctl(int argc, char **argv) {
 /* hookfilter <id> <selector> <value>: record only calls whose selected register/argument has this value. */
 static void op_hookfilter(int argc, char **argv) {
     uint32_t id, selector, value;
-    if (argc != 4 || !parse_u32(argv[1], &id) || !parse_u32(argv[2], &selector) || selector > 13 || !parse_u32(argv[3], &value))
+    if (argc != 4 || !parse_u32(argv[1], &id) || !parse_u32(argv[2], &selector) || selector > 14 || !parse_u32(argv[3], &value))
         return fail("bad_arguments");
     Hook *h = hook_find(id);
     if (!h) return fail("unknown_hook");
