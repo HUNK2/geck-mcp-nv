@@ -120,6 +120,7 @@ FNV_LIVE_TOOLS = {
     'fnv_scene_graph': ('read', "a ref's 3D node tree: transforms, geometry, shaders, texture paths, controllers"),
     'fnv_ui_tiles': ('read', "a menu's live UI tile tree with trait values named by the game's trait table"),
     'fnv_vats_odds': ('read', 'VATS hit chance per target and limb from the game formula, term by term, with perks'),
+    'fnv_window': ('control', 'free or recapture the mouse (DirectInput background mode), close the pause menu, persist it'),
     'fnv_frame_profile': ('read', 'time per frame by subsystem (scripts, AI wait, render, audio, cells...) from timing hooks'),
     # milestone 10: setup
     'fnv_setup_check': ('read', 'is this machine ready for the fnv tools? each prerequisite with its state and the fix'),
@@ -1071,6 +1072,16 @@ def register(server, project, annotations, result_type):
         post-render, delayed actions) for a few seconds, then removed. ms per frame, share of the frame and the
         worst call per subsystem, with fps."""
         return await invoke('fnv_frame_profile', lambda: world.frame_profile(seconds))
+
+    @server.tool(annotations=control)
+    async def fnv_window(action: Literal['status', 'release_mouse', 'capture_mouse', 'unpause'] = 'status',
+                         persist: bool | None = None) -> result_type:
+        """The game window and the user's mouse: release_mouse switches the game's DirectInput mouse to non-exclusive
+        background mode on its own window, so the cursor is free while the game keeps running; capture_mouse puts
+        exclusive mode back; unpause closes the pause menu (it opens when the window loses focus). persist=true writes
+        bBackground Mouse=1 to the dev profile's Fallout.ini so every launch leaves the mouse free (false undoes it).
+        Works without the game for persist."""
+        return await invoke('fnv_window', lambda: world.window(action, persist), 'control')
 
     @server.tool(annotations=read)
     async def fnv_setup_check() -> result_type:

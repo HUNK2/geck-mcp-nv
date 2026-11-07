@@ -110,6 +110,23 @@ class Helpers(unittest.TestCase):
         self.assertEqual(int(_f32(_f32(0.95) * 100.0)), 95)  # the menu shows 95, not 94
         self.assertEqual(int(_f32(_f32(0.4907) * 100.0)), 49)
 
+    def test_background_mouse_ini(self):
+        from geck_mcp.fnv_world import WorldTools
+        with tempfile.TemporaryDirectory() as tmp:
+            profile = Path(tmp) / 'profiles' / 'Dev'
+            profile.mkdir(parents=True)
+            ini = profile / 'Fallout.ini'
+            ini.write_text('[Controls]\nbBackground Mouse=0\nbBackground Keyboard=1\n', encoding='utf-8')
+            project = SimpleNamespace(fnv=SimpleNamespace(mo2_root=tmp, mo2_profile='Dev'))
+            game = SimpleNamespace(process=lambda: [])
+            world = WorldTools(SimpleNamespace(live=SimpleNamespace(project=project), game=game))
+            out = world.window('status', persist=True)
+            self.assertTrue(out['ini']['changed'])
+            self.assertIn('bBackground Mouse=1', ini.read_text(encoding='utf-8'))
+            self.assertTrue(out['state']['iniBackgroundMouse'])
+            self.assertFalse(world.window('status', persist=True)['ini']['changed'])
+            self.assertTrue((profile / 'Fallout.ini.fnvmcp-backup').exists())
+
     def test_address_space_of_this_process(self):
         space = address_space(os.getpid())
         self.assertIsNotNone(space)

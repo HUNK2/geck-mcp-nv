@@ -902,6 +902,124 @@ class WorldTools:
                          'companion timing hooks (QPC, per-function call table)', 'frame counter 0x011A2FE0']}
 
 
+
+    # ================================================================== fnv_window
+    INPUT_GLOBALS = 0x011F35CC      # OSInputGlobals* (mouse device +0x30, flags +0x04, bit 8 = background mouse)
+    DI_ACQUIRE, DI_UNACQUIRE, DI_SET_COOPERATIVE = 7, 8, 13  # IDirectInputDevice8 vtable slots
+
+    def _game_window(self):
+        pid = (self.agent.game.process() or [None])[0]
+        user32 = ctypes.windll.user32
+        found = []
+
+        @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+        def callback(hwnd, _):
+            owner = wintypes.DWORD()
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
+            if owner.value == pid and user32.IsWindowVisible(hwnd) and not user32.GetWindow(hwnd, 4):
+                found.append(hwnd)
+            return True
+
+        user32.EnumWindows(callback, 0)
+        return found[0] if found else None
+
+    def _mouse_mode(self, hwnd, background):
+        ig = self.live.u32s([self.INPUT_GLOBALS])[0]
+        device, flags = self.live.u32s([ig + 0x30, ig + 4]) if ig else (None, None)
+        if not device:
+            raise LiveError('NO_MOUSE_DEVICE', 'The game has no DirectInput mouse device yet')
+        vt = self.live.u32s([device])[0]
+        acquire, unacquire, coop = self.live.u32s([vt + 4 * self.DI_ACQUIRE, vt + 4 * self.DI_UNACQUIRE,
+                                                   vt + 4 * self.DI_SET_COOPERATIVE])
+        # DISCL_EXCLUSIVE 1, NONEXCLUSIVE 2, FOREGROUND 4, BACKGROUND 8 (dinput.h); COM stdcall, this first
+        level = (2 | 8) if background else (1 | 4)
+        self._call(unacquire, 0, device)
+        hr = self._eax(coop, 0, device, hwnd, level)
+        self.live.link.write(ig + 4, struct.pack('<I', (flags | 8) if background else (flags & ~8)))
+        self._call(acquire, 0, device)
+        return {'hresult': '0x%08X' % hr, 'cooperativeLevel': 'non-exclusive, background' if background else
+                'exclusive, foreground', 'device': '0x%08X' % device}
+
+    def window(self, action='status', persist=None):
+        """status | release_mouse | capture_mouse | unpause; persist true/false writes bBackground Mouse to the
+        dev profile's Fallout.ini so every launch starts that way."""
+        out = {'action': action}
+        if persist is not None:
+            out['ini'] = self._persist_background_mouse(bool(persist))
+        running = bool(self.agent.game.process())
+        if not running:
+            if action != 'status':
+                raise LiveError('NOT_RUNNING', 'The game is not running (persist works without it)')
+            out['state'] = {'running': False, 'iniBackgroundMouse': self._read_background_mouse()}
+            return out
+        self.live.ready()
+        hwnd = self._game_window()
+        user32 = ctypes.windll.user32
+        if action in ('release_mouse', 'capture_mouse'):
+            if not hwnd:
+                raise LiveError('NO_WINDOW', 'The game window was not found')
+            out.update(self._mouse_mode(hwnd, action == 'release_mouse'))
+            if action == 'release_mouse':
+                user32.ClipCursor(None)
+            self.live.journal.add({'kind': 'window', 'action': action, 'undo': None})
+        elif action == 'unpause':
+            visible = {m['id'] for m in self.agent.menus()['visible']}
+            if 1013 in visible:  # StartMenu: the pause menu (opens when the window loses focus)
+                self.agent.menu_control('close', menu=1013)
+                out['closed'] = 'StartMenu (pause)'
+            else:
+                out['note'] = 'The pause menu was not open'
+        ig = self.live.u32s([self.INPUT_GLOBALS])[0]
+        flags = self.live.u32s([ig + 4])[0] if ig else None
+        visible = [m['name'] for m in self.agent.menus()['visible']]
+        out['state'] = {'running': True, 'backgroundMouse': bool(flags & 8) if flags is not None else None,
+                        'gameWindowFocused': bool(hwnd) and user32.GetForegroundWindow() == hwnd,
+                        'pauseMenuOpen': 'StartMenu' in visible, 'menus': visible,
+                        'iniBackgroundMouse': self._read_background_mouse()}
+        out['uses'] = ['OSInputGlobals 0x011F35CC (mouse device +0x30, flags +4 bit 8 = background mouse, as '
+                       'MouseInput RecreateDevice 0x00A23C00 sets it)', 'IDirectInputDevice8 Unacquire / '
+                       'SetCooperativeLevel(game window, NONEXCLUSIVE|BACKGROUND) / Acquire',
+                       'INI bBackground Mouse ([Controls], read at input start-up 0x00A22660)']
+        return out
+
+    def _ini_path(self):
+        from pathlib import Path
+        fnv = self.live.project.fnv
+        return Path(fnv.mo2_root) / 'profiles' / fnv.mo2_profile / 'Fallout.ini'
+
+    def _read_background_mouse(self):
+        try:
+            for line in self._ini_path().read_text(encoding='utf-8', errors='replace').splitlines():
+                if line.strip().lower().startswith('bbackground mouse='):
+                    return line.split('=', 1)[1].strip() == '1'
+        except OSError:
+            return None
+        return None
+
+    def _persist_background_mouse(self, on):
+        import shutil
+        path = self._ini_path()
+        lines = path.read_text(encoding='utf-8', errors='replace').splitlines()
+        value = 'bBackground Mouse=%d' % (1 if on else 0)
+        idx = next((i for i, l in enumerate(lines) if l.strip().lower().startswith('bbackground mouse=')), None)
+        if idx is not None and lines[idx].strip() == value:
+            return {'path': str(path), 'changed': False, 'value': value}
+        backup = path.with_name('Fallout.ini.fnvmcp-backup')
+        if not backup.exists():
+            shutil.copy2(path, backup)
+        if idx is not None:
+            lines[idx] = value
+        else:
+            section = next((i for i, l in enumerate(lines) if l.strip().lower() == '[controls]'), None)
+            if section is None:
+                lines += ['[Controls]', value]
+            else:
+                lines.insert(section + 1, value)
+        path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+        return {'path': str(path), 'changed': True, 'value': value, 'backup': str(backup),
+                'note': 'Takes effect at the next launch (release_mouse applies it to the running game now).'}
+
+
 # ================================================================== address space (outside the game)
 class _MBI(ctypes.Structure):
     _fields_ = [('BaseAddress', ctypes.c_void_p), ('AllocationBase', ctypes.c_void_p), ('AllocationProtect', wintypes.DWORD),

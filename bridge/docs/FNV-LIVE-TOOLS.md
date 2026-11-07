@@ -191,6 +191,7 @@ missing. In short:
 | `fnv_ui_tiles` | read | A menu's live tile tree with trait values named by the game's trait table |
 | `fnv_vats_odds` | read | VATS hit chance per target and limb from CombatFormulas::GetVATSChanceToHit and the ep 8 perk layer, the percent the menu shows, and the gun formula term by term |
 | `fnv_frame_profile` | read | Time per frame by subsystem from timing hooks on the main loop's children, removed afterwards |
+| `fnv_window` | control | Free the user's mouse while the game runs (DirectInput non-exclusive background mode on the game window), capture it again, close the pause menu; persist writes `bBackground Mouse=1` to the dev profile's Fallout.ini (checked: launch starts with it, live toggles return S_OK) |
 
 Act tools journal every change in `state/fnv/journal.jsonl` and back up the dev profile's saves before the
 first change of a game session (`state/fnv/save-backups`, newest 10 kept). Console lines, scripts and
