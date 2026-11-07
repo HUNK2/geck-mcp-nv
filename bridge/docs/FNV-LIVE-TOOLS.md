@@ -329,6 +329,8 @@ Dialogue, AI packages and live diffs (2026-11-07, a fresh game started in the Pr
   packages failing their quest-variable conditions. On Trudy, early in a new game: no package eligible, every
   one gated on a Goodsprings quest variable.
 - `fnv_form_live_diff GameHour`: plugin 12.0, live 12.81; `GSTrudy`: name and script unchanged.
+  `WeapNV9mmPistol`: name, value 100, health 150, weight 1.5 and damage 16 all equal to the record; after
+  `fnv_form_edit iValue 999` it reported value 100 -> 999, and nothing after `fnv_undo`.
 - About 15 s after that conversation, with Trudy force-enabled while no package of hers was valid, the game
   crashed in a pathfinding tasklet (`RouteBuilder::BuildRoute` > `AStarSearch` > scrap heap); no request was
   being served. A state normal play never makes; not traced further.
