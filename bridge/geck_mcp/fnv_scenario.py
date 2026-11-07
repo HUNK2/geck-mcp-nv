@@ -11,6 +11,13 @@
     teardown:
       - revert_all: true                # undo journaled changes made by this test
 
+Agent steps (fnv_agent): spawn {form, near, as: name} ($name in later steps), move {ref, to|cell|position}, save /
+load (test saves), menu {press: label|index} | {close: true}, screenshot, watch {items, seconds, until}, trace
+{function, filter} (then expect {called: function, at_least: 1}), time {...}, rng {seed}. Agent checks: called,
+condition {form, list, subject}, message_box (text substring), marker (quest), menu_open (menu name).
+Scenario keys: guard {message_boxes: close|keep} (keep: leave message boxes for the test to press), trace_script
+(one script or quest whose statements are traced and reported), start {test_save: name}.
+
 A run launches the game when needed, applies `start`, runs the steps and returns a structured report.
 When the game dies, the report carries the crash doctor's diagnosis and the game is relaunched.
 Files are a YAML subset (block mappings and lists, flow {} and [], quoted or plain scalars, comments) or JSON.
@@ -61,6 +68,8 @@ def _scalar(text):
         return False
     if lowered in ('null', '~'):
         return None
+    if re.fullmatch(r'0\d+', text):
+        return text   # leading zero: a form id (00138562), kept as written
     if re.fullmatch(r'[-+]?\d+', text):
         return int(text)
     if re.fullmatch(r'[-+]?(\d+\.\d*|\.\d+|\d+)([eE][-+]?\d+)?', text):
@@ -253,6 +262,22 @@ class ScenarioRunner:
     def __init__(self, live):
         self.live = live
         self.game = live.game
+        self.vars = {}
+
+    @property
+    def agent(self):
+        agent = getattr(self.live, 'agent', None)
+        if agent is None:
+            from .fnv_agent import AgentTools
+            from .fnv_data import DataTools
+            from .fnv_deep import DeepTools
+            from .fnv_social import SocialTools
+            deep = getattr(self.live, 'deep', None) or DeepTools(self.live)
+            self.live.deep = deep
+            data = DataTools(self.live.project, self.live)
+            agent = AgentTools(self.live, deep, SocialTools(self.live, data), data)
+            self.live.agent = agent
+        return agent
 
     # ------------------------------------------------------------ loading
     def load(self, path=None, text=None):
@@ -272,7 +297,8 @@ class ScenarioRunner:
         if not isinstance(data, dict) or not isinstance(data.get('steps'), list):
             raise ScenarioError('BAD_SCENARIO', 'A scenario is a mapping with a "steps" list')
         unknown = set(data) - {'name', 'start', 'plugins', 'plugin', 'steps', 'setup', 'teardown', 'restart',
-                               'continue_on_failure', 'relaunch_on_crash', 'timeout', 'description', 'tags'}
+                               'continue_on_failure', 'relaunch_on_crash', 'timeout', 'description', 'tags',
+                               'allow_menus', 'guard', 'trace_script'}
         if unknown:
             raise ScenarioError('BAD_SCENARIO', 'Unknown scenario keys: %s' % ', '.join(sorted(unknown)))
         data.setdefault('name', Path(source).stem if source != '<inline>' else 'inline scenario')
@@ -286,14 +312,27 @@ class ScenarioRunner:
         report = {'name': scenario['name'], 'source': scenario['_source'], 'passed': False, 'steps': [],
                   'setup': [], 'teardown': [], 'failures': [], 'crash': None, 'relaunched': None}
         unpause = None
+        self.vars = {}
+        self._marker = None
+        traced = None
         try:
             report['game'] = self.prepare(scenario)
+            guard = scenario.get('guard') or {}
             if not scenario.get('allow_menus'):
                 # The game opens its pause menu when its window loses focus; keep the world running while the
-                # test runs (the companion closes the pause menu and message boxes; allow_menus: true opts out).
-                unpause = self.game.keep_unpaused(int(scenario.get('timeout', 240)) + 120)
+                # test runs (the companion closes the pause menu, and message boxes unless guard keeps them).
+                keep = guard.get('message_boxes', 'close') == 'keep'
+                unpause = self.game.keep_unpaused(int(scenario.get('timeout', 240)) + 120, close_messages=not keep)
                 report['game']['keptUnpaused'] = unpause is not None
+                report['game']['messageBoxes'] = 'kept for the test' if keep else 'closed automatically'
+            if scenario.get('trace_script'):
+                try:
+                    self.live.deep.script_trace(scenario['trace_script'], 'start')
+                    traced = scenario['trace_script']
+                except Exception as e:
+                    report['game']['traceScript'] = 'not started: %s' % e
             marker = self.mark()
+            self._marker = marker
             phases = [('setup', scenario.get('setup') or []), ('steps', scenario['steps'])]
             failed = False
             for phase, steps in phases:
@@ -310,6 +349,10 @@ class ScenarioRunner:
                                                    'reason': result.get('reason'), 'actual': result.get('actual')})
             report['scriptErrors'] = self.live.script_errors('last')['errors'] if not report['crash'] else None
             report['passed'] = not failed
+            if traced:
+                report['scriptTrace'] = self._trace_summary(traced)
+            if failed:
+                report['debug'] = self.debug_bundle(scenario)
         except _Crash as crash:
             report['crash'] = crash.diagnosis
             report['failures'].append({'phase': 'run', 'reason': 'the game crashed or quit: %s' % crash.reason})
@@ -333,7 +376,7 @@ class ScenarioRunner:
                 report['teardown'].append(result)
         if not report['crash']:
             self.game.stop_task(unpause)
-        if not report['passed'] and not report['crash']:
+        if not report['passed'] and not report['crash'] and not (report.get('debug') or {}).get('screenshot'):
             report['screenshot'] = self.screenshot(scenario['name'])
         report['seconds'] = round(time.time() - started, 1)
         report['summary'] = '%s: %s (%d steps, %d failed)%s' % (
@@ -361,7 +404,10 @@ class ScenarioRunner:
                 return 'save:%s' % start['save']
             if 'coc' in start:
                 return 'coc:%s' % start['coc']
-            raise ScenarioError('BAD_SCENARIO', 'start is menu, continue, {save: name} or {coc: cell}')
+            if 'test_save' in start:
+                from .fnv_agent import TEST_SAVE_PREFIX
+                return 'save:%s%s' % (TEST_SAVE_PREFIX, start['test_save'])
+            raise ScenarioError('BAD_SCENARIO', 'start is menu, continue, {save: name}, {test_save: name} or {coc: cell}')
         return start
 
     def prepare(self, scenario):
@@ -426,7 +472,7 @@ class ScenarioRunner:
         if not isinstance(spec, dict) or len([k for k in spec if k not in ('note', 'name')]) != 1:
             return {'passed': False, 'reason': 'each step is a mapping with one action key', 'spec': spec}
         action = next(k for k in spec if k not in ('note', 'name'))
-        arg = spec[action]
+        arg = self._subst(spec[action])
         try:
             result = self._dispatch(action, arg, marker)
         except (LinkError, GameError) as e:
@@ -521,10 +567,11 @@ class ScenarioRunner:
             out = live.input(arg['action'], arg.get('control'), arg.get('key'), arg.get('duration_ms', 0), arg.get('target'))
             return {'passed': out.get('accepted', True) is not False, 'actual': out}
         if action == 'move':
-            target = arg if isinstance(arg, str) else arg['to']
-            ref = live.resolve(target)
-            out = live.console('player.MoveTo %s' % ref['formId'])
-            return {'passed': bool(out['accepted']), 'output': out['output']}
+            if isinstance(arg, str):
+                arg = {'to': arg}
+            out = self.agent.move(arg.get('ref', 'player'), arg.get('to'), arg.get('cell'), arg.get('position'),
+                                  arg.get('rotation'), int(arg.get('timeout', 180)))
+            return {'passed': True, 'actual': {'after': out['after'], 'arrived': bool(out['arrived'])}}
         if action == 'mem_write':
             out = live.mem_write(arg['target'], arg['value'], arg.get('path'), arg.get('as'))
             return {'passed': True, 'actual': out}
@@ -535,15 +582,21 @@ class ScenarioRunner:
             passed, why = compare(out['result'], spec) if spec else (True, '')
             return {'passed': passed, 'actual': out['result'], 'reason': None if passed else 'result not ' + why}
         if action == 'revert_all':
-            out = live.revert_all() if arg else {'reverted': 0}
+            # Only this test's changes: entries after the journal position marked when the steps began.
+            since = (getattr(self, '_marker', None) or {}).get('journal') if arg != 'process' else None
+            out = live.revert_all(since) if arg else {'reverted': 0}
             return {'passed': True, 'actual': {'reverted': out['reverted']}}
         if action == 'quit':
             out = self.game.quit() if arg else {}
             return {'passed': True, 'actual': out}
         if action == 'snapshot':
             return {'passed': True, 'actual': snapshot(live, arg.get('items'), arg.get('name'))}
+        agent_result = self._agent_step(action, arg)
+        if agent_result is not None:
+            return agent_result
         raise ScenarioError('UNKNOWN_ACTION', 'Unknown step %r (run, script, wait, expect, set, actor, input, move, '
-                            'mem_write, call, revert_all, quit, snapshot)' % action)
+                            'mem_write, call, revert_all, quit, snapshot, spawn, save, load, menu, screenshot, watch, '
+                            'trace, time, rng)' % action)
 
     def _wait(self, arg):
         if isinstance(arg, (int, float)):
@@ -636,12 +689,143 @@ class ScenarioRunner:
         elif 'mem' in arg:
             actual = live.mem_read(arg['mem'], arg.get('path'), arg.get('as')).get('value')
             what = 'memory %s %s' % (arg['mem'], arg.get('path') or '')
+        elif any(k in arg for k in ('called', 'condition', 'message_box', 'marker', 'menu_open')):
+            actual, what, arg = self._agent_expect(arg)
         else:
             raise ScenarioError('BAD_STEP', 'expect needs one of eval, item_count, stage, quest_running, actor_value, '
-                                'variable, global, cell, console, disabled, dead, exists, mem, no_script_errors')
+                                'variable, global, cell, console, disabled, dead, exists, mem, no_script_errors, '
+                                'called, condition, message_box, marker, menu_open')
         passed, why = compare(actual, arg)
         return {'passed': passed, 'actual': actual, 'expected': why,
                 'reason': None if passed else '%s: expected %s, got %r' % (what, why, actual)}
+
+    # ------------------------------------------------------------ agent steps and checks
+    def _subst(self, value):
+        """$name -> a value saved by an earlier step (spawn ... as: name)."""
+        if isinstance(value, str) and '$' in value:
+            for key in sorted(self.vars, key=len, reverse=True):
+                value = value.replace('$' + key, str(self.vars[key]))
+            return value
+        if isinstance(value, dict):
+            return {k: self._subst(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [self._subst(v) for v in value]
+        return value
+
+    def _agent_step(self, action, arg):
+        agent = self.agent
+        if action == 'spawn':
+            arg = {'form': arg} if isinstance(arg, str) else arg
+            out = agent.spawn(arg['form'], arg.get('near', 'player'), int(arg.get('count', 1)), int(arg.get('distance', 0)),
+                              int(arg.get('direction', 0)))
+            if arg.get('as'):
+                self.vars[arg['as']] = out['refs'][0]['ref']
+                for k, r in enumerate(out['refs']):
+                    self.vars['%s%d' % (arg['as'], k)] = r['ref']
+            return {'passed': bool(out['refs']), 'actual': [r['ref'] for r in out['refs']]}
+        if action in ('save', 'load'):
+            name = arg if isinstance(arg, str) else arg['name']
+            out = agent.test_save(action, name)
+            return {'passed': True, 'actual': {k: v for k, v in out.items() if k in ('saved', 'loaded', 'phase', 'file')}}
+        if action == 'menu':
+            if 'press' in arg:
+                out = agent.menu_control('press', arg['press'])
+                return {'passed': True, 'actual': out['pressed']}
+            if arg.get('close') or arg.get('close_all'):
+                out = agent.menu_control('close_all' if arg.get('close_all') else 'close', menu=arg.get('menu'))
+                return {'passed': True, 'actual': out}
+            raise ScenarioError('BAD_STEP', 'menu takes press (button label or index), close or close_all')
+        if action == 'screenshot':
+            out = agent.screenshot(arg if isinstance(arg, str) else arg.get('name', 'step'))
+            return {'passed': True, 'actual': {'path': out['path'], 'method': out['method']}}
+        if action == 'watch':
+            out = agent.watch(arg['items'], float(arg.get('seconds', 5)), int(arg.get('interval_ms', 100)),
+                              arg.get('until'), keep_unpaused=False)
+            passed = out['untilMet'] is not False
+            return {'passed': passed, 'actual': out['items'], 'reason': None if passed else
+                    'watched %ss and %s never became true' % (out['seconds'], arg.get('until'))}
+        if action == 'trace':
+            arg = {'function': arg} if isinstance(arg, str) else arg
+            out = agent.trace(arg['function'], arg.get('action', 'start'), arg.get('filter'))
+            return {'passed': True, 'actual': {k: out.get(k) for k in ('started', 'recorded', 'callsSinceStart')}}
+        if action == 'time':
+            out = agent.time_control(**arg) if isinstance(arg, dict) else agent.time_control(advance_hours=float(arg))
+            return {'passed': True, 'actual': out.get('after')}
+        if action == 'rng':
+            out = agent.rng(**arg) if isinstance(arg, dict) else agent.rng(seed=int(arg))
+            return {'passed': True, 'actual': out}
+        return None
+
+    def _agent_expect(self, arg):
+        agent = self.agent
+        if 'called' in arg:
+            out = agent.trace(arg['called'], 'read', limit=20)
+            count = out['recorded']
+            spec = dict(arg)
+            if not any(k in spec for k in COMPARISONS):
+                spec['ge'] = 1
+            if 'at_least' in spec:
+                spec['ge'] = spec.pop('at_least')
+            if 'at_most' in spec:
+                spec['le'] = spec.pop('at_most')
+            return count, '%s calls' % arg['called'], spec
+        if 'condition' in arg:
+            out = agent.condition_eval(arg['condition'], arg.get('subject', 'player'), arg.get('target'),
+                                       arg.get('tab_subjects'))
+            lists = [l for l in out['lists'] if not arg.get('list') or str(arg['list']).lower() in l['list'].lower()]
+            if not lists:
+                raise ScenarioError('BAD_STEP', 'No condition list matches %r' % arg.get('list'),
+                                    {'lists': [l['list'] for l in out['lists']]})
+            actual = all(l['passes'] for l in lists)
+            spec = dict(arg)
+            spec.setdefault('equals', bool(spec.pop('passes', True)))
+            return actual, 'conditions of %s%s' % (arg['condition'], ' (%s)' % arg['list'] if arg.get('list') else ''), spec
+        if 'message_box' in arg:
+            box = agent.message_box()
+            text = ' '.join(filter(None, [box and box.get('title'), box and box.get('text')])) if box else ''
+            want = arg['message_box']
+            actual = bool(box) and (want is True or str(want).lower() in text.lower())
+            return actual, 'message box %r (open: %r)' % (want, text or None), _truthy(arg)
+        if 'marker' in arg:
+            out = agent.quest_targets(arg['marker'])
+            shown = [t for o in out['objectives'] for t in o['targets'] if t['shown']]
+            return bool(shown), 'quest marker of %s' % arg['marker'], {**arg, 'equals': bool(arg.get('shown', True))}
+        if 'menu_open' in arg:
+            names = [m['name'].lower() for m in agent.menus()['visible']]
+            want = str(arg['menu_open']).lower()
+            return any(want in n for n in names), 'menu %s open' % arg['menu_open'], _truthy(arg)
+        raise ScenarioError('BAD_STEP', 'unknown agent check')
+
+    def _trace_summary(self, script):
+        try:
+            out = self.live.deep.script_trace(script, 'read', limit=400)
+            self.live.deep.script_trace(script, 'stop')
+        except Exception as e:
+            return {'error': str(e)}
+        ran = sorted({s['statement'] for s in out.get('steps', []) if s.get('statement')})
+        return {'script': out.get('script'), 'statementsRun': ran, 'statements': out.get('statements'),
+                'notRun': (out.get('notRun') or [])[:40], 'stopped': out.get('stopped'), 'lost': out.get('lost'),
+                'steps': len(out.get('steps', []))}
+
+    def debug_bundle(self, scenario):
+        """Evidence for a failed test: open menus and message box, the console's last lines, the frame."""
+        bundle = {}
+        try:
+            bundle['menus'] = self.agent.menus()
+            bundle['menus'].pop('uses', None)
+        except Exception as e:
+            bundle['menus'] = {'error': str(e)}
+        try:
+            console = self.game.logs(['console'], 0, 40).get('console') or {}
+            bundle['consoleTail'] = console.get('lines', [])
+        except Exception as e:
+            bundle['consoleTail'] = {'error': str(e)}
+        try:
+            shot = self.agent.screenshot(scenario['name'])
+            bundle['screenshot'] = {'path': shot['path'], 'method': shot['method'], 'blank': shot.get('blank')}
+        except Exception as e:
+            bundle['screenshot'] = {'error': str(e)}
+        return bundle
 
     # ------------------------------------------------------------ evidence
     def screenshot(self, name):
@@ -682,6 +866,11 @@ class ScenarioRunner:
         path = folder / ('%s-%d.json' % (safe, time.time()))
         path.write_text(json.dumps(report, indent=2, default=str) + '\n', encoding='utf-8')
         report['report'] = str(path)
+
+
+def _truthy(arg):
+    """A check without a comparison means "is true"."""
+    return arg if any(k in arg for k in COMPARISONS) else {**arg, 'is_true': True}
 
 
 class _Crash(Exception):

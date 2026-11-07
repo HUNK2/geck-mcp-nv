@@ -15,6 +15,10 @@ engine tools in [FNV-ENGINE-TOOLS.md](FNV-ENGINE-TOOLS.md):
 - **Data and authoring** (milestone 8): the load order, records across all plugins with their overrides,
   a script lint against the game's command tables, compiling with the running game's own compiler, and
   replacing a running script's code without a restart.
+- **Agent tools** (after P1): what an agent needs to test and debug a mod with no person at the keyboard:
+  tracing any proven engine function, watching values over time, screenshots, menus and message boxes
+  pressed through the engine, test saves, time and RNG control, spawning and moving, condition evaluation
+  for any record, quest markers, running script instances, leveled-list rolls and crash history.
 
 They need the **fnvmcp engine companion**, an opt-in xNVSE plugin separate from geck-mcp-nv's own
 companions. Unlike those, it works with engine addresses, so it lives in this fork's fnv-mcp work and
@@ -149,6 +153,21 @@ missing. In short:
 | `fnv_dialogue_choose` | act | Talk to an NPC and pick responses by index, prompt text or info id; each step's options, the pick and the answer |
 | `fnv_ai_packages` | read | An actor's packages in order: type, flags, schedule against the game clock, location, conditions with values; which one runs, which are eligible or shadowed, and why the others are not |
 | `fnv_form_live_diff` | read | A form in memory versus its winning plugin record (name, value, weight, health, damage, script, global value, quest data): what changed at runtime |
+| `fnv_trace` | read | Calls to any proven engine function while the game runs: `this` and arguments decoded with the decomp signature (forms named), result, time, caller by name; counts by caller and `this`; filter by `this`, caller or a parameter |
+| `fnv_watch` | read | Values sampled over time (expressions, globals, actor values, positions, memory fields by class layout): first, last, min, max and a timeline of changes with frames; stops early on `until` |
+| `fnv_screenshot` | read | The current frame as PNG, returned as an image: the engine's own back-buffer capture (`SaveScreenshot`, works with the window covered), else a window capture |
+| `fnv_test_save` | act | Named test saves (`fnvmcp_test_*`) in the dev profile: save, load (waits for the game's post-load message), list, delete |
+| `fnv_crash_history` | read | Every crash log explained and grouped by signature: count, first/last time, likely culprits, new signatures flagged, crashes during exit cleanup marked |
+| `fnv_move` | act | Teleport the player or a ref to a ref, a cell (coc, or JIP `MoveToCell` with a position) or a position; waits for the cell to load; undoable |
+| `fnv_spawn` | act | Place a base form near a ref (`PlaceAtMe`) and return the new refs; undo disables and deletes them |
+| `fnv_condition_eval` | read | Every condition list of a record (INFO, PACK, PERK and its entry tabs, SPEL/ENCH/ALCH/INGR effects, QUST quest, stage log entries and objective targets, RCPE, IDLE, MESG buttons, CPTH) evaluated against chosen refs, with what fails |
+| `fnv_quest_targets` | read | Each objective's targets: ref, cell, position, target conditions, the door a marker points at, the player's target cache, and every reason a marker is not shown |
+| `fnv_script_instances` | read | Running quest scripts and the object scripts of every loaded cell (the lists `TES::RunScripts` walks), variables, instance counts per script, and whether scripts run at all |
+| `fnv_menu` | read | Interface mode, active menu, menu stack, visible menus by name, loading screen, and an open message box with title, text and buttons |
+| `fnv_menu_control` | act | Press a message box button by index or label through the engine's click handler (`GetButtonPressed` sees it), close the open menu, close all menus |
+| `fnv_rng` | act | The game's one Mersenne Twister: state, or seed it like `MersenneTwister::Seed` |
+| `fnv_time` | act | Read the calendar, jump to an hour, advance hours (day/month/year roll over), change the timescale; `engine_wait` runs the game's own one-hour wait step |
+| `fnv_leveled_roll` | read | Roll a leveled list many times with `TESLeveledList::CalculateCurrentForm` at a level: share of each form and count, and of nothing; repeatable with a seed |
 
 Act tools journal every change in `state/fnv/journal.jsonl` and back up the dev profile's saves before the
 first change of a game session (`state/fnv/save-backups`, newest 10 kept). Console lines, scripts and
@@ -190,7 +209,46 @@ the game window. If the game dies, the report carries the crash doctor's diagnos
 and the game is relaunched. Reports are saved in `state/fnv/test-reports`.
 
 Files are a YAML subset (block mappings and lists, flow `{}` and `[]`, quoted or plain scalars, `|`
-blocks, comments) or JSON; no YAML library is needed. Examples: `examples/fnv-tests/`.
+blocks, comments) or JSON; no YAML library is needed. Numbers with a leading zero (`00138562`) stay text, so
+form ids can be written bare. Examples: `examples/fnv-tests/`.
+
+### Agent steps and checks
+
+```yaml
+name: agent wave end to end
+start: {test_save: agentwave}         # a save made with fnv_test_save
+guard: {message_boxes: keep}          # keep message boxes for the test (default: close them)
+trace_script: HelloQuest              # report which statements of this script ran and which never did
+steps:
+  - spawn: {form: 0006B53D, as: ammo} # $ammo in later steps
+  - expect: {exists: $ammo}
+  - trace: {function: "TESQuest::RunScript"}
+  - wait: {seconds: 1}
+  - expect: {called: "TESQuest::RunScript", at_least: 10}
+  - run: ShowMessage 0011E661
+  - expect: {message_box: Hardcore}
+  - menu: {press: "No"}
+  - expect: {menu_open: MessageMenu, is_false: true}
+  - expect: {condition: 00138562, list: requirements, passes: false}
+  - time: {advance_hours: 1}
+  - watch: {items: [GetCurrentTime], seconds: 1}
+  - expect: {marker: 03002FCA}
+  - screenshot: agent-wave-end
+  - expect: {no_script_errors: true}
+teardown:
+  - trace: {function: "TESQuest::RunScript", action: stop}
+  - revert_all: true                  # this test's changes only
+```
+
+Steps: `spawn` (`as:` names the new ref), `move`, `save` / `load` (test saves), `menu` (`press`, `close`,
+`close_all`), `screenshot`, `watch` (fails when `until` never becomes true), `trace`, `time`, `rng`.
+Checks: `called` (calls recorded by a running trace, `at_least` / `at_most`), `condition` (a record's
+condition lists, optionally one `list`, `passes`), `message_box` (text in the open box), `marker` (a quest
+target is shown), `menu_open`. `revert_all: true` in a test undoes only the changes made since its steps
+began (`revert_all: process` for every change of the game process).
+
+A failing run adds a debug bundle: the open menus and message box, the console's last 40 lines and a
+screenshot. With `trace_script` the report has `scriptTrace`: statements run, and the lines that never ran.
 
 ## Data and authoring
 
@@ -249,6 +307,61 @@ that is not on the list came from elsewhere (a script package, a quest, combat, 
 runtime class (`TESFullName`, `TESValueForm`, `TESWeightForm`, `TESHealthForm`, `TESAttackDamageForm`,
 `TESScriptableForm`), plus `TESGlobal` and `TESQuest` data, and compares them with `fnv_record_show`'s
 decoding of the winning record.
+
+## Agent tools: testing and debugging with no one at the keyboard
+
+The point is a closed loop: an agent changes a mod, runs it, sees what the game did, and finds out why,
+without a person clicking. Where the game has a function or a data structure for it, the tools use that.
+
+- **fnv_trace** hooks a proven function (status proven or class proven only) with the companion's observe-only
+  watch hook and decodes each call with the decomp signature: `this`, stack and register arguments by calling
+  convention (fastcall: integer and pointer arguments in ecx/edx), forms named with RTTI and the plugin
+  indexes, the result (float results are in st0, not recorded), the caller named from the engine map. The
+  ring keeps 4096 calls; `overwritten` says how many fell out between reads. Example: in two seconds
+  `TESQuest::RunScript` ran for every running quest, all from `TES::RunScripts` (proven) on the main thread.
+- **fnv_screenshot** calls the engine's `SaveScreenshot(path)` (0x00878860; a decomp name, identified by its
+  own log strings, and checked against the unpacked exe's bytes). It copies the back buffer, so it works
+  when the window is covered. It needs the device to allow locking the back buffer (`bAllowScreenShot=1`,
+  and multisampling off or a driver that allows it); otherwise the tool falls back to a window capture.
+- **fnv_menu / fnv_menu_control** read `InterfaceManager` (0x011D8A80, read by `InterfaceManager::Instance`,
+  proven): mode +0x0C, active menu +0xD0, menu stack +0x114, and the visibility byte per menu id
+  (0x011F308F + id). The message box is `MessageMenu` (0x011DA4F0): its tiles are found by name (`MM_Title`,
+  `MM_MessageText`) and the buttons are the items of its list box (+0x40), each label the `ListItemText`
+  child's string. A press calls `MessageMenu::HandleTileSelection(7, button tile)` (class proven), the call a
+  click makes: it stores the button's value where `GetButtonPressed` reads it (0x0118C684), runs the
+  message's callback and shows the next queued box. Close uses `MessageMenu::Close` (proven). The active-menu
+  field stays empty for message boxes, so the top of the menu stack is taken as the open menu.
+- **fnv_condition_eval** reads the condition lists where each record keeps them (decomp layouts): INFO +0x18,
+  PACK +0x40, PERK +0x40 and its entry-point entries (conditions array +0x10, one list per tab: tab 0 is the
+  perk owner, other tabs' subjects are given), effect items +0x1C (effect list after the `EffectItemList`
+  vtable, checked by each item's `EffectSetting`), QUST +0x54, stage log entries, objective targets (run on
+  the target ref), RCPE +0x34, IDLE +0x30, MESG buttons (+0x30, conditions +0x08), CPTH +0x18. Each
+  condition runs with the game's own condition function from the command table, combined like
+  `TESConditionItem::ContainsTrait`.
+- **fnv_quest_targets** follows how the game builds markers: the quest must run and be the player's active
+  quest (`PlayerCharacter` +0x6B8), the objective must be displayed and not completed and in the player's
+  list (+0x6BC), the target ref must exist and its conditions pass (subject: the target ref). Targets in
+  another cell point at the first door of the path the game built (target +0x20). It also says whether the
+  game's own target cache (+0x6C4) holds the target.
+- **fnv_script_instances** walks what `TES::RunScripts` (proven) walks: the quest list
+  (`TESDataHandler` +0x118; quests with the enabled bit run their script) and, for each loaded cell (the
+  interior, else the grid from `TES` +0x08), the cell's scripted-ref list (loaded data +0x4C). It reports
+  `scriptsRunning` from the byte `Script::GetProcessScripts` (proven) returns.
+- **fnv_rng** writes the state `MersenneTwister::Seed` would leave (mt[0] = seed, mt[i] = mt[i-1] * 69069,
+  index 624) into the one generator `BSRandom::QInstance` (proven) returns; leveled lists, VATS, combat, AI,
+  lockpicking and `GetRandomPercent` all draw from it, on every thread. Rolls in the same request repeat
+  exactly; across frames other systems keep drawing numbers.
+- **fnv_time** reads the calendar (0x011DE7B8: year, month, day, hour, days passed, timescale globals).
+  `globals` mode moves the clock forward with the game's month lengths and sets the calendar's dirty byte,
+  then re-evaluates nearby actors' packages. `engine_wait` calls the game's one-hour wait step (0x0094DF80,
+  unnamed, so it needs `allow_unproven`) once per hour: process lists catch up, healing and hardcore needs
+  run, as when the player waits. The step counts the player's wait counter (+0x654) down and fully heals at
+  0, so the tool keeps it above 0 and restores it. Time changes are not undone: the game never runs its
+  clock backwards (a pathfinding crash followed a rewind on the test machine); load a test save to go back.
+- **fnv_leveled_roll** gets the list with `TESLeveledList::GetFormAsLeveledList` and rolls it with
+  `TESLeveledList::CalculateCurrentForm` (both proven) at the level asked, nested lists resolved.
+- **fnv_move** uses `MoveTo`, `coc`, `SetPos` / `SetAngle` and JIP LN's `MoveToCell` (FNV has no
+  `PositionCell` or `PositionWorld`); undo moves the ref back with `MoveToCell` and its old heading.
 
 ## Building a mod without GECK
 
@@ -335,6 +448,27 @@ Dialogue, AI packages and live diffs (2026-11-07, a fresh game started in the Pr
   crashed in a pathfinding tasklet (`RouteBuilder::BuildRoute` > `AStarSearch` > scrap heap); no request was
   being served. A state normal play never makes; not traced further.
 
+- Agent tools (2026-11-07, Goodsprings save): `fnv_menu` read the Gun Runners' Arsenal message box (title,
+  text, OK); `fnv_menu_control press` pressed OK and the next queued box appeared; on the hardcore prompt
+  (`ShowMessage 0011E661`) "No (Recommended)" and "Yes" were pressed by label and `GetButtonPressed`'s byte
+  became 0 and 1 (hardcore stayed off: the result belonged to the console). `fnv_trace TESQuest::RunScript`
+  decoded every quest and named the caller. `fnv_watch` sampled at 250 ms with frame numbers.
+  `fnv_script_instances`: 229 running quest scripts, 25 loaded cells, 68 scripted refs. `fnv_quest_targets`:
+  VMQ01 listed every reason its markers are hidden; the active Old World Blues quest's target was shown and in
+  the game's cache. `fnv_condition_eval`: the Cowboy perk's skill requirement failed (15 against 45), the
+  Super Stimpak's effects split on `IsHardcore` / `HasPerk`. `fnv_leveled_roll Ammo5mm75`: nothing in 23% of
+  300 rolls against chance none 25%; the same seed gave the same rolls twice. `fnv_time` advanced 2 hours
+  (globals) and 2 hours (`engine_wait`); `fnv_spawn`, `fnv_move` and their undo; `fnv_test_save` save, list
+  and load. The engine screenshot worked with the window in the background. A YAML test with every new step
+  passed, 17 steps, unattended; a failing one carried the debug bundle; `trace_script` listed the four lines
+  of the Hello Quest script that never ran.
+- About 40 s after a test advanced the clock and its teardown set it back, the game crashed in low-process
+  pathfinding (`LowProcess::ProcessPatrol` > `Pathing::FindPathDistance` > door search > scrap heap), the same
+  family as the crash after Trudy was force-enabled. Since then time changes only go forward.
+- One fresh start hung before the main menu (main thread waiting in ntdll under
+  `LoadedNode::ReadFromStream`, 4 s of CPU, no hooks installed); `fnv_restart` terminated it and the next
+  start was normal (14.6 s to the save).
+
 ## Launch notes
 
 - MO2 is started with ShellExecute. A detached `CreateProcess` gave the game no window focus and its
@@ -351,6 +485,10 @@ Dialogue, AI packages and live diffs (2026-11-07, a fresh game started in the Pr
   (`CreateEnvironmentBlock`) before launching, never overriding any.
 - A leftover `plugin_loadcheck.tmp` (from an MO2 that was killed) makes MO2 stop at a "Plugin error"
   dialog; when MO2 is not running the bridge moves it into `state/fnv/mo2-backups`.
+- An MO2 of the dev instance left running without the game (after a crash) takes the next launch request,
+  and a failed launch leaves it behind a modal "Cannot launch program" dialog that nobody clicks. Before a
+  launch the bridge closes such an MO2 (WM_CLOSE, then terminate); while waiting for the game it watches for
+  MO2's blocking dialogs and fails at once with `MO2_LAUNCH_FAILED`, closing the dialog.
 
 ## Credits
 
@@ -359,7 +497,10 @@ Dialogue, AI packages and live diffs (2026-11-07, a fresh game started in the Pr
   names and hit flags `fnv_damage_log` decodes (`GameProcess.h`, `GameForms.h`). xNVSE has no licence file;
   nothing of its code is copied, only interface declarations (`native/runtime/nvse_abi.h`, upstream
   geck-mcp-nv), offsets and names.
-- [JIP LN NVSE](https://github.com/jazzisparis/JIP-LN-NVSE): `CloseActiveMenu`, and the layouts of
+- [JIP LN NVSE](https://github.com/jazzisparis/JIP-LN-NVSE): `CloseActiveMenu`, `MoveToCell`, and the layouts of
   `MagicTarget`, `ActiveEffect` and `EffectItem` and the control codes used by `fnv_effects` and
-  `fnv_input` (offsets only, checked against the decompilation's class sizes).
+  `fnv_input` (offsets only, checked against the decompilation's class sizes); the `TES` singleton address
+  and its grid and interior fields used by `fnv_script_instances`.
+- xNVSE's menu ids, `Tile` / `Tile::Value` layouts and the data handler address (`g_dataHandler`), used by
+  `fnv_menu` and `fnv_script_instances` (offsets and names only).
 - The Fallout: New Vegas decompilation and fnvsym's proof table: addresses, layouts and proven names.

@@ -73,6 +73,58 @@ def post_close(pid):
     return len(found)
 
 
+MO2_BLOCKING_DIALOGS = ('Cannot launch program', 'Plugin error', 'Executable not found')
+
+
+def image_path(pid):
+    kernel32 = ctypes.windll.kernel32
+    handle = kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+    if not handle:
+        return None
+    try:
+        size = wintypes.DWORD(1024)
+        buffer = ctypes.create_unicode_buffer(1024)
+        if not kernel32.QueryFullProcessImageNameW(handle, 0, buffer, ctypes.byref(size)):
+            return None
+        return buffer.value
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def mo2_processes(mo2_root):
+    """pids of ModOrganizer.exe running from this MO2 instance folder."""
+    out = subprocess.run(['tasklist', '/FI', 'IMAGENAME eq ModOrganizer.exe', '/FO', 'CSV', '/NH'],
+                         capture_output=True, text=True, timeout=15).stdout
+    pids = [int(row.split('","')[1]) for row in out.splitlines() if row.lower().startswith('"modorganizer.exe"')]
+    root = str(mo2_root).lower().rstrip('\\/')
+    return [pid for pid in pids if (image_path(pid) or '').lower().startswith(root)]
+
+
+def visible_windows(pid):
+    """[(hwnd, title)] of a process's visible top-level windows."""
+    user32 = ctypes.windll.user32
+    found = []
+
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def callback(hwnd, _):
+        owner = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
+        if owner.value == pid and user32.IsWindowVisible(hwnd):
+            title = ctypes.create_unicode_buffer(300)
+            user32.GetWindowTextW(hwnd, title, 300)
+            found.append((hwnd, title.value))
+        return True
+
+    user32.EnumWindows(callback, 0)
+    return found
+
+
+def mo2_dialogs(mo2_root):
+    """Blocking MO2 dialogs (a launch that failed, a plugin error): [{'pid', 'title', 'hwnd'}]."""
+    return [{'pid': pid, 'title': title, 'hwnd': hwnd} for pid in mo2_processes(mo2_root)
+            for hwnd, title in visible_windows(pid) if title in MO2_BLOCKING_DIALOGS]
+
+
 def complete_environment():
     """Add the user's standard environment variables that this process lacks (never overriding any).
 
@@ -301,6 +353,7 @@ class Game:
         if not mo2.exists():
             raise GameError('MO2_MISSING', 'ModOrganizer.exe not found in %s' % self.mo2_root)
         kind, value = parse_start(start, self.saves_dir)
+        leftover = self.close_stale_mo2()
         stale = self.clear_stale_mo2_state()
         launched = time.time()
         method = self.shell_launch(mo2)
@@ -309,8 +362,26 @@ class Game:
                      'command': 'ModOrganizer.exe -p "%s" run -e "%s"' % (self.profile, self.executable)}]
         if stale:
             timeline.insert(0, {'t': 0, 'event': 'stale_mo2_state_moved', 'files': stale})
+        if leftover:
+            timeline.insert(0, {'t': 0, 'event': 'leftover_mo2_closed', **leftover})
         deadline = time.monotonic() + timeout
-        pid = self._wait(lambda: self.process(), deadline, 'GAME_NOT_STARTED', 'FalloutNV.exe did not start')[0]
+
+        def started():
+            proc = self.process()
+            if proc:
+                return proc
+            dialogs = mo2_dialogs(self.mo2_root)
+            if dialogs:
+                # MO2 waits behind a modal dialog that nobody will click: close it and fail now.
+                for d in dialogs:
+                    ctypes.windll.user32.PostMessageW(d['hwnd'], 0x0010, 0, 0)
+                raise GameError('MO2_LAUNCH_FAILED', 'MO2 could not start the game: it showed "%s"' % dialogs[0]['title'],
+                                {'dialogs': [d['title'] for d in dialogs], 'mo2Log': str(self.mo2_root / 'logs/mo_interface.log'),
+                                 'hint': 'ERROR_ACCESS_DENIED on nvse_loader.exe in the MO2 log means the launch came from '
+                                         'a restricted process (a sandboxed shell): launch through the MCP server.'})
+            return None
+
+        pid = self._wait(started, deadline, 'GAME_NOT_STARTED', 'FalloutNV.exe did not start')[0]
         timeline.append({'t': round(time.time() - launched, 1), 'event': 'process', 'pid': pid})
         self.save_session(pid=pid)
         self.link.close()
@@ -328,11 +399,15 @@ class Game:
     UNPAUSER = ('Begin Function { }\nint m\nlet m := GetActiveMenuMode\nif m == 1001 || m == 1013\nCloseActiveMenu\n'
                 'endif\nEnd')
 
-    def keep_unpaused(self, seconds):
+    PAUSE_CLOSER = ('Begin Function { }\nif GetActiveMenuMode == 1013\nCloseActiveMenu\nendif\nEnd')
+
+    def keep_unpaused(self, seconds, close_messages=True):
         """For `seconds`, the companion closes the pause menu (which the game opens when its window loses focus)
-        and message boxes every 0.3 s, so a test's world keeps running. Returns the task slot, or None."""
+        and, unless close_messages is false, message boxes every 0.3 s, so a test's world keeps running. Returns
+        the task slot, or None."""
+        script = self.UNPAUSER if close_messages else self.PAUSE_CLOSER
         try:
-            result = self.link.one('every', '12C', '%X' % (int(seconds) * 1000), fnv_link.hexs(self.UNPAUSER))
+            result = self.link.one('every', '12C', '%X' % (int(seconds) * 1000), fnv_link.hexs(script))
         except LinkError:
             return None
         return result.get('slot') if result.get('ok') else None
@@ -354,6 +429,26 @@ class Game:
             return {'closing': False, 'reason': e.code}
         return {'closing': bool(result.get('ok')), 'seconds': seconds, 'slot': result.get('slot'),
                 'reason': result.get('error')}
+
+    def close_stale_mo2(self, wait=8.0):
+        """A dev-instance MO2 left running without the game (after a crash, or behind a failed-launch dialog) takes
+        the next "run" request and can sit behind a modal dialog: close it (WM_CLOSE, then terminate)."""
+        if self.process():
+            return None
+        pids = mo2_processes(self.mo2_root)
+        if not pids:
+            return None
+        dialogs = [title for pid in pids for _, title in visible_windows(pid) if title]
+        for pid in pids:
+            post_close(pid)
+        end = time.monotonic() + wait
+        while time.monotonic() < end and mo2_processes(self.mo2_root):
+            time.sleep(0.5)
+        killed = []
+        for pid in mo2_processes(self.mo2_root):
+            if terminate(pid):
+                killed.append(pid)
+        return {'pids': pids, 'windows': dialogs[:10], 'terminated': killed}
 
     def clear_stale_mo2_state(self):
         """MO2 writes plugin_loadcheck.tmp while it loads its plugins and deletes it afterwards. When MO2 is not

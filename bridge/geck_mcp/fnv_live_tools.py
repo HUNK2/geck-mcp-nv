@@ -13,6 +13,7 @@ from .fnv_data import DataTools
 from .fnv_deep import DeepTools
 from .fnv_live import LiveService
 from .fnv_social import SocialTools
+from .fnv_agent import AgentTools
 from .fnv_scenario import ScenarioRunner, diff, load_snapshot, snapshot
 
 FNV_LIVE_TOOLS = {
@@ -79,6 +80,22 @@ FNV_LIVE_TOOLS = {
     'fnv_dialogue_choose': ('act', 'start a conversation with an NPC and pick responses, for testing dialogue end to end'),
     'fnv_ai_packages': ('read', "an actor's packages in order with schedule and conditions: which runs now and why"),
     'fnv_form_live_diff': ('read', 'a form in memory now versus its winning plugin record: what changed at runtime'),
+    # agent wave: unattended testing and debugging
+    'fnv_trace': ('read', 'calls to any proven engine function: decoded arguments, results, callers (watch hook)'),
+    'fnv_watch': ('read', 'values sampled over time: expressions, memory fields, actor values, positions'),
+    'fnv_screenshot': ('read', "the game's frame as PNG (engine back buffer, else the window), shown to the agent"),
+    'fnv_test_save': ('act', 'named test saves kept apart from other saves: save, load, list, delete'),
+    'fnv_crash_history': ('read', 'crash logs grouped by signature across runs, new ones flagged'),
+    'fnv_move': ('act', 'teleport the player or a ref to a ref, a cell or a position (undoable)'),
+    'fnv_spawn': ('act', 'place a form near a ref and return the new refs (undoable)'),
+    'fnv_condition_eval': ('read', "every condition list of a record evaluated against chosen refs, with what fails"),
+    'fnv_quest_targets': ('read', "where each objective's markers point and why a marker is missing"),
+    'fnv_script_instances': ('read', 'running quest and object script instances with variables and counts'),
+    'fnv_menu': ('read', 'open menus, the menu stack, loading screens and the message box with its buttons'),
+    'fnv_menu_control': ('act', 'press a message box button through the engine, close a menu, close all menus'),
+    'fnv_rng': ('act', "the game's random number generator: state, or seed it for repeatable rolls"),
+    'fnv_time': ('act', 'read the calendar, jump to an hour, advance hours, change the timescale'),
+    'fnv_leveled_roll': ('read', "roll a leveled list many times with the game's own code: chances per form"),
     # milestone 10: setup
     'fnv_setup_check': ('read', 'is this machine ready for the fnv tools? each prerequisite with its state and the fix'),
 }
@@ -96,6 +113,8 @@ def register(server, project, annotations, result_type):
     live.deep = deep
     data = DataTools(project, live)
     social = SocialTools(live, data)
+    agent = AgentTools(live, deep, social, data)
+    live.agent = agent
     read, act, control = annotations
 
     def service_call(name, fn, kind):
@@ -174,10 +193,13 @@ def register(server, project, annotations, result_type):
                            yaml: Annotated[str, Field(max_length=100000)] | None = None,
                            relaunch_on_crash: bool = True) -> result_type:
         """Run one scenario test (a YAML file, or inline YAML) in the game. Launches the game when needed, applies
-        `start`, runs setup and steps (run, script, wait, expect, set, actor, input, move, mem_write, call,
-        snapshot), then teardown (revert_all, quit). Returns every step's result with actual values, failures with
-        reasons, new script errors, a screenshot on failure, and on a crash the crash doctor's diagnosis plus a
-        relaunch."""
+        `start` (menu, continue, a save, a test save or a cell), runs setup and steps (run, script, wait, expect,
+        set, actor, input, move, mem_write, call, snapshot, and the agent steps spawn, save, load, menu, screenshot,
+        watch, trace, time, rng), then teardown (revert_all: this test's changes, quit). Agent checks: called (a
+        traced engine function ran), condition, message_box, marker, menu_open. guard: {message_boxes: keep} leaves
+        message boxes for the test; trace_script reports which statements of a script ran. Returns every step's
+        result with actual values, failures with reasons, new script errors, a debug bundle on failure (menus,
+        message box, console tail, screenshot), and on a crash the crash doctor's diagnosis plus a relaunch."""
         def action():
             if not path and not yaml:
                 raise ValueError('Give path or yaml')
@@ -582,6 +604,177 @@ def register(server, project, annotations, result_type):
         script (from the decomp's component layouts), global values and quest data. Lists the fields that differ,
         meaning scripts, console commands or the engine changed them at runtime."""
         return await invoke('fnv_form_live_diff', lambda: social.form_live_diff(form))
+
+    # ------------------------------------------------------------------ agent wave
+    @server.tool(annotations=read)
+    async def fnv_trace(function: Annotated[str, Field(max_length=200, description=(
+            'proven engine function name (Actor::DamageHealthAndFatigue) or address'))] | None = None,
+                        action: Literal['start', 'read', 'stop', 'list'] = 'start',
+                        filter: dict[str, Any] | None = None,
+                        limit: Annotated[int, Field(ge=1, le=500)] = 50,
+                        include_calls: bool = True) -> result_type:
+        """Watch any proven engine function while the game runs: start installs an observe-only hook, read returns
+        the calls since the last read: `this` and every argument decoded with the function's decomp signature (forms
+        and refs named), the result, the time, and the caller named from the engine map, plus counts by caller and by
+        `this`. filter keeps only calls where this / caller / paramN equals a ref ({on: this, ref: MyNPC}) or a value
+        ({on: param1, value: 5}). Answers "does the engine run X for my object, from where, with what". stop removes
+        the hook; list shows running traces."""
+        return await invoke('fnv_trace', lambda: agent.trace(function, action, filter, limit, include_calls))
+
+    @server.tool(annotations=read)
+    async def fnv_watch(items: list[Any],
+                        seconds: Annotated[float, Field(gt=0, le=120)] = 5.0,
+                        interval_ms: Annotated[int, Field(ge=0, le=10000)] = 100,
+                        until: Annotated[str, Field(max_length=500)] | None = None,
+                        keep_unpaused: bool = True) -> result_type:
+        """Sample values over time and return how each changed: items are expressions ("player.GetAV Health",
+        "MyQuest.counter", "GetStage MyQuest") or mappings {eval, ref}, {actor_value, ref}, {variable, of},
+        {position: ref}, {mem: ref or 0xADDR, path: Class.field} (decomp layouts). Stops early when `until` (an
+        expression) is true. Each item gives first, last, min, max, number of changes and a timeline of changes
+        with time and frame; paused=true when the frame counter did not move."""
+        return await invoke('fnv_watch', lambda: agent.watch(items, seconds, interval_ms, until, keep_unpaused))
+
+    @server.tool(annotations=read)
+    async def fnv_screenshot(name: Annotated[str, Field(max_length=60)] | None = None,
+                             max_width: Annotated[int, Field(ge=320, le=3840)] = 1280,
+                             method: Literal['auto', 'engine', 'window'] = 'auto') -> result_type:
+        """The game's current frame, returned as an image you can look at and saved as PNG. auto asks the engine
+        to write its back buffer (SaveScreenshot, works while the window is covered; needs iMultiSample=0 and
+        bAllowScreenShot=1 in the dev profile), else captures the game window."""
+        import base64
+        from mcp.types import ImageContent
+        with anyio.CancelScope(shield=True):
+            result = await anyio.to_thread.run_sync(partial(live.run, 'fnv_screenshot',
+                                                            lambda: agent.screenshot(name, max_width, method), 'read'))
+        content = [TextContent(type='text', text=json.dumps(result, default=str))]
+        path = (result.get('data') or {}).get('path') if result.get('ok') else None
+        if path:
+            with open(path, 'rb') as f:
+                content.append(ImageContent(type='image', mimeType='image/png',
+                                            data=base64.b64encode(f.read()).decode('ascii')))
+        return CallToolResult(content=content, structured_content=json.loads(json.dumps(result, default=str)),
+                              is_error=not result.get('ok', True))
+
+    @server.tool(annotations=act)
+    async def fnv_test_save(action: Literal['save', 'load', 'list', 'delete'] = 'list',
+                            name: Annotated[str, Field(pattern=r'^[A-Za-z0-9_\-]{1,60}$')] | None = None,
+                            timeout_seconds: Annotated[int, Field(ge=20, le=600)] = 180) -> result_type:
+        """Named test saves in the dev profile, kept apart from other saves by the prefix fnvmcp_test_: save the
+        current game, load one (waits until gameplay), list or delete them. Tests start from one with
+        start: {test_save: name}."""
+        kind = 'read' if action == 'list' else 'act'
+        return await invoke('fnv_test_save', lambda: agent.test_save(action, name, timeout_seconds), kind)
+
+    @server.tool(annotations=read)
+    async def fnv_crash_history(limit: Annotated[int, Field(ge=1, le=200)] = 40,
+                                include_shutdown: bool = True) -> result_type:
+        """Every crash log in the crash logger folders, explained with the engine map and grouped by signature
+        (exception, crash-site function, next frames): count, first and last time, the likely culprits, and new=true
+        for signatures no earlier call has seen. Tells a new crash from the same one again, and flags crashes during
+        exit cleanup (seen on every quit), which are usually not your mod."""
+        return await invoke('fnv_crash_history', lambda: agent.crash_history(limit, include_shutdown))
+
+    @server.tool(annotations=act)
+    async def fnv_move(ref: Ref = 'player', to: Ref | None = None,
+                       cell: Annotated[str, Field(pattern=r'^[A-Za-z0-9_]{1,120}$')] | None = None,
+                       position: dict[str, float] | None = None, rotation: dict[str, float] | None = None,
+                       timeout_seconds: Annotated[int, Field(ge=10, le=600)] = 180) -> result_type:
+        """Teleport the player or any ref: to another ref (MoveTo), to a cell (the player by coc; other refs need a
+        position in it, PositionCell), or to a position {x, y, z} in its current cell; rotation {z} in degrees.
+        Waits for the new cell to load when the player changes cells. Journaled: fnv_undo puts it back."""
+        return await invoke('fnv_move', lambda: agent.move(ref, to, cell, position, rotation, timeout_seconds), 'act')
+
+    @server.tool(annotations=act)
+    async def fnv_spawn(form: Ref, near: Ref = 'player', count: Annotated[int, Field(ge=1, le=20)] = 1,
+                        distance: Annotated[int, Field(ge=0, le=10000)] = 0,
+                        direction: Annotated[int, Field(ge=0, le=3)] = 0) -> result_type:
+        """Place a base form (NPC, creature, item, activator...) near a ref with PlaceAtMe and return the new refs
+        with their positions. distance/direction as PlaceAtMe (direction 0 front, 1 back, 2 left, 3 right).
+        Journaled: fnv_undo / fnv_revert_all disable and delete them."""
+        return await invoke('fnv_spawn', lambda: agent.spawn(form, near, count, distance, direction), 'act')
+
+    @server.tool(annotations=read)
+    async def fnv_condition_eval(form: Ref, subject: Ref | None = 'player', target: Ref | None = None,
+                                 tab_subjects: list[Annotated[str, Field(max_length=200)]] | None = None,
+                                 only_failed: bool = False) -> result_type:
+        """Evaluate every condition list of a record against chosen refs and show which condition fails: dialogue
+        responses (INFO), packages, perk requirements and each perk entry's tabs (tab 0 = perk owner, other tabs'
+        subjects from tab_subjects), effects of spells / enchantments / ingestibles / ingredients, quest conditions,
+        stage log entries and objective targets (run on the target ref), recipes, idles, message box buttons and
+        camera paths. Each condition shows its function, run-on, current value, comparison and pass/fail, combined
+        with the game's OR/AND rule."""
+        return await invoke('fnv_condition_eval', lambda: agent.condition_eval(form, subject, target, tab_subjects,
+                                                                               only_failed))
+
+    @server.tool(annotations=read)
+    async def fnv_quest_targets(quest: Ref) -> result_type:
+        """Where each quest objective's markers point and why a marker is missing: per target the ref, its cell,
+        position and distance, the target conditions (run on the target ref) with pass/fail, the door the marker
+        points at for targets in other cells, whether the game has it in the player's target cache, and every reason
+        it is not shown (quest not running or not the active quest, objective not displayed or completed, ref
+        missing, deleted or disabled, conditions failing)."""
+        return await invoke('fnv_quest_targets', lambda: agent.quest_targets(quest))
+
+    @server.tool(annotations=read)
+    async def fnv_script_instances(of: Ref | None = None,
+                                   script: Annotated[str, Field(max_length=200)] | None = None,
+                                   include_variables: bool = True,
+                                   limit: Annotated[int, Field(ge=1, le=300)] = 60) -> result_type:
+        """Running script instances: with `of`, the quest's or ref's script instance and variables (plus an actor's
+        effect scripts); without, every running quest script (the quests TES::RunScripts runs each frame) and the
+        object scripts on refs in the loaded cells, with instance counts per script (many instances of one script
+        point at spawned refs that are never deleted). scriptsRunning=false means the game runs no scripts at all.
+        script filters by script form id or quest name."""
+        return await invoke('fnv_script_instances', lambda: agent.script_instances(of, script, include_variables, limit))
+
+    @server.tool(annotations=read)
+    async def fnv_menu() -> result_type:
+        """The game's menus now: interface mode, the active menu, the menu stack, every visible menu by name, whether
+        a loading screen is up, and an open message box with its title, text and buttons (labels and values), read
+        from the interface manager and the message menu's tiles."""
+        return await invoke('fnv_menu', lambda: agent.menus())
+
+    @server.tool(annotations=act)
+    async def fnv_menu_control(action: Literal['press', 'close', 'close_all'],
+                               button: Annotated[str, Field(max_length=200)] | None = None,
+                               menu: Annotated[str, Field(max_length=60)] | None = None) -> result_type:
+        """Drive menus without a person: press a message box button by index ("0") or label ("Yes") through the
+        engine's own click handler, so the script's GetButtonPressed sees it; close the active (or a named) menu;
+        or close all menus."""
+        return await invoke('fnv_menu_control', lambda: agent.menu_control(action, button, menu), 'act')
+
+    @server.tool(annotations=act)
+    async def fnv_rng(seed: Annotated[int, Field(ge=0, le=0xFFFFFFFF)] | None = None) -> result_type:
+        """The game's random number generator (one Mersenne Twister for leveled lists, VATS, combat, AI, lockpicks,
+        GetRandomPercent): without seed its state; with seed it is seeded like MersenneTwister::Seed, so rolls in the
+        same request repeat exactly (later frames keep drawing numbers)."""
+        kind = 'read' if seed is None else 'act'
+        return await invoke('fnv_rng', lambda: agent.rng(seed), kind)
+
+    @server.tool(annotations=act)
+    async def fnv_time(set_hour: Annotated[float, Field(ge=0, lt=24)] | None = None,
+                       advance_hours: Annotated[float, Field(gt=0, le=720)] | None = None,
+                       timescale: Annotated[float, Field(ge=0, le=10000)] | None = None,
+                       mode: Literal['globals', 'engine_wait'] = 'globals',
+                       evaluate_packages: bool = True, allow_unproven: bool = False) -> result_type:
+        """Control game time for tests: jump to an hour, advance hours (day, month and year roll over like the game's
+        calendar), or change the timescale; with no arguments it reads the calendar. mode=globals moves the clock and
+        re-evaluates nearby actors' packages; mode=engine_wait runs the game's own one-hour wait step per hour
+        (process lists catch up, healing, hardcore needs), an unnamed function, so it needs allow_unproven."""
+        if set_hour is None and advance_hours is None and timescale is None:
+            return await invoke('fnv_time', lambda: {'calendar': agent.calendar(), 'changed': False})
+        return await invoke('fnv_time', lambda: agent.time_control(set_hour, advance_hours, timescale, mode,
+                                                                   evaluate_packages, allow_unproven), 'act')
+
+    @server.tool(annotations=read)
+    async def fnv_leveled_roll(form: Ref, level: Annotated[int, Field(ge=1, le=255)] | None = None,
+                               rolls: Annotated[int, Field(ge=1, le=5000)] = 200,
+                               seed: Annotated[int, Field(ge=0, le=0xFFFFFFFF)] | None = None) -> result_type:
+        """Roll a leveled list (items, NPCs, creatures) many times with the game's own code
+        (TESLeveledList::CalculateCurrentForm, proven) at a level (default the player's): how often each form and
+        count comes out and how often nothing, next to the list's entries, chance none and flags. With seed the
+        rolls repeat exactly. Changes nothing in the world (it only draws random numbers)."""
+        return await invoke('fnv_leveled_roll', lambda: agent.leveled_roll(form, level, rolls, seed))
 
     @server.tool(annotations=read)
     async def fnv_setup_check() -> result_type:

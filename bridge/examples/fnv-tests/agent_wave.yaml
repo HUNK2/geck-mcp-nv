@@ -1,0 +1,28 @@
+# Every agent step and check (docs/FNV-LIVE-TOOLS.md, "Agent steps and checks").
+# Needs a test save "agentwave" (fnv_test_save action=save name=agentwave) made in the Mojave with the Old
+# World Blues quest 03002FCA active (load-order index 03); the other forms are FalloutNV.esm records.
+name: agent wave end to end
+description: every new step and check, unattended
+start: {test_save: agentwave}
+guard: {message_boxes: keep}
+steps:
+  - spawn: {form: 0006B53D, as: ammo}
+  - expect: {exists: $ammo}
+  - trace: {function: "TESQuest::RunScript"}
+  - wait: {seconds: 1}
+  - expect: {called: "TESQuest::RunScript", at_least: 10}
+  - run: ShowMessage 0011E661
+  - wait: {seconds: 1}
+  - expect: {message_box: Hardcore}
+  - menu: {press: "No"}
+  - wait: {seconds: 1}
+  - expect: {menu_open: MessageMenu, is_false: true}
+  - expect: {condition: 00138562, list: requirements, passes: false}
+  - time: {advance_hours: 1}
+  - watch: {items: [GetCurrentTime], seconds: 1}
+  - expect: {marker: 03002FCA}
+  - screenshot: agent-wave-end
+  - expect: {no_script_errors: true}
+teardown:
+  - trace: {function: "TESQuest::RunScript", action: stop}
+  - revert_all: true

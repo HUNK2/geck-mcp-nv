@@ -1183,7 +1183,14 @@ class LiveService:
             from .fnv_data import swap_script_code
             swap_script_code(self, int(undo['target'], 16), int(undo['holder'], 16))
         elif undo['op'] == 'console_ref':
-            ref = self.resolve(undo['ref'])
+            try:
+                ref = self.resolve(undo['ref'])
+            except LiveError as e:
+                if e.code != 'REF_NOT_FOUND':
+                    raise
+                # A load or a cell reset removed the ref: there is nothing left to undo.
+                return {'id': entry['id'], 'undone': True, 'kind': entry['kind'],
+                        'note': 'the ref %s no longer exists' % undo['ref']}
             for line in undo['lines']:
                 self.console(line, ref['ptr'])
         return {'id': entry['id'], 'undone': True, 'kind': entry['kind']}
@@ -1201,11 +1208,12 @@ class LiveService:
         self.journal.mark_undone([r['id'] for r in results if r['undone']])
         return {'results': results, 'changed': any(r['undone'] for r in results)}
 
-    def revert_all(self):
+    def revert_all(self, since=None):
+        """Undo every undoable change of this game process (since: only entries after that journal position)."""
         self.ready()
         pid = (self.link.hello or self.link.ping()).get('pid')
-        entries = [e for e in self.journal.entries() if not e['undone'] and e.get('undo') and
-                   (not e.get('pid') or e['pid'] == pid)]
+        entries = [e for k, e in enumerate(self.journal.entries()) if not e['undone'] and e.get('undo') and
+                   (not e.get('pid') or e['pid'] == pid) and (since is None or k >= since)]
         results = [self._apply_undo(e) for e in reversed(entries)]
         self.journal.mark_undone([r['id'] for r in results if r['undone']])
         skipped = [e['id'] for e in self.journal.entries() if not e['undone'] and not e.get('undo')]
