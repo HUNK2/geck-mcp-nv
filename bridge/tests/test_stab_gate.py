@@ -59,6 +59,7 @@ MUTATING_CASES = {
     ('fnv_diff', '*'): {'before': 'x'},
     ('fnv_systems', 'formula'): {'action': 'formula', 'name': 'x'},
     ('fnv_systems', 'sweep'): {'action': 'sweep', 'name': 'x'},
+    ('fnv_systems', 'barter'): {'action': 'barter', 'args': ['0x00015169']},   # round 4: perk hooks + engine calls
     ('fnv_leveled_roll', 'seed'): {'form': '0x00000014', 'seed': 1},
     ('fnv_test_run', '*'): {'yaml': 'name: x\nsteps:\n  - wait: 1\n'},
     ('fnv_test_run_all', '*'): {},
@@ -70,6 +71,10 @@ MUTATING_CASES = {
     ('fnv_replay', 'record'): {'action': 'record', 'name': 'x'},
     ('fnv_replay', 'stop'): {'action': 'stop'},
     ('fnv_replay', 'play'): {'action': 'play', 'name': 'x'},
+    # hooks ApplyPerkModifiers and ApplyFunction until stop; evaluate hooks, calls, unhooks (round 4 M1)
+    ('fnv_perk_entries', 'start'): {'action': 'start'},
+    ('fnv_perk_entries', 'stop'): {'action': 'stop'},
+    ('fnv_perk_entries', 'evaluate'): {'action': 'evaluate', 'entry_point': 9, 'value': 100},
 }
 READ_CASES = {
     'fnv_probe': {'action': 'status'},
@@ -88,6 +93,8 @@ READ_CASES = {
     'fnv_replay': {'action': 'list'},
     'fnv_warnings': {'action': 'capture', 'mode': 'status'},
     'fnv_window': {'action': 'status'},
+    'fnv_perk_entries': {'action': 'read'},
+    'fnv_engine_get': {'function': 'Actor::GetLevel', 'this': 'player'},   # pure getters only (round 4 H1)
 }
 
 

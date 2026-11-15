@@ -7,13 +7,15 @@
   fnv_tracepoint  record calls of a function when a condition holds: arguments as objects, the caller and the
                   call stack (return addresses on the stack, kept when a call instruction precedes them)
   fnv_engine_get  call a proven read-only getter (Get*/Is*/Has*/Can*...) with typed arguments, outside full
-                  control: its direct callees are checked for setters first
+                  control: only when fnv_oracle.Purity shows its code and callees write no non-stack memory, and
+                  always through the companion's guarded call (round 4 H1)
 
 Every hook goes through the companion's watch-hook machinery (fnvmcp_engine.c): the stolen prologue is decoded
 by the bridge, the companion moves it into a trampoline, and hookact adds the behaviour (ACT_* below).
 """
 import re
 import struct
+import threading
 import time
 from collections import Counter
 
@@ -45,6 +47,9 @@ def _stack_words(layout):
         elif a.get('where') is None:
             return None  # by-value struct: size unknown
     return words
+
+
+_PURITY_LOCK = threading.Lock()   # see ControlTools._purity_of
 
 
 class ControlTools:
@@ -414,6 +419,13 @@ class ControlTools:
         if setters:
             raise LiveError('MAY_WRITE', '%s calls functions that change state (%s): use fnv_engine_call (journaled)'
                             % (name, ', '.join(setters[:5])), {'function': record, 'calls': setters})
+        # Round 4 H1: a getter name is no proof. Only a body (and callees) that the machine-code checker shows writes
+        # no non-stack memory runs here; out-pointer getters (NiMatrix3::GetRow) and global writers are refused.
+        purity = self._purity_of(engine, address, name)
+        if not purity.get('pure'):
+            raise LiveError('MAY_WRITE', '%s may write game memory (%s), so fnv_engine_get does not run it: call it '
+                            'with fnv_engine_call (needs fnv.engine_control = "full", journaled)'
+                            % (name, purity.get('why')), {'function': record, 'purity': purity})
         fn = engine.functions.get(address, {})
         sig = parse_signature(fn.get('signature') or '')
         returns = param_kind(sig['returns']) if sig else 'uint'
@@ -438,12 +450,35 @@ class ControlTools:
                           'value': a})
         result = self._call(address, record, sig, this, typed, ret)
         out = {'function': record, 'signature': fn.get('signature'), 'result': result['value'],
-               'uses': [name], 'note': 'A proven getter whose direct callees change nothing; nothing was journaled.'}
+               'uses': [name], 'note': 'A proven getter whose machine code (and callees) writes only its own stack, '
+                                       'called guarded; nothing was journaled.'}
         if ret == 'ptr' and result['raw']:
             described = self.agent.describe_pointers({result['raw']})
             if result['raw'] in described:
                 out['object'] = described[result['raw']]
         return out
+
+    def _purity_of(self, engine, address, name):
+        """fnv_oracle.Purity on the clean exe: the function's body and its callees (depth 3) store only to the stack.
+        No clean exe: refused, since nothing then shows the getter writes nothing."""
+        from .fnv_oracle import Purity
+        try:
+            image = self.deep._image(required=True)
+        except HookError as e:
+            raise LiveError(e.code, '%s Without it fnv_engine_get cannot check that %s writes no memory: use '
+                            'fnv_engine_call (needs fnv.engine_control = "full", journaled)' % (e, name)) from None
+        # one checker, one thread at a time: its cache marks a function in progress while it recurses, and capstone
+        # is not shared across threads (round-4 review M5)
+        with _PURITY_LOCK:
+            checker = getattr(self, '_purity', None)
+            if checker is None or checker.engine is not engine or checker.image is not image:
+                try:
+                    checker = self._purity = Purity(engine, image)
+                except ImportError:
+                    raise LiveError('CAPSTONE_MISSING', 'fnv_engine_get checks a getter\'s machine code with capstone: '
+                                    'pip install "capstone==5.0.7" (the naming extra), or use fnv_engine_call (needs '
+                                    'fnv.engine_control = "full", journaled)') from None
+            return checker.check(address)
 
     def _call(self, address, record, sig, this, typed, ret):
         live = self.live
@@ -477,8 +512,15 @@ class ControlTools:
             words = regs[2:]
         elif this is not None:
             words = [this_ptr] + words
-        code = {'float': 'f', 'double': 'f', 'void': 'v'}.get(ret, 'i')
+        # Always the companion's guarded call (ig/fg/vg, w1_guard.c): a bad `this` or pointer argument faults back
+        # as CALL_FAULTED instead of crashing the game (round 4 H1).
+        code = {'float': 'f', 'double': 'f', 'void': 'v'}.get(ret, 'i') + 'g'
         result = self.link.one('call', word(address), code, word(ecx), word(edx), *[word(w) for w in words])
+        if result.get('fault'):
+            fault = result['fault']
+            raise LiveError('CALL_FAULTED', '%s faulted at %s (%s %s); the call was guarded and the game kept running. '
+                            'Next: check this and the arguments (a ref of the right class, a readable pointer).'
+                            % (record.get('name'), fault.get('address'), fault.get('access'), fault.get('code')), result)
         if not result.get('ok'):
             raise LiveError('CALL_REJECTED', 'The companion refused the call: %s' % result.get('error'), result)
         eax = int(result['eax'], 16)

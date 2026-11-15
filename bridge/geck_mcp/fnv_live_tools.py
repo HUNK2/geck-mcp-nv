@@ -54,7 +54,7 @@ MUTATING_ACTIONS = {
     'fnv_warnings': {'capture'},                  # start/stop hooks the engine's Warning function (W3)
     'fnv_window': {'release_mouse', 'capture_mouse', 'unpause'},     # game memory and the pause menu (W3)
     'fnv_diff': '*',
-    'fnv_systems': {'formula', 'sweep'},
+    'fnv_systems': {'formula', 'sweep', 'barter'},
     'fnv_leveled_roll': {'seed'},
     'fnv_test_run': '*',
     'fnv_test_run_all': '*',
@@ -63,6 +63,8 @@ MUTATING_ACTIONS = {
     'fnv_crawl': '*',
     'fnv_bisect': '*',
     'fnv_replay': {'record', 'stop', 'play'},
+    # start hooks ApplyPerkModifiers and ApplyFunction until stop; evaluate hooks, calls the dispatcher, unhooks (round 4 M1)
+    'fnv_perk_entries': {'start', 'stop', 'evaluate'},
 }
 
 
@@ -164,7 +166,7 @@ FNV_LIVE_TOOLS = {
     'fnv_detection': ('read', 'why an NPC sees (or does not see) someone: detection records and the formula inputs'),
     'fnv_reaction': ('read', 'how two actors relate: hostile or not, fight reaction, faction pair, disposition, the rule'),
     'fnv_combat': ('read', "an actor's combat controller: target, procedure, action, weapon, group targets, style"),
-    'fnv_perk_entries': ('read', 'record perk entry-point checks: value before, perk entries applied, value after'),
+    'fnv_perk_entries': ('act', 'record perk entry-point checks: value before, perk entries applied, value after'),
     'fnv_pathing': ('read', "an actor's path: mover state, request start/goal on the navmesh, nodes, why it fails"),
     'fnv_raycast': ('read', "cast a ray through the game's physics world: hit object, reference, point; ground height"),
     'fnv_cell_grid': ('read', 'loaded exterior grid, current interior, cell buffers, each cell with why it is loaded'),
@@ -172,7 +174,7 @@ FNV_LIVE_TOOLS = {
     'fnv_hook_set': ('act', 'change an engine function: skip it with a result, replace its result, change an argument, run a script'),
     'fnv_patch': ('act', "write bytes, NOPs, ret or jmp/call into the game's code, journaled, checked against the clean exe"),
     'fnv_tracepoint': ('act', 'record calls of a function when conditions hold: arguments as objects, caller, call stack'),
-    'fnv_engine_get': ('read', 'call a proven read-only engine getter with typed arguments (no full control needed)'),
+    'fnv_engine_get': ('read', 'call a proven getter whose machine code writes no memory, guarded, with typed arguments (no full control needed)'),
     'fnv_globals': ('act', 'global variables from the data handler, filtered; set values (journaled)'),
     'fnv_dialogue': ('read', 'the conversation now: speaker, spoken topic and line, the choices shown and their state'),
     'fnv_heap': ('read', "memory: the 2 GB address space, the game's pools, form and actor counts, growth over time"),
@@ -1131,7 +1133,7 @@ def register(server, project, annotations, result_type, maintain=True):
         position, attackers) and members."""
         return await invoke('fnv_combat', lambda: engine_ai.combat(actor))
 
-    @server.tool(annotations=read)
+    @server.tool(annotations=act)
     async def fnv_perk_entries(action: Literal['start', 'read', 'stop', 'evaluate'] = 'read',
                                entry_point: Annotated[int, Field(ge=0, le=73)] | None = None,
                                limit: Annotated[int, Field(ge=1, le=500)] = 50,
@@ -1144,7 +1146,7 @@ def register(server, project, annotations, result_type, maintain=True):
         entry point now with your value (and its filter forms, e.g. [weapon, target] for weapon damage) through the
         game's own dispatcher and returns the result and the perks that changed it."""
         return await invoke('fnv_perk_entries', lambda: engine_ai.perk_entries(action, entry_point, limit, value,
-                                                                                actor, filters))
+                                                                                actor, filters), action=action)
 
     @server.tool(annotations=read)
     async def fnv_pathing(actor: Ref) -> result_type:
@@ -1232,10 +1234,12 @@ def register(server, project, annotations, result_type, maintain=True):
     async def fnv_engine_get(function: Annotated[str, Field(min_length=1, max_length=300, description=(
             'A proven getter: Actor::GetLevel, TESObjectREFR::GetDistanceFromReference, ...'))],
                              this: Ref | None = None, args: list[Any] | None = None) -> result_type:
-        """Call a proven read-only engine getter (Get/Is/Has/Can/Count/Find... names whose direct callees change
-        nothing) with typed arguments: plain values are typed from the decomp signature, or give {type, value} with
-        type int, bool, float, double, ptr, ref or form. Pointer results are described (form, class). For anything
-        else use fnv_engine_call."""
+        """Call a proven read-only engine getter (Get/Is/Has/Can/Count/Find... names) with typed arguments: plain
+        values are typed from the decomp signature, or give {type, value} with type int, bool, float, double, ptr,
+        ref or form. Runs only when the clean exe's machine code shows the getter and its callees write no memory
+        but their own stack (out-pointer getters such as NiMatrix3::GetRow are refused, MAY_WRITE), and always as
+        a guarded call (a bad this faults back as CALL_FAULTED). Pointer results are described (form, class). For
+        anything else use fnv_engine_call (needs fnv.engine_control = "full")."""
         return await invoke('fnv_engine_get', lambda: control_tools.engine_get(function, this, args))
 
     # ------------------------------------------------------------------ phase 2: world, UI, memory

@@ -133,8 +133,13 @@ missing. In short:
      start and stop, and read for the three that install their hook on the first read (`fnv_script_profile`,
      `fnv_script_trace`, `fnv_damage_log`); `fnv_frame_profile`; `fnv_crash_context` enable and disable;
      `fnv_memory` alloc_trace and refcount;
-     `fnv_events` subscribe and unsubscribe; `fnv_watch frames=`; `fnv_systems` formula and sweep;
-     `fnv_leveled_roll seed=`. These tools are now annotated as act (not read-only).
+     `fnv_events` subscribe and unsubscribe; `fnv_watch frames=`; `fnv_systems` formula, sweep and barter;
+     `fnv_perk_entries` start, stop and evaluate; `fnv_leveled_roll seed=`. These tools are now annotated as act
+     (not read-only). (barter and the perk recording install the perk hooks: round-4 audit Y2.)
+   - `fnv_engine_get` stays read but runs only a getter the purity check proves stores to the stack alone (its body
+     and callees, on the clean exe), always through the guarded call; anything else answers `MAY_WRITE` and goes to
+     `fnv_engine_call` under `"full"` (round-4 Y1). It needs `fnv.clean_exe` and capstone (the `naming` extra:
+     `pip install "capstone==5.0.7"`); without them it answers `CLEAN_EXE_MISSING` or `CAPSTONE_MISSING`.
    - `fnv_probe` install, remove, clear, config and harvest; `fnv_name_oracle` run, calibrate and sweep;
      `fnv_name_test` test and battery; `fnv_field_watch`; `fnv_atlas` run and import_frida.
    - The scenario runners, whose steps change the game: `fnv_test_run`, `fnv_test_run_all`, `fnv_do`,
@@ -211,14 +216,14 @@ missing. In short:
 | `fnv_detection` | read | Why an NPC sees someone or not: the detection records on its process (lost/unseen/noticed/seen, score, line of sight in the view cone), both directions, light, sneak, distance, settings; for NPC observers the game's `CalculateDetectionLevel` recomputes and the 25 inputs of its detection formula are captured |
 | `fnv_reaction` | read | How two actors relate: hostile or not (the engine's `IsHostileTo`, behind `GetShouldAttack`), fight reaction, the faction pair that decides it, disposition, crime anger, teammates, aggression, and the rule branch that decided |
 | `fnv_combat` | read | An actor's combat controller: target, procedure, queued procedure, action, goal, weapon, combat style, and the combat group's targets (last known position, attackers) and members |
-| `fnv_perk_entries` | read | Record perk entry-point checks (value before, each perk entry that applied, value after), or `evaluate` one value entry point now with a value and its filter forms |
+| `fnv_perk_entries` | act (read for action=read) | Record perk entry-point checks (value before, each perk entry that applied, value after), or `evaluate` one value entry point now with a value and its filter forms |
 | `fnv_pathing` | read | An actor's path: mover state, the pathing request (start, goal, navmesh, door rules), the solution's points, the path handler's state (waiting, blocked, avoidance failed) and the reasons found |
 | `fnv_raycast` | read | A ray through the game's Havok world (`TES::Pick`) between points or refs: hit, hit point, hit object and its reference; `ground_at` gives the terrain height |
 | `fnv_cell_grid` | read | Loaded exterior grid, current interior, interior and exterior cell buffers: each cell with its grid coordinates, load state and why it is loaded |
 | `fnv_hook_set` | act | Change an engine function live: skip it with a result (float results in st0), replace its result, change one argument, or run a script line on each call; filter, hit limit, read the changed calls, journaled |
 | `fnv_patch` | act | Bytes, NOPs, a ret or a jmp/call into the game's code; refuses over companion hooks and foreign patches (clean exe compare) unless forced; journaled with the original bytes |
 | `fnv_tracepoint` | read | Record a function's calls that meet conditions, with arguments as objects, result, time, caller and the call stack; groups hits by path |
-| `fnv_engine_get` | read | Call a proven getter (Get/Is/Has/Can/...) whose direct callees change nothing, with typed arguments; pointer results described |
+| `fnv_engine_get` | read | Call a proven getter (Get/Is/Has/Can/...) whose machine code and callees write no memory but their own stack (fnv_oracle.Purity on the clean exe), always guarded, with typed arguments; pointer results described |
 | `fnv_globals` | read | Global variables from the data handler's list, filtered; set values (journaled) |
 | `fnv_dialogue` | read | The conversation on screen: speaker, state, spoken topic and info, the line and name as shown, the choices in order with topic, info, quest and heard flag |
 | `fnv_heap` | read | The game's address space (2 GB unless large address aware, largest free block), memory pools by use, form and process-level actor counts; growth over N seconds |

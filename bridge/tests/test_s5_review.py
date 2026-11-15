@@ -95,6 +95,7 @@ class EngineGetThisTests(unittest.TestCase):
             control = ControlTools(SimpleNamespace(live=live, deep=None))
             called = []
             control._call = lambda *a: called.append(a) or {'value': 1, 'raw': 1}
+            control._purity_of = lambda *a: {'pure': True}    # machine-code check: tests/test_r4_contract.py
             control.engine_get('GetActorThing', this='player', args=[])
             self.assertEqual(len(called), 1)
             with self.assertRaises(LiveError):

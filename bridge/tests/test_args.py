@@ -88,6 +88,7 @@ class EngineGetTests(unittest.TestCase):
             control = ControlTools(SimpleNamespace(live=live, deep=None))
             called = []
             control._call = lambda *a: called.append(a) or {'value': 1, 'raw': 1}
+            control._purity_of = lambda *a: {'pure': True}    # machine-code check: tests/test_r4_contract.py
             with self.assertRaises(LiveError) as caught:
                 control.engine_get('Actor::GetLevel', this='player', args=[1, 2, 3])
             self.assertEqual(caught.exception.code, 'BAD_ARGUMENTS')
