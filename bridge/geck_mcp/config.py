@@ -57,6 +57,9 @@ class Project(BaseModel):
     spec: Path | None = None
     # fnv_* tools (engine map, crash doctor); optional.
     fnv: FnvSettings | None = None
+    # The `legacy` toolset: the v0.4 geck_runtime_* and geck_console_* tools (decision D4), off by default.
+    # `run_mcp.py --legacy` turns it on for one server too.
+    legacy_tools: bool = False
 
     @field_validator('plugin')
     @classmethod

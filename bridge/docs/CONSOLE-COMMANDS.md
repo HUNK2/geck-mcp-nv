@@ -1,5 +1,7 @@
 # Console companion wire v2 - v0.4.0 feedback beta
 
+> **Legacy toolset.** The `geck_runtime_*` and `geck_console_*` tools (15) are off by default since fnv-mcp 0.5: the `fnv_*` tools do these jobs through the engine companion. Set `"legacy_tools": true` in the project file, or start the server with `--legacy`, to register them. They will be removed in a later release.
+
 The command companion uses public xNVSE APIs on the game loop, with no keyboard
 injection. It is separate from read-only telemetry. Tools: console_readiness,
 console_setup, console_execute, console_query, console_status, console_release.

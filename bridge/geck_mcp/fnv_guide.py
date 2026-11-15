@@ -42,11 +42,18 @@ def load_guides(folder=GUIDES_DIR):
 
 
 def tool_table():
-    """{name: {kind, description}} for every offline and live fnv_* tool."""
+    """{name: {kind, description}} for every offline and live fnv_* tool, and the tools of the legacy toolset
+    (registered only when it is on), so find still names them and says how to turn them on."""
     from .fnv_live_tools import FNV_LIVE_TOOLS
     from .fnv_tools import FNV_TOOLS
+    from .server import LEGACY_NOTE, LEGACY_TOOLS
+    from .service import CAPABILITIES
     table = {n: {'kind': 'read', 'description': d} for n, d in FNV_TOOLS.items()}
     table.update({n: {'kind': k, 'description': d} for n, (k, d) in FNV_LIVE_TOOLS.items()})
+    effects = CAPABILITIES.get('tools') or {}
+    for name in LEGACY_TOOLS:
+        effect = (effects.get(name) or {}).get('effect') or name.replace('_', ' ')
+        table[name] = {'kind': 'control', 'toolset': 'legacy', 'description': '%s. %s' % (effect, LEGACY_NOTE)}
     return table
 
 

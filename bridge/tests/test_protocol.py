@@ -6,7 +6,7 @@ import unittest
 
 from mcp import Client
 from mcp.client.stdio import StdioServerParameters
-from geck_mcp.server import make_server
+from geck_mcp.server import LEGACY_TOOLS, make_server
 from geck_mcp.fnv_tools import FNV_TOOLS
 from geck_mcp.fnv_live_tools import FNV_LIVE_TOOLS
 import test_service
@@ -25,7 +25,8 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
             listing = await client.list_tools()
             tools = listing.tools if hasattr(listing, 'tools') else listing
             by_name = {tool.name: tool for tool in tools}
-            self.assertEqual(len([n for n in by_name if n.startswith('geck_')]), 43)
+            # the legacy toolset (15 geck_runtime_*/geck_console_* tools, decision D4) is off by default
+            self.assertEqual(len([n for n in by_name if n.startswith('geck_')]), 43 - len(LEGACY_TOOLS))
             self.assertEqual(set(n for n in by_name if n.startswith('fnv_')), set(FNV_TOOLS) | set(FNV_LIVE_TOOLS))
             for name in FNV_TOOLS:
                 self.assertTrue(by_name[name].annotations.read_only_hint, name)
@@ -36,8 +37,8 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(result.is_error)
             self.assertEqual(result.structured_content['error']['code'], 'ENGINE_MAP_UNAVAILABLE')
             self.assertIn('geck_show_windows', by_name)
-            self.assertIn('geck_runtime_snapshot', by_name)
-            self.assertIn('geck_runtime_compare', by_name)
+            self.assertNotIn('geck_runtime_snapshot', by_name)
+            self.assertNotIn('geck_console_execute', by_name)
             for name in ('geck_render_capture', 'geck_image_cutout'):
                 self.assertIn(name, by_name)
             self.assertNotIn('geck_actor_photo', by_name)       # macOS only; removed with the macOS parts (D5)
@@ -86,7 +87,7 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
         path.write_text(self.fixture.p.model_dump_json())
         root = Path(__file__).resolve().parents[1]
         parameters = StdioServerParameters(command=sys.executable,
-                        args=[str(root/'run_mcp.py'),'--project',str(path)], cwd=str(root))
+                        args=[str(root/'run_mcp.py'),'--project',str(path),'--legacy'], cwd=str(root))
         async with Client(parameters) as client:
             result = await client.call_tool('geck_capabilities', {})
             self.assertFalse(result.is_error)

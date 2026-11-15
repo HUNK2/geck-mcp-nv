@@ -6,6 +6,8 @@ This is a local stdio MCP server for the 32-bit Fallout New Vegas GECK. It is Wi
 
 ## Runtime diagnostics (29 bridge tools)
 
+> **Legacy toolset.** The `geck_runtime_*` and `geck_console_*` tools (15) are off by default since fnv-mcp 0.5: the `fnv_*` tools do these jobs through the engine companion. Set `"legacy_tools": true` in the project file, or start the server with `--legacy`, to register them. They will be removed in a later release.
+
 The four vanilla tools below remain available. The server now has 44 tools total:
 two additional automatic snapshot/compare tools use an optional read-only xNVSE
 companion. See [automatic setup and validation limits](AUTOMATIC-RUNTIME.md).

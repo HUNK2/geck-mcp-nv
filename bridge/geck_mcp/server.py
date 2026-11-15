@@ -105,6 +105,20 @@ class BridgeServer(MCPServer):
         return result
 
 
+# The `legacy` toolset (decision D4, TOOL-MERGE tier 3): the v0.4 route to the game, from before the fnvmcp engine
+# companion. fnv_console, fnv_run_script, fnv_snapshot, fnv_inventory and fnv_script_instances do these jobs now.
+# Off by default; the project key legacy_tools (or --legacy) registers them. The code is deleted in a later change.
+LEGACY_TOOLS = (
+    'geck_console_execute', 'geck_console_query', 'geck_console_setup', 'geck_console_readiness',
+    'geck_console_status', 'geck_console_release',
+    'geck_runtime_prepare', 'geck_runtime_readiness', 'geck_runtime_setup_preflight', 'geck_runtime_save_context',
+    'geck_runtime_snapshot', 'geck_runtime_compare', 'geck_runtime_collect', 'geck_runtime_report',
+    'geck_runtime_close',
+)
+LEGACY_NOTE = ('In the legacy toolset, off by default: set "legacy_tools": true in the project file (or start the '
+               'server with --legacy) to use it.')
+
+
 def make_server(project, service=None):
     service = service or Service(project)
     server = BridgeServer('geck-bridge', version=__version__, project_id=project.project_id,
@@ -476,14 +490,20 @@ def make_server(project, service=None):
                 'Report structural and visual evidence separately. Save only within the user-authorized '
                 'whole-plugin scope, then independently validate disk. On uncertainty, inspect operation evidence.')
 
+    if not project.legacy_tools:
+        for name in LEGACY_TOOLS:
+            server.remove_tool(name)
     return server
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument('--project', required=True)
+    parser.add_argument('--legacy', action='store_true', help='also register the legacy toolset (decision D4)')
     args = parser.parse_args(argv)
     project = Project.load(args.project)
+    if args.legacy:
+        project = project.model_copy(update={'legacy_tools': True})
     service = Service(project)
     try:
         make_server(project, service).run(transport='stdio')

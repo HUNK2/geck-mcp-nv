@@ -70,6 +70,8 @@ python3 -m venv .venv
 Tools that act on the running GECK take an optional `editor_session`; leave it out to use the GECK that is running
 (see [docs/MCP-QUICKSTART.md](docs/MCP-QUICKSTART.md)). After changing bridge code, restart your MCP client.
 
+> **Legacy toolset.** The `geck_runtime_*` and `geck_console_*` tools (15) are off by default since fnv-mcp 0.5: the `fnv_*` tools do these jobs through the engine companion. Set `"legacy_tools": true` in the project file, or start the server with `--legacy`, to register them. They will be removed in a later release.
+
 Runtime tools need no editor attachment. Their shared CLI is `runtime_diagnostics.py`;
 see [runtime profiles, identity, capture, assertions and lifecycle](docs/MCP-QUICKSTART.md#runtime-diagnostics-29-bridge-tools).
 

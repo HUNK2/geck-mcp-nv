@@ -1,5 +1,7 @@
 # Automatic runtime diagnostics (optional xNVSE adapter)
 
+> **Legacy toolset.** The `geck_runtime_*` and `geck_console_*` tools (15) are off by default since fnv-mcp 0.5: the `fnv_*` tools do these jobs through the engine companion. Set `"legacy_tools": true` in the project file, or start the server with `--legacy`, to register them. They will be removed in a later release.
+
 `geck_runtime_snapshot` reads fresh quest values from a small native companion;
 `geck_runtime_compare` compares a previous snapshot in the same process/load/build.
 Both use the same core as `runtime_companion.py`. They require no GECK attachment,

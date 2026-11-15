@@ -326,7 +326,7 @@ class RuntimeProtocolTests(unittest.IsolatedAsyncioTestCase):
         project_file = Path(fixture.tmp.name) / 'project.json'
         project_file.write_text(fixture.p.model_dump_json())
         parameters = StdioServerParameters(command=sys.executable,
-            args=[str(root / 'run_mcp.py'), '--project', str(project_file)], cwd=str(root))
+            args=[str(root / 'run_mcp.py'), '--project', str(project_file), '--legacy'], cwd=str(root))
         async with Client(parameters) as client:
             prepared = await client.call_tool('geck_runtime_prepare', dict(profile=PROFILE, runtime_mapping=MAPPING,
                 save_label='synthetic save', expected_plugin_hash=digest(fixture.p.plugin_path.read_bytes()), request_key='stdio'))

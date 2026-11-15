@@ -364,7 +364,8 @@ class ConsoleMcpTests(unittest.IsolatedAsyncioTestCase):
         fixture.doc['started'] = str(exact)
         c.write_json(fixture.paths['.ready.json'], fixture.doc)
         with patch.object(c.runtime, 'process_identity', return_value=exact):
-            async with Client(make_server(fixture.p, fixture.service)) as client:
+            async with Client(make_server(fixture.p.model_copy(update={'legacy_tools': True}),
+                                          fixture.service)) as client:
                 result = await client.call_tool('geck_console_readiness', {'expected_plugin_hash':fixture.hash})
                 target = result.structured_content['data']['target']
                 self.assertEqual(target['started'], str(exact))
