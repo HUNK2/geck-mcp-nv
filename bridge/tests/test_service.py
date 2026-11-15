@@ -431,6 +431,30 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(released, [])
         self.assertEqual([r['id'] for r in blocking], [failed['operationId']])
 
+    def test_no_geck_running_says_how_to_start_it(self):
+        # Release plan Phase 7 (M3): the first call an agent makes with no GECK open must not read like a crash.
+        original = self.transport.call
+        def call(operation, *args, **kwargs):
+            if operation == 'status':
+                raise BridgeError('EDITOR_ERROR', 'expected exactly one GECK process; found 0')
+            return original(operation, *args, **kwargs)
+        self.transport.call = call
+        result = self.service.status()
+        self.assertFalse(result['ok'])
+        self.assertEqual(result['outcome'], 'failed_before_change')
+        self.assertEqual(result['error']['code'], 'GECK_NOT_RUNNING')
+        self.assertTrue(result['error']['retrySafe'])
+        self.assertIn('found 0', result['error']['message'])   # install_plugin.py matches this text
+        recovery = result['error']['recovery']
+        self.assertIn('GECK.exe', recovery)
+        self.assertIn(str(self.p.game_root), recovery)
+        self.assertIn('fnv_status', recovery)
+
+    def test_server_instructions_lead_with_fnv_status(self):
+        from geck_mcp.server import make_server
+        server = make_server(self.p, self.service)
+        self.assertTrue(server.instructions.startswith('Start with fnv_status'), server.instructions[:80])
+
     # -- 0.2.0: hidden windows after a load (fix 1) ---------------------------------------
     def test_load_status_shows_windows_then_verifies(self):
         result = self.load()

@@ -513,6 +513,15 @@ class Service:
                     'data': None, 'error': {'code': 'EDITOR_BUSY', 'message': str(error), 'retrySafe': True,
                                             'recovery': 'Another editor operation is running; call again when it '
                                                         'is done (geck_status shows it).'}}
+        if code == 'EDITOR_ERROR' and 'GECK process; found 0' in str(error):
+            # No editor was found, so nothing was sent to one (M3).
+            return {'ok': False, 'operationId': operation_id, 'operation': name,
+                    'projectId': self.project.project_id, 'outcome': 'failed_before_change',
+                    'data': None, 'error': {'code': 'GECK_NOT_RUNNING', 'message': str(error), 'retrySafe': True,
+                                            'recovery': f'The GECK is not running. Start '
+                                                        f'{self.project.game_root / "GECK.exe"} (through Mod '
+                                                        f'Organizer 2 if the game is modded), then call again. For '
+                                                        f'the game itself, use fnv_status.'}}
         unknown = modifies or (getattr(error, 'uncertain', False) and name not in
                                ('geck_status', 'geck_inspect_windows', 'geck_plugin_validate', 'geck_project_attach'))
         return {'ok': False, 'operationId': operation_id, 'operation': name,
