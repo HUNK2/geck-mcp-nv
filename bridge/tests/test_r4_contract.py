@@ -13,6 +13,13 @@ from fakes import FakeLive  # noqa: E402
 from geck_mcp.fnv_deep import HookError  # noqa: E402
 from geck_mcp.fnv_live_tools import FNV_LIVE_TOOLS, gated_kind  # noqa: E402
 
+try:
+    import capstone  # noqa: F401
+    HAVE_CAPSTONE = True
+except ImportError:
+    HAVE_CAPSTONE = False
+needs_capstone = unittest.skipUnless(HAVE_CAPSTONE, 'capstone (the naming extra) is not installed')
+
 BRIDGE = Path(__file__).resolve().parents[1]
 
 # Small x86 bodies for a fake clean exe (fnv_oracle.Purity decodes them with capstone).
@@ -89,16 +96,20 @@ class EngineGetPurityTests(unittest.TestCase):
         self.assertIn('fnv_engine_call', text)
         self.assertEqual(self.calls(), [], 'nothing may be called')
 
+    @needs_capstone
     def test_out_pointer_getter_is_refused(self):
         # the audit's case: NiMatrix3::GetRow copies 12 bytes to the caller's pointer
         self.assert_refused(self.get('NiMatrix3::GetRow', args=[0, '0x011DEA3C']))
 
+    @needs_capstone
     def test_global_writing_getter_is_refused(self):
         self.assert_refused(self.get('Sky::GetSunriseBegin'))
 
+    @needs_capstone
     def test_getter_writing_through_an_unnamed_callee_is_refused(self):
         self.assert_refused(self.get('Thing::GetRowCopy', args=[0, '0x011DEA3C']))
 
+    @needs_capstone
     def test_refusal_says_why(self):
         reply = self.get('NiMatrix3::GetRow', args=[0, '0x011DEA3C'])
         self.assertIn('0x00500206', reply['error']['message'])     # the store instruction
@@ -112,6 +123,7 @@ class EngineGetPurityTests(unittest.TestCase):
         self.assertIn('fnv_engine_call', reply['error']['message'])
         self.assertEqual(self.calls(), [])
 
+    @needs_capstone
     def test_pure_getter_runs_guarded(self):
         reply = self.get('Actor::GetLevel')
         self.assertTrue(reply['ok'], reply)
@@ -119,11 +131,13 @@ class EngineGetPurityTests(unittest.TestCase):
         self.assertEqual(reply['data']['result'], 1)
         self.assertEqual(self.calls(), [['500000', 'ig', '1000000', '0']])
 
+    @needs_capstone
     def test_float_getter_runs_guarded(self):
         reply = self.get('Actor::GetSpeed')
         self.assertTrue(reply['ok'], reply)
         self.assertEqual(self.calls()[0][1], 'fg')
 
+    @needs_capstone
     def test_fault_comes_back_as_an_error(self):
         # a bad `this` (0x10): the guarded call returns the fault instead of crashing the game
         original = self.fake.link._op
@@ -145,6 +159,7 @@ ENGINE_MAP = BRIDGE / 'state' / 'engine_map.json'
 CLEAN_EXE = os.environ.get('FNV_CLEAN_EXE') or 'C:/Users/Ajang/.fnvdecomp/FalloutNV.exe'
 
 
+@needs_capstone
 @unittest.skipUnless(ENGINE_MAP.is_file() and Path(CLEAN_EXE).is_file(), 'needs the engine map and a clean exe')
 class EngineGetRealMapTests(unittest.TestCase):
     """H1 on the real engine map and clean exe: the audit's examples are refused, Actor::GetLevel still runs."""

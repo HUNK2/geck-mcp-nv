@@ -24,6 +24,8 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install -r requirements.lock.txt
+      # the naming extra: fnv_engine_get's purity check (round-4 Y1) and the oracle tests need capstone
+      - run: python -m pip install "capstone==5.0.7"
       - name: Prepare pinned Zig for native companion tests
         if: runner.os == 'Windows'
         shell: pwsh
