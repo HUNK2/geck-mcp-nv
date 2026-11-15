@@ -21,8 +21,8 @@ PROJECTS = Path(__file__).resolve().parents[1] / 'projects'
 
 
 def zig_path(projects_dir: Path | str | None = None) -> str | None:
-    """GECK_MCP_ZIG if set, else fnv.zig from the first project file (sorted by name) whose zig file exists."""
-    env = os.environ.get('GECK_MCP_ZIG')
+    """FNV_MCP_ZIG (or the old GECK_MCP_ZIG) if set, else fnv.zig from the first project file (sorted by name) whose zig file exists."""
+    env = os.environ.get('FNV_MCP_ZIG') or os.environ.get('GECK_MCP_ZIG')
     if env:
         return env
     folder = Path(projects_dir) if projects_dir is not None else PROJECTS
@@ -44,7 +44,7 @@ def engine_zig(os_name: str = os.name, projects_dir: Path | str | None = None) -
     return zig_path(projects_dir) if os_name == 'nt' else None
 
 
-needs_zig = unittest.skipUnless(engine_zig(), 'needs Windows and Zig: set GECK_MCP_ZIG or fnv.zig in a projects/*.json file')
+needs_zig = unittest.skipUnless(engine_zig(), 'needs Windows and Zig: set FNV_MCP_ZIG or fnv.zig in a projects/*.json file')
 
 
 CODE_SECTIONS = (b'.text', b'.rdata', b'.data', b'.tls', b'.reloc')
