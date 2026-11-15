@@ -2303,7 +2303,7 @@ gate's CI and suite runs. Entries get a detail section when they are fixed.
 | X7 | low | open ([#25](https://github.com/HUNK2/fnv-mcp/issues/25)) | scan_references raises raw struct.error on truncated subrecords | `audit3/parsers.md L4` |
 | X8 | low | open ([#26](https://github.com/HUNK2/fnv-mcp/issues/26)) | Build asset check ignores BSAs inside enabled MO2 mods | `audit3/parsers.md L5` |
 | X9 | low | open ([#27](https://github.com/HUNK2/fnv-mcp/issues/27)) | BSA readers raise raw struct.error on a truncated archive | `audit3/parsers.md L6` |
-| X10 | low | open ([#28](https://github.com/HUNK2/fnv-mcp/issues/28)) | fnv_profile_set writes unchecked plugin names into plugins.txt | `audit3/parsers.md L7` |
+| X10 | low | fixed in 54630d9 ([#28](https://github.com/HUNK2/fnv-mcp/issues/28)): mod and plugin names with control characters, / or \ are refused (tests/test_release_safety.py) | fnv_profile_set writes unchecked plugin names into plugins.txt | `audit3/parsers.md L7` |
 
 ### Round 3 details
 
