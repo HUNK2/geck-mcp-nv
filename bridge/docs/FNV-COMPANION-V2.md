@@ -1,8 +1,7 @@
 # Engine companion, wire version 2
 
 Contract for the new ops of `native/engine/fnvmcp_engine.c` (Plan 2, waves W1 and W2) and the bridge code that
-uses them. Wire version 1 stays valid: every old op keeps its format. Plan: `fnv-mcp/plan2/A-foundation.md`
-section 2.
+uses them. Wire version 1 stays valid: every old op keeps its format.
 
 ## 1. Rules that do not change
 

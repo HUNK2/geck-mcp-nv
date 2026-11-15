@@ -5,7 +5,6 @@
 The command companion uses public xNVSE APIs on the game loop, with no keyboard
 injection. It is separate from read-only telemetry. Tools: console_readiness,
 console_setup, console_execute, console_query, console_status, console_release.
-Bridge discovery now contains 44 tools.
 
 ## Explicit setup and readiness
 
@@ -21,7 +20,7 @@ The anchor configured ESP and hash remain the companion's installation identity.
 
 Use `geck_console_setup` with a unique request_key for each intended setup action:
 - mode=preflight: expected_plugin_hash; previews requirements/files/restrictions.
-- mode=build: also zig=ABSOLUTE_LOCAL_ZIG_PATH (checked Zig 0.14.1, no download).
+- mode=build: uses the project's Zig (fnv.zig or GECK_MCP_ZIG; checked Zig 0.14.1, no download).
   Returns build_receipt path and source/build/DLL fingerprints.
 - mode=install: build_receipt=RETURNED_OWNED_BUILD_JSON. FNV must be normally
   closed, prior operations reconciled, modified/foreign DLLs refused, backups

@@ -1,6 +1,7 @@
 """Local stdio MCP entry point. No editor or file modifications on startup."""
 import argparse
 import json
+import sys
 import uuid
 from functools import partial
 from typing import Annotated, Literal, Any
@@ -85,24 +86,42 @@ class BridgeServer(MCPServer):
     unknown tool) gets the same structured result as the tools' own errors, so every result matches the declared
     output schema (the Envelope)."""
 
-    def __init__(self, *args, project_id='', **kwargs):
+    def __init__(self, *args, project_id='', missing=(), **kwargs):
         super().__init__(*args, **kwargs)
         self._project_id = project_id
+        self._missing = list(missing)     # GECK settings the project file leaves out (Task 4.3)
+
+    def _envelope(self, name, code, message, recovery):
+        return {'ok': False, 'operationId': str(uuid.uuid4()), 'operation': name, 'projectId': self._project_id,
+                'outcome': 'failed_before_change', 'data': None,
+                'error': {'code': code, 'message': message, 'retrySafe': True, 'recovery': recovery},
+                'elapsedMs': 0, 'replayed': False}
 
     async def _handle_call_tool(self, ctx, params):
+        if self._missing and params.name.startswith('geck_') and params.name not in NO_GECK_SETTINGS:
+            missing = ', '.join(self._missing)
+            envelope = self._envelope(
+                params.name, 'NOT_CONFIGURED',
+                'This project file has no GECK settings: %s missing. The geck_* tools need them; the fnv_* tools '
+                'work without them.' % missing,
+                'Add %s to the project file (the settings table in docs/FNV-MCP-SETUP.md), or use the fnv_* '
+                'tools.' % missing)
+            return CallToolResult(content=[TextContent(type='text', text=json.dumps(envelope))],
+                                  structured_content=envelope, is_error=True)
         result = await super()._handle_call_tool(ctx, params)
         if isinstance(result, CallToolResult) and result.is_error and result.structured_content is None:
             text = ' '.join(getattr(c, 'text', '') for c in result.content).strip()
             code = ('INVALID_ARGUMENTS' if 'validation error' in text else
                     'UNKNOWN_TOOL' if text.startswith('Unknown tool') else 'TOOL_ERROR')
-            envelope = {'ok': False, 'operationId': str(uuid.uuid4()), 'operation': params.name,
-                        'projectId': self._project_id, 'outcome': 'failed_before_change', 'data': None,
-                        'error': {'code': code, 'message': text, 'retrySafe': True,
-                                  'recovery': 'Fix the arguments (the message names each field) and call again.'
-                                  if code == 'INVALID_ARGUMENTS' else 'Check the tool name and arguments.'},
-                        'elapsedMs': 0, 'replayed': False}
+            envelope = self._envelope(params.name, code, text,
+                                      'Fix the arguments (the message names each field) and call again.'
+                                      if code == 'INVALID_ARGUMENTS' else 'Check the tool name and arguments.')
             result = CallToolResult(content=result.content, structured_content=envelope, is_error=True)
         return result
+
+
+# geck_* tools that need none of the GECK settings, so they answer on a project file for the game alone.
+NO_GECK_SETTINGS = {'geck_capabilities', 'geck_image_cutout', 'geck_operation_get', 'geck_inspect_windows'}
 
 
 # The `legacy` toolset (decision D4, TOOL-MERGE tier 3): the v0.4 route to the game, from before the fnvmcp engine
@@ -119,9 +138,18 @@ LEGACY_NOTE = ('In the legacy toolset, off by default: set "legacy_tools": true 
                'server with --legacy) to use it.')
 
 
+def server_capabilities(server):
+    """CAPABILITIES with the tool counts of this server (the legacy toolset on or off), not a typed number."""
+    names = [tool.name for tool in server._tool_manager.list_tools()]
+    return {**CAPABILITIES, 'toolCount': sum(n.startswith('geck_') for n in names),
+            'fnv': {**CAPABILITIES['fnv'], 'toolCount': sum(n.startswith('fnv_') for n in names)},
+            'allTools': len(names)}
+
+
 def make_server(project, service=None):
     service = service or Service(project)
     server = BridgeServer('geck-bridge', version=__version__, project_id=project.project_id,
+                          missing=project.missing_geck_settings(),
                        instructions='Use status then attach. editor_session is optional (omit it to use the running '
                        'GECK); always pass the expected values (title, plugin hash, models). '
                        'If GECK windows are hidden, geck_show_windows shows them. '
@@ -326,7 +354,7 @@ def make_server(project, service=None):
     @server.tool(annotations=observe)
     def geck_capabilities() -> dict[str, Any]:
         """Describe operation side effects, current support and verification limits."""
-        return CAPABILITIES
+        return server_capabilities(server)
 
     @server.tool(annotations=ui)
     async def geck_plugin_load_status(operation_id: str) -> Result:
@@ -470,7 +498,7 @@ def make_server(project, service=None):
 
     @server.resource('geck://project/capabilities', mime_type='application/json')
     def capabilities() -> str:
-        return json.dumps(CAPABILITIES)
+        return json.dumps(server_capabilities(server))
 
     @server.resource('fnv://guide/{name}', mime_type='text/markdown')
     def fnv_guide_resource(name: str) -> str:
@@ -501,7 +529,10 @@ def main(argv=None):
     parser.add_argument('--project', required=True)
     parser.add_argument('--legacy', action='store_true', help='also register the legacy toolset (decision D4)')
     args = parser.parse_args(argv)
-    project = Project.load(args.project)
+    try:
+        project = Project.load(args.project)
+    except Exception as e:  # noqa: BLE001 - one line on stderr and exit code 2, no traceback
+        sys.exit(project_error(args.project, e))
     if args.legacy:
         project = project.model_copy(update={'legacy_tools': True})
     service = Service(project)
@@ -510,6 +541,20 @@ def main(argv=None):
     finally:
         # Close the persistent helper so no Wine worker outlives the MCP server.
         service.close()
+
+
+def project_error(path, error):
+    """One stderr line for a project file that does not load (missing, broken JSON, a bad key); the exit code."""
+    if isinstance(error, FileNotFoundError):
+        text = 'no such file'
+    elif hasattr(error, 'errors'):           # pydantic: each field and what is wrong with it
+        text = '; '.join('%s: %s' % ('.'.join(map(str, e.get('loc', ()))) or 'project', e.get('msg'))
+                         for e in error.errors())
+    else:
+        text = str(error)
+    sys.stderr.write('geck-mcp: the project file %s is not valid: %s\n' % (path, ' '.join(text.split())))
+    sys.stderr.flush()
+    return 2
 
 
 if __name__ == '__main__':

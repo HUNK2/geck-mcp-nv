@@ -111,9 +111,9 @@ are kept in `state/atlas.sqlite`, and an existing Frida `fnvsym-trace/1` capture
 The full guide, from an empty machine, is [FNV-MCP-SETUP.md](FNV-MCP-SETUP.md); `fnv_setup_check` says what is
 missing. In short:
 
-1. A portable MO2 instance with a dev profile, xNVSE 6.4.9+ and JIP LN NVSE (fnv-mcp `SETUP-NOTES.md`
-   lists the steps; `scripts/setup_dev_profile.py` in fnv-mcp creates it). In the profile's
-   `Fallout.ini`: `bAlwaysActive=1` under `[General]`, so the game keeps running unfocused.
+1. A portable MO2 instance with a dev profile, xNVSE 6.4.9+ and JIP LN NVSE (`tools\fnv_setup_dev_profile.py`
+   creates it; see the setup guide). In the profile's `Fallout.ini`: `bAlwaysActive=1` under `[General]`, so the
+   game keeps running unfocused.
 2. In the project file's `fnv` block:
 
    ```json
@@ -121,7 +121,7 @@ missing. In short:
      "mo2_root": "C:/Modding/FNV-Dev", "mo2_profile": "Dev",
      "zig": "C:/tools/zig-x86_64-windows-0.14.1/zig.exe",
      "engine_control": "full",
-     "tests_dir": "../state/fnv-tests"
+     "tests_dir": "../state/tests"
    }
    ```
 
@@ -917,8 +917,8 @@ Not run: `fnv_bisect` in the game (the MCP server must launch the game; it was n
 ## Plan 2 completion pass (2026-11-11 late night)
 
 Everything the waves left as "not built" was built or decided against; each item below was run in the game
-(Prospector Saloon, a spawned Trudy, the Hello plugins) unless it says otherwise. Tool count: 209 (165 `fnv_`, 44
-`geck_`).
+(Prospector Saloon, a spawned Trudy, the Hello plugins) unless it says otherwise. Tool count at the time: 209 (165 `fnv_`,
+44 `geck_`).
 
 **Inspectors**
 - `fnv_anim groups` (the group map at animation +0xDC, values are AnimSequenceBase: a single one holds its

@@ -62,6 +62,12 @@ class PluginTools:
         from .fnv_link import find_zig
         return str(find_zig(self.live.project))
 
+    def _image_path(self):
+        """The unpacked game image: fnv.clean_exe, then FNV_CLEAN_EXE, then ~/.fnvdecomp/FalloutNV.exe."""
+        fnv = getattr(self.live.project, 'fnv', None)
+        path = getattr(fnv, 'clean_exe', None) or os.environ.get('FNV_CLEAN_EXE')
+        return Path(path) if path else IMAGE
+
     def scaffold(self, name):
         folder = self._folder(name)
         folder.mkdir(parents=True, exist_ok=True)
@@ -81,10 +87,12 @@ class PluginTools:
                     return raw, 'running game'
         except Exception:  # noqa: BLE001 - fall back to the image
             pass
-        if not IMAGE.is_file():
-            raise ConvError('NO_CODE', 'The game is not running and no local game image is at %s, so the prologue '
-                            'of 0x%08X cannot be planned. Next: start the game and build again.' % (IMAGE, address))
-        data = IMAGE.read_bytes()
+        image = self._image_path()
+        if not image.is_file():
+            raise ConvError('NO_CODE', 'The game is not running and no local game image is at %s (fnv.clean_exe, '
+                            'FNV_CLEAN_EXE), so the prologue of 0x%08X cannot be planned. Next: start the game and '
+                            'build again.' % (image, address))
+        data = image.read_bytes()
         pe = struct.unpack_from('<I', data, 0x3C)[0]
         count = struct.unpack_from('<H', data, pe + 6)[0]
         opt = struct.unpack_from('<H', data, pe + 20)[0]

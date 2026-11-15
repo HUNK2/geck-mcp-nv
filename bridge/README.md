@@ -2,7 +2,7 @@
 
 The bridge is the original part of GECK MCP for New Vegas. It has two layers:
 
-1. **Offline plugin authoring (any OS, no GECK needed).** You describe a mod in a JSON *spec*: records,
+1. **Offline plugin authoring (no GECK needed).** You describe a mod in a JSON *spec*: records,
    interior cells and placed objects. The bridge writes a valid `.esp` with stable FormIDs, checks every
    `@EditorID` reference against your own masters, and installs it with backups.
 2. **GECK control.** A small 32-bit helper (`Probe.Mcp.exe`) runs next to GECK and drives it mostly through
@@ -22,10 +22,10 @@ default. Also untested: GECK Extender, and non-English GECK. CI runs the tests o
 
 Requirements: Python 3.12+, Fallout: New Vegas with GECK, and an MCP client (Claude Desktop/Code, Codex, ...).
 
-```sh
+```powershell
 cd bridge
-python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.lock.txt      # Windows: .venv\Scripts\python.exe
+py -3.12 -m venv .venv
+.venv\Scripts\python.exe -m pip install -r requirements.lock.txt
 ```
 
 1. **Build the master index** (read-only, run once per game update). Set `FNV_DATA` if your Data folder is elsewhere.
@@ -49,7 +49,7 @@ python3 -m venv .venv
 5. Ask your agent: *"Validate the spec, build the plugin and show me what it contains."*
    This uses `geck_spec_validate`, then `geck_plugin_build`, then `geck_plugin_inspect`, and touches nothing in the game.
 
-## The 44 tools
+## The geck_* tools
 
 | Group | Tools |
 | --- | --- |

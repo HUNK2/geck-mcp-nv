@@ -49,9 +49,9 @@ def process_lock(root, wait=None):
         lock.release()
 
 
+# toolCount (geck_* tools) and fnv.toolCount are counted from the server's own tool list (server.capabilities).
 CAPABILITIES = {
-    'toolCount': 43,
-    'fnv': {'toolCount': len(FNV_TOOLS), 'tools': FNV_TOOLS,
+    'fnv': {'tools': FNV_TOOLS,
             'scope': 'read-only offline engine knowledge (decomp + fnvsym proofs) and crash logs; game build 1.4.0.525'},
     'version': __version__, 'game': 'Fallout New Vegas', 'recordTypes': ['STAT'],
     'transport': 'stdio', 'editorAdapter': '32-bit Win32 controls; native Windows',

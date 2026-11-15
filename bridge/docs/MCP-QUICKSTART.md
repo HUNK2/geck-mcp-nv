@@ -4,12 +4,11 @@
 
 This is a local stdio MCP server for the 32-bit Fallout New Vegas GECK. It is Windows only and tested end to end on Windows 11 (`launcher: native`, the only launcher). It loads configured plugins with exactly FalloutNV.esm as master and edits configured existing STAT model fields. Record creation, cell placement, animation checks, and gameplay checks remain unsupported.
 
-## Runtime diagnostics (29 bridge tools)
+## Runtime diagnostics
 
 > **Legacy toolset.** The `geck_runtime_*` and `geck_console_*` tools (15) are off by default since fnv-mcp 0.5: the `fnv_*` tools do these jobs through the engine companion. Set `"legacy_tools": true` in the project file, or start the server with `--legacy`, to register them. They will be removed in a later release.
 
-The four vanilla tools below remain available. The server now has 44 tools total:
-two additional automatic snapshot/compare tools use an optional read-only xNVSE
+The four vanilla tools below remain available (in the legacy toolset). Two additional automatic snapshot/compare tools use an optional read-only xNVSE
 companion. See [automatic setup and validation limits](AUTOMATIC-RUNTIME.md).
 
 The runtime feature uses native vanilla FNV `bat` + `scof`. The user runs batches and
@@ -265,7 +264,7 @@ quest's unique quest_variable probes; mixed profiles list unsupported probes and
 constraint errors, with the manual geck_runtime_prepare route. Vanilla supports
 quest variables, item counts, disabled and dead; the user executes batches.
 
-`geck_runtime_setup_preflight(profile=PROFILE, zig_path=OPTIONAL_PATH)` previews
+`geck_runtime_setup_preflight(profile=PROFILE)` previews
 prerequisites/version, exact DLL/telemetry/receipt/backup paths, build identity and
 restart/verification steps. It never builds/downloads/installs. CLI preflight:
 `runtime_companion.py --project PROFILE preflight --profile RUNTIME_JSON`.

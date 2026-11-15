@@ -90,7 +90,7 @@ It is optional. Without it every tool works as before.
 Build it once (and again after the decomp changes), with your own copies of the decomp and the unpacked exe:
 
 ```powershell
-python -m engine_map.symdb --decomp C:\path	onv_decomp --image C:\path	o\FalloutNV.exe --out state\symdb.sqlite
+.venv\Scripts\python.exe -m engine_map.symdb --decomp C:\src\fnv_decomp --image $env:USERPROFILE\.fnvdecomp\FalloutNV.exe --out state\symdb.sqlite
 ```
 
 The tools look for it in this order: `fnv.symdb` in the project file, the `FNV_SYMDB` environment

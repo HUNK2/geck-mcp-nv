@@ -25,8 +25,26 @@ def supervise(argv):
     module.main(__file__, argv)
 
 
+def check_project(argv):
+    """Load the project file once before serving: one stderr line and exit code 2 when it is not valid (Task 4.3).
+    A package that does not import is left to the supervisor, which reports it and reloads on the next edit."""
+    if '--project' not in argv or argv.index('--project') + 1 >= len(argv):
+        return
+    path = argv[argv.index('--project') + 1]
+    try:
+        from geck_mcp.config import Project
+        from geck_mcp.server import project_error
+    except Exception:  # noqa: BLE001
+        return
+    try:
+        Project.load(path)
+    except Exception as e:  # noqa: BLE001
+        sys.exit(project_error(path, e))
+
+
 if __name__ == '__main__':
     args = sys.argv[1:]
+    check_project(args)
     if '--serve' in args or '--no-reload' in args or os.environ.get('GECK_MCP_RELOAD') == '0':
         serve([a for a in args if a not in ('--serve', '--no-reload')])
     else:

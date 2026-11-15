@@ -1,79 +1,64 @@
-# Install the source download with your AI agent
+# Adding the GECK tools
 
-The GitHub release ZIP and Nexus download contain source and documentation only:
-**no DLL, EXE, game files, saves, master indexes or personal project state**.
-Extract outside the game's Data folder. This is a development toolkit, not a
-Vortex install. Python 3.12+, GECK and an MCP client are required for editor work.
+The `geck_*` tools drive the GECK and build plugins. They are optional: set up the server first with
+[bridge/docs/FNV-MCP-SETUP.md](../bridge/docs/FNV-MCP-SETUP.md), the one setup guide. Until the steps below are
+done, every `geck_*` tool answers `NOT_CONFIGURED` and names the settings it is missing.
 
-## Windows editor setup
+The source download contains source and documentation only: **no DLL, EXE, game files, saves, master indexes or
+personal project state**. Extract it outside the game's Data folder. It is a development toolkit, not a Vortex
+install.
 
-From the extracted `bridge` directory:
+## The GECK settings and the helper
+
+From the `bridge` folder, add the GECK settings to your project file (`projects\my-fnv.json`):
+
+- `plugin`: the `.esp` the tools work on;
+- `spec` (a JSON spec the plugin is built from) or `records` (the STAT records the record tools may edit);
+- `helper`: `../Probe.Mcp.exe`, the 32-bit helper built below.
+
+`projects\example-windows.json` is a complete example. Then build the helper from this download (it uses
+Windows' .NET Framework 4 C# compiler):
 
 ```powershell
-py -3.12 -m venv .venv
-.venv\Scripts\python.exe -m pip install -r requirements.lock.txt
-Copy-Item projects/example-windows.json projects/my-mod.windows.json
+.venv\Scripts\python.exe build_helper.py --project projects\my-fnv.json
 ```
 
-Have your agent edit the copied profile: set your actual game path, plugin/spec,
-helper path and project state directory. Preserve existing project state when
-upgrading. Then build the helper from this download, even if an older Git checkout
-already contains `Probe.Mcp.exe`:
+Stop the MCP server first so an old helper is not locked, and restart the client afterwards. Begin with the
+read-only `geck_status` and `geck_capabilities` (it gives the tool count of the running server); do not discard
+unsaved GECK work. See [bridge/README.md](../bridge/README.md#setup) for indexing and full client examples.
 
-```powershell
-.venv\Scripts\python.exe build_helper.py --project projects/my-mod.windows.json
-```
+## Optional in-game console companion (legacy toolset)
 
-This uses Windows' .NET Framework 4 C# compiler to create the local 32-bit helper.
-Stop your old MCP server first so its helper is not locked. Preserve the old
-installation while upgrading. Register this installation's `run_mcp.py` with
-`--project` and the absolute copied profile path in your MCP client, then restart
-the client. Expect bridge version 0.4.0 and **44 tools**. Begin with read-only
-status/capabilities; do not discard unsaved GECK work. See
-[bridge setup](../bridge/README.md#setup) for indexing and full client examples.
+The `geck_console_*` and `geck_runtime_*` tools are in the legacy toolset, off by default: set
+`"legacy_tools": true` in the project file (or start the server with `--legacy`) to use them. The `fnv_*` tools do
+these jobs through the engine companion.
 
-## Optional in-game console companion
-
-Editor work needs no companion DLL. Console execution and typed inventory reads
-require a DLL built locally for your installed project plugin. Supported live
-configuration: native Windows, Steam FNV 1.4.0.525, xNVSE 6.4.9+ 6.x and a locally
-provided [Zig 0.14.1](https://ziglang.org/download/0.14.1/) compiler. The tools do
-not download a compiler or install xNVSE for you.
+Editor work needs no companion DLL. Console execution and typed inventory reads require a DLL built locally for
+your installed project plugin. Supported configuration: Windows, Steam FNV 1.4.0.525, xNVSE 6.4.9+ 6.x and a locally
+provided [Zig 0.14.1](https://ziglang.org/download/0.14.1/) compiler, named by `fnv.zig` in the project file (or
+`GECK_MCP_ZIG`). The tools do not download a compiler or install xNVSE for you.
 
 With the project plugin installed, ask your agent to hash that file and use:
 
 1. `geck_console_setup(mode="preflight", expected_plugin_hash=HASH, request_key=KEY)`.
-2. `mode="build"`, a new key and `zig=ABSOLUTE_ZIG_EXE`. Keep its returned build receipt.
-3. Quit FNV normally. Use `mode="install"`, a new key and that `build_receipt`.
-   Owned previous files are backed up; unresolved commands block installation.
-4. Launch through xNVSE, load a disposable save, leave gameplay unpaused and
-   require `geck_console_readiness` to report `ready` before commands.
+2. `mode="build"` and a new key. Keep its returned build receipt.
+3. Quit FNV normally. Use `mode="install"`, a new key and that `build_receipt`. Owned previous files are backed
+   up; unresolved commands block installation.
+4. Launch through xNVSE, load a disposable save, leave gameplay unpaused and require `geck_console_readiness` to
+   report `ready` before commands.
 
-Changing the anchor plugin requires a guarded rebuild/install/restart. Other
-loaded plugins use explicit plugin/local_form/sha256 bindings without another DLL.
-Keep `target.started` as a decimal string. Retain each operation ID, poll status,
-and never retry an uncertain command automatically. A `coc` also needs explicit
-authorization and a matching originating CELL binding. Verify interior/exterior
-classification first: exact-cell proof does not establish collision-safe landing.
-See the complete [console workflow](../bridge/docs/CONSOLE-COMMANDS.md).
+Changing the anchor plugin requires a guarded rebuild/install/restart. Other loaded plugins use explicit
+plugin/local_form/sha256 bindings without another DLL. Keep `target.started` as a decimal string. Retain each
+operation ID, poll status, and never retry an uncertain command automatically. A `coc` also needs explicit
+authorization and a matching originating CELL binding. Verify interior/exterior classification first: exact-cell
+proof does not establish collision-safe landing. See the complete
+[console workflow](../bridge/docs/CONSOLE-COMMANDS.md).
 
 The separate optional read-only quest telemetry companion has its own
 [build/setup instructions](../bridge/docs/AUTOMATIC-RUNTIME.md).
 
-## Prompt to give your agent
+## Limits
 
-> Set up this source-only GECK MCP download using docs/SOURCE-SETUP.md. Keep my
-> mod sources, profiles, state and game files. Create a profile copy for this
-> installation, install the locked Python dependencies, compile the GECK helper
-> locally and help register/restart my MCP client. Verify version 0.4.0 and 44
-> bridge tools. Start with read-only checks. Explain the optional xNVSE console
-> companion before building or installing it, and coordinate a normal game exit.
-> Do not save over valued saves or replay uncertain operations.
-
-## Beta limits
-
-Windows editor and disposable in-game workflows have live evidence. Inventory,
-66-percent condition, single interior teleport, context changes and replay guards
-passed. Large-script/reference/branch workloads and controlled minimized or
-disconnected Shadow sessions still need further live validation. Linux/Proton,
-GECK Extender and non-English GECK are not claimed tested. See [testing](TESTING.md).
+Windows editor and disposable in-game workflows have live evidence. Large-script/reference/branch workloads and
+minimized or disconnected sessions still need further live validation. GECK Extender and non-English GECK are not
+tested.

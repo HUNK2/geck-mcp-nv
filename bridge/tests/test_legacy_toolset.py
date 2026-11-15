@@ -34,6 +34,19 @@ class LegacyToolsetTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sum(n.startswith('geck_runtime_') for n in LEGACY_TOOLS), 9)
         self.assertEqual(sum(n.startswith('geck_console_') for n in LEGACY_TOOLS), 6)
 
+    async def test_capabilities_count_the_tools_the_server_lists(self):
+        for legacy in (False, True):
+            project = self.fixture.p.model_copy(update={'legacy_tools': legacy})
+            async with Client(make_server(project, self.fixture.service)) as client:
+                listing = await client.list_tools()
+                names = [t.name for t in (listing.tools if hasattr(listing, 'tools') else listing)]
+                caps = (await client.call_tool('geck_capabilities', {})).structured_content
+                caps = caps.get('result', caps)
+            with self.subTest(legacy=legacy):
+                self.assertEqual(caps['toolCount'], sum(n.startswith('geck_') for n in names))
+                self.assertEqual(caps['fnv']['toolCount'], sum(n.startswith('fnv_') for n in names))
+                self.assertEqual(caps['allTools'], len(names))
+
     async def test_off_by_default(self):
         names = await self.names(self.fixture.p)
         self.assertEqual(sorted(set(LEGACY_TOOLS) & names), [])

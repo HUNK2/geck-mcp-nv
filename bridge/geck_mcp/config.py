@@ -45,11 +45,13 @@ class Project(BaseModel):
     # files keep loading; the CrossOver and Wine launchers were removed.
     launcher: Literal['native'] = 'native'
     game_root: Path
-    plugin: str
+    # The GECK settings (plugin, helper, records or spec) are only for the geck_* tools: a project file for the game
+    # alone leaves them out, and the geck_* tools then answer NOT_CONFIGURED (Task 4.3).
+    plugin: str | None = None
     records: list[Record] = Field(default_factory=list, max_length=100)
     source_roots: list[Path] = Field(default_factory=list)
     state_dir: Path
-    helper: Path
+    helper: Path | None = None
     helper_timeout_seconds: int = Field(default=45, ge=5, le=90)
     # auto: persistent worker when the helper supports `serve`, else one helper launch per call.
     transport: Literal['auto', 'persistent', 'oneshot'] = 'auto'
@@ -64,19 +66,28 @@ class Project(BaseModel):
     @field_validator('plugin')
     @classmethod
     def plugin_name(cls, value):
+        if value is None:
+            return value
         if not value.lower().endswith('.esp') or any(c in value for c in '/\\:') or '..' in value:
             raise ValueError('plugin must be a single .esp filename')
         return value
 
     @model_validator(mode='after')
     def identities(self):
-        if not self.records and not self.spec:
-            raise ValueError('configure at least one record, or a spec')
+        if self.plugin and not self.records and not self.spec:
+            raise ValueError('a project with a plugin needs at least one record, or a spec')
         if len({r.editor_id for r in self.records}) != len(self.records):
             raise ValueError('duplicate configured EditorID')
         if len({r.form_id.upper() for r in self.records}) != len(self.records):
             raise ValueError('duplicate configured FormID')
         return self
+
+    def missing_geck_settings(self):
+        """The keys a geck_* tool needs that this project file leaves out (empty when it has them all)."""
+        missing = [key for key in ('plugin', 'helper') if getattr(self, key) is None]
+        if not self.records and not self.spec:
+            missing.append('records or spec')
+        return missing
 
     # The folder of the project file (set by load; None for a Project built in code). safe_paths reads it.
     _project_dir: Path | None = PrivateAttr(default=None)

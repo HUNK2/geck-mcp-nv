@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "project_id": "my-fnv",
+  "launcher": "native",
+  "game_root": "C:/Program Files (x86)/Steam/steamapps/common/Fallout New Vegas",
+  "state_dir": "../state",
+  "fnv": {
+    "engine_control": "read",
+    "engine_map": "../state/engine_map.json",
+    "tests_dir": "../state/tests",
+    "mo2_root": null,
+    "mo2_profile": null,
+    "clean_exe": null
+  }
+}
