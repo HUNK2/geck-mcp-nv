@@ -19,6 +19,7 @@ tested end to end: [examples/hello-quest](../examples/hello-quest/README.md).
 | JIP LN NVSE | Nexus Mods (you download it) |
 | Yvile's Crash Logger | Nexus Mods (you download it) |
 | Mod Organizer 2 (portable instance) | its GitHub releases (you download it) |
+| 7-Zip, installed at `C:\Program Files\7-Zip\7z.exe` (the MO2 setup script unpacks the archives with it) | 7-zip.org |
 | Zig 0.14.1 (builds the engine companion) | ziglang.org (you download it) |
 | A checkout of [fnv_decomp](https://github.com/momusdigital/fnv_decomp), for the engine map | its repository |
 | Optional: your own unpacked FalloutNV.exe (Steamless), for `fnv_patch_map` and planning hooks offline | you make it locally |
@@ -45,9 +46,12 @@ Nothing here downloads files or ships game files, the decompilation or anything 
    Set `game_root` to your game folder. The other values work as they are; the settings table below lists every
    key. Keep `engine_control` at `"read"` until you want the agent to change the game (see "Safety levels").
 
-3. **MO2 dev instance.** `tools\fnv_setup_dev_profile.py` sets up a portable MO2 instance with a `Dev` profile
-   from archives you downloaded. It is a dry run by default; `--apply` does it and records what it added to the
-   game folder:
+3. **MO2 dev instance.** First unpack the Mod Organizer 2 archive (for example `Mod.Organizer-2.5.2.7z`) into a
+   new folder, `C:\Modding\FNV-Dev` below, and put the three downloads in one folder, `C:\Modding\downloads`
+   below: the xNVSE archive (`nvse_*.7z`) and the JIP LN NVSE and Yvile's Crash Logger archives as Nexus names them
+   (the script finds them by `jip ln` and `crash logger` in the name). Then `tools\fnv_setup_dev_profile.py` sets up
+   the instance with a `Dev` profile. It is a dry run by default (it prints what it would do, or what is missing);
+   `--apply` does it and records what it added to the game folder:
 
    ```powershell
    .venv\Scripts\python.exe tools\fnv_setup_dev_profile.py --mo2 C:\Modding\FNV-Dev --downloads C:\Modding\downloads
