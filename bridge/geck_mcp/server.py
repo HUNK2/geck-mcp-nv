@@ -1,5 +1,6 @@
 """Local stdio MCP entry point. No editor or file modifications on startup."""
 import argparse
+import copy
 import json
 import sys
 import time
@@ -102,10 +103,19 @@ class BridgeServer(MCPServer):
 
     async def list_tools(self):
         """Every tool with a display title (release audit L6); one set at registration is kept."""
+        from .param_docs import PARAM_DOCS
         tools = await super().list_tools()
         for tool in tools:
             if not tool.title:
                 tool.title = display_title(tool.name)
+            docs = PARAM_DOCS.get(tool.name)
+            if docs:
+                tool.input_schema = copy.deepcopy(tool.input_schema)   # the tool manager's own schema stays as it is
+            props = (tool.input_schema or {}).get('properties') if docs else None
+            for param, text in (docs or {}).items():   # parameter descriptions (release audit M1)
+                schema = (props or {}).get(param)
+                if isinstance(schema, dict) and not schema.get('description'):
+                    schema['description'] = text
         return tools
 
     async def call_tool(self, name, arguments, context=None):
