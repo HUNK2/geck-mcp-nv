@@ -580,6 +580,35 @@ def build(decomp, out, image=None, jobs=1, only=(), limit=None, units=None, work
     return summary
 
 
+def decomp_tools_missing(decomp):
+    """None when the decomp's tools/compare.py (the image check, --image) imports; else what is missing and what to
+    do. Checked once up front, so a build does not fall back unit by unit for a reason it could name at the start."""
+    import importlib.util
+    path = Path(decomp) / 'tools' / 'compare.py'
+    if not path.is_file():
+        return ('%s is missing: the image check (--image) uses the decomp checkout\'s own tools/compare.py. Update '
+                'the checkout, or build without --image (each function is then checked by a second compile).' % path)
+    try:
+        spec = importlib.util.spec_from_file_location('_fnvmcp_compare_check', path)
+        module = importlib.util.module_from_spec(spec)
+        tools = str(path.parent)
+        added = tools not in sys.path
+        if added:
+            sys.path.insert(0, tools)
+        try:
+            spec.loader.exec_module(module)
+        finally:
+            if added:
+                sys.path.remove(tools)
+    except Exception as e:  # noqa: BLE001 - any import failure is the answer
+        return ('%s does not import (%s: %s). Install what it needs, or build without --image.'
+                % (path, type(e).__name__, e))
+    missing = [name for name in ('compare', 'Pe') if not hasattr(module, name)]
+    if missing:
+        return '%s has no %s: the checkout is older or newer than this tool expects.' % (path, ', '.join(missing))
+    return None
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog='engine_map.symdb', description=__doc__.split('\n')[0])
     ap.add_argument('--decomp', required=True, help='fnv_decomp checkout')
@@ -596,6 +625,11 @@ def main(argv=None):
     if args.image and not Path(args.image).is_file():
         log('error: image not found: %s' % args.image)
         return 2
+    if args.image:
+        missing = decomp_tools_missing(decomp)
+        if missing:
+            log('error NO_DECOMP_TOOLS: %s' % missing)
+            return 2
     summary = build(decomp, args.out, args.image, max(1, args.jobs), args.only, args.limit)
     print(json.dumps(summary, indent=2))
     if not summary['replaced']:

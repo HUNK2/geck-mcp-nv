@@ -38,6 +38,24 @@ class VersionTests(unittest.TestCase):
         self.assertIn('fnv-mcp', first)
 
 
+class DependencyTests(unittest.TestCase):
+    """Task 5.2: the declared dependencies are pinned the same in the lock file, which has the Windows-only pywin32."""
+
+    def test_declared_dependencies_match_the_lock(self):
+        lock = {}
+        for line in (BRIDGE / 'requirements.lock.txt').read_text(encoding='utf-8').splitlines():
+            if '==' in line and not line.startswith('#'):
+                name, version = line.split('==')
+                lock[name.strip().lower()] = version.strip()
+        project = tomllib.loads((BRIDGE / 'pyproject.toml').read_text(encoding='utf-8'))['project']
+        declared = project['dependencies'] + project['optional-dependencies']['naming']
+        self.assertIn('pywin32', lock)
+        for spec in project['dependencies']:
+            name, version = spec.split('==')
+            self.assertEqual(lock.get(name.lower()), version, spec)
+        self.assertEqual({d.split('==')[0] for d in declared} >= {'mcp', 'pydantic', 'anyio', 'capstone'}, True)
+
+
 class EnvironmentTests(unittest.TestCase):
     def test_the_new_name_wins_and_the_old_one_still_works(self):
         for new, old in envvars.RENAMED.items():

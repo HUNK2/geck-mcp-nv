@@ -1,4 +1,4 @@
-"""Exercise source-download boundaries against a disposable Git repository."""
+"""Release plan Task 5.2: the fnv-mcp source download, against a disposable Git repository."""
 import importlib.util
 import json
 from pathlib import Path
@@ -24,11 +24,15 @@ class ReleaseTests(unittest.TestCase):
         self.git('config', 'user.name', 'Synthetic Test')
         self.git('config', 'user.email', 'test@example.invalid')
         for name, data in {
-            'README.md': b'# Test (v0.3.0)',
+            'README.md': b'# Test',
+            'CHANGELOG.md': b'# Changelog\n\n## fnv-mcp 0.3.0 - unreleased\n',
             'LICENSE': b'Synthetic licence',
-            'windows/LICENSE': b'Synthetic third-party licence',
             'bridge/pyproject.toml': b'[project]\nversion="0.3.0"\n',
             'bridge/geck_mcp/__init__.py': b'__version__="0.3.0"\n',
+            'bridge/examples/fnv-tests/a.yaml': b'name: a\n',
+            'bridge/examples/q/scripts/Q.gek': b'scn Q\n',
+            'bridge/docs/BUG-LOG.md': b'internal',
+            'bridge/docs/audit4/notes.md': b'internal',
             'bridge/native/runtime/companion.c': b'/* synthetic source */',
             'bridge/Probe.Mcp.exe': b'fake exe',
             'bridge/native/generated.dll': b'fake dll',
@@ -55,11 +59,14 @@ class ReleaseTests(unittest.TestCase):
         manifest = release.package(self.repo, 'HEAD', output)
         with zipfile.ZipFile(output) as z:
             self.assertIsNone(z.testzip())
-            self.assertEqual(z.read(release.PREFIX + 'README.md'), b'# Test (v0.3.0)')
-            self.assertEqual(set(z.namelist()), {release.PREFIX + p for p in (
-                'README.md', 'LICENSE', 'bridge/pyproject.toml', 'bridge/geck_mcp/__init__.py',
+            prefix = release.prefix('0.3.0')
+            self.assertEqual(prefix, 'fnv-mcp-0.3.0/')
+            self.assertEqual(z.read(prefix + 'README.md'), b'# Test')
+            self.assertEqual(set(z.namelist()), {prefix + p for p in (
+                'README.md', 'CHANGELOG.md', 'LICENSE', 'bridge/pyproject.toml', 'bridge/geck_mcp/__init__.py',
                 'bridge/native/runtime/companion.c', 'bridge/projects/example-windows.json',
-                'windows/LICENSE')})
+                'bridge/examples/fnv-tests/a.yaml', 'bridge/examples/q/scripts/Q.gek')})
+        self.assertEqual(manifest['name'], 'fnv-mcp')
         self.assertEqual(manifest, json.loads(output.with_suffix('.json').read_text()))
         self.assertEqual(manifest['sourceCommit'], self.git('rev-parse', 'HEAD').decode().strip())
 
@@ -78,8 +85,9 @@ class ReleaseTests(unittest.TestCase):
         self.assertTrue(manifest['candidateOnly'])
         self.assertFalse(manifest['releaseReady'])
         with zipfile.ZipFile(output) as archive:
-            self.assertEqual(archive.read(release.PREFIX + 'bridge/new_feature.py'), b'synthetic = True\n')
-            candidate = json.loads(archive.read(release.PREFIX + 'CANDIDATE.json'))
+            prefix = release.prefix('0.3.0')
+            self.assertEqual(archive.read(prefix + 'bridge/new_feature.py'), b'synthetic = True\n')
+            candidate = json.loads(archive.read(prefix + 'CANDIDATE.json'))
             self.assertFalse(candidate['releaseReady'])
             self.assertEqual(candidate['fileSha256'], manifest['fileSha256'])
 
@@ -91,6 +99,30 @@ class ReleaseTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'version markers'):
             release.package(self.repo, 'HEAD', output)
         self.assertFalse(output.exists())
+
+    def test_a_folder_output_gets_the_versioned_name(self):
+        folder = self.root / 'out'
+        folder.mkdir()
+        manifest = release.package(self.repo, 'HEAD', folder)
+        self.assertEqual(manifest['archive'], 'fnv-mcp-0.3.0.zip')
+        self.assertTrue((folder / 'fnv-mcp-0.3.0.zip').is_file())
+
+    def test_a_changelog_on_another_version_is_refused(self):
+        (self.repo / 'CHANGELOG.md').write_text('# Changelog\n\n## fnv-mcp 9.9.9\n')
+        self.git('add', 'CHANGELOG.md')
+        self.git('commit', '-qm', 'Synthetic changelog')
+        with self.assertRaisesRegex(ValueError, 'version markers'):
+            release.package(self.repo, 'HEAD', self.root / 'bad.zip')
+
+    def test_the_real_repository_packages(self):
+        repo = Path(__file__).resolve().parents[2]
+        manifest = release.package(repo, 'HEAD', self.root)
+        self.assertEqual(manifest['name'], 'fnv-mcp')
+        with zipfile.ZipFile(self.root / manifest['archive']) as z:
+            names = z.namelist()
+        self.assertFalse([n for n in names if n.lower().endswith(('.exe', '.dll', '.esp', '.nif'))])
+        self.assertTrue(any(n.endswith('bridge/run_mcp.py') for n in names))
+        self.assertTrue(any(n.endswith('.yaml') for n in names))
 
     def test_unsafe_paths_refused(self):
         for name in ('../outside.py', '/outside.py', 'bridge/../../outside.py',

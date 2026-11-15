@@ -4,10 +4,12 @@ name = "fnv-mcp"
 version = "0.5.0b1"
 description = "MCP tools for Fallout: New Vegas: the running game, the engine and the GECK"
 requires-python = ">=3.12"
-dependencies = ["mcp==2.2.0", "pillow==12.3.0", "numpy==2.5.3"]
+# Used directly by geck_mcp (the rest come with mcp); requirements.lock.txt pins the whole tree, generated on
+# Windows. There is no build system or entry point: run from a clone with `python run_mcp.py` (Task 5.2).
+dependencies = ["mcp==2.2.0", "pydantic==2.13.5", "anyio==4.15.1", "pillow==12.3.0", "numpy==2.5.3"]
 
 [project.optional-dependencies]
-# fnv_probe.py: the probe planner and caller decoding (fnv_probe / fnv_atlas)
+# fnv_probe.py: the probe planner and caller decoding (fnv_probe / fnv_atlas); the setup guide installs it
 naming = ["capstone==5.0.7"]
 
 [tool.pytest.ini_options]

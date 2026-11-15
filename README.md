@@ -37,7 +37,9 @@ symbol database from their own copies.
 ## Start
 
 Follow [bridge/docs/FNV-MCP-SETUP.md](bridge/docs/FNV-MCP-SETUP.md), the one setup guide. It starts from
-`bridge/projects/example-fnv.json` and ends with the agent reading the running game. Then a first prompt:
+`bridge/projects/example-fnv.json` and ends with the agent reading the running game. fnv-mcp is not a pip package:
+run it from a clone with `python run_mcp.py --project <file>` (the guide registers exactly that with your MCP
+client). Then a first prompt:
 
 > Call fnv_setup_check and fix what it reports with me, then launch the game with fnv_launch and show me
 > fnv_status.

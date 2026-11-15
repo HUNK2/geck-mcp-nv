@@ -35,7 +35,11 @@ Nothing here downloads files or ships game files, the decompilation or anything 
    cd bridge
    py -3.12 -m venv .venv
    .venv\Scripts\python.exe -m pip install -r requirements.lock.txt
+   .venv\Scripts\python.exe -m pip install capstone==5.0.7
    ```
+
+   The second line is the `naming` extra (`fnv_probe`, `fnv_atlas`); everything else works without it. fnv-mcp
+   is not installed as a package: it runs from this folder (`run_mcp.py`, step 6).
 
 2. **Project file.** Copy the example and edit the copy:
 

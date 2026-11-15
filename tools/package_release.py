@@ -1,4 +1,9 @@
-"""Build a reproducible source-only download from a committed Git revision."""
+"""Build a reproducible source-only download of fnv-mcp from a committed Git revision.
+
+The archive is fnv-mcp-<version>.zip with one top folder of the same name; the version comes from
+bridge/pyproject.toml and must agree with geck_mcp/__init__.py and the first CHANGELOG heading. Source, scenario
+(.yaml) and script (.gek) files go in; binaries, private state, game-derived fixtures and internal working notes
+stay out."""
 import argparse
 import ast
 import hashlib
@@ -9,9 +14,12 @@ import subprocess
 import tomllib
 import zipfile
 
-PREFIX = 'GECK-MCP-for-New-Vegas/'
+NAME = 'fnv-mcp'
 ROOT_FILES = {'README.md', 'CHANGELOG.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md'}
-SOURCE_SUFFIXES = {'.py', '.cs', '.c', '.h', '.json', '.toml', '.txt', '.md', '.swift'}
+SOURCE_SUFFIXES = {'.py', '.cs', '.c', '.h', '.json', '.toml', '.txt', '.md', '.yaml', '.yml', '.gek'}
+# Working notes that are not for users (they live outside the repository now; kept out if they come back).
+INTERNAL = {'HANDOFF.md', 'STATUS.md', 'MCPworkflow.md', 'BUG-LOG.md', 'M1-FAST-BRIDGE.md'}
+INTERNAL_DIRS = {'audit3', 'audit4', 'internal'}
 # These regression modules require the game-derived fixtures omitted from downloads.
 FIXTURE_TESTS = {f'bridge/tests/test_{name}.py' for name in
                  ('authoring', 'build', 'codec', 'records', 'validate')}
@@ -23,7 +31,9 @@ def included(name):
         raise ValueError('unsafe archive path')
     if name in ROOT_FILES:
         return True
-    if not p.parts or p.parts[0] not in {'bridge', 'windows', 'docs', 'tools'}:
+    if not p.parts or p.parts[0] not in {'bridge', 'docs', 'tools'}:
+        return False
+    if p.name in INTERNAL or INTERNAL_DIRS & set(p.parts):
         return False
     if any(part in {'state', 'build', 'evidence', 'photos', 'fixtures', '.venv',
                     '__pycache__', 'backups', 'screenshots', 'history'} for part in p.parts):
@@ -39,13 +49,16 @@ def git(repo, *args):
     return subprocess.check_output(['git', '-C', str(repo), *args])
 
 
+def prefix(version):
+    return '%s-%s/' % (NAME, version)
+
+
 def package(repo, revision, output, working_tree=False):
+    """output: a new .zip path, or an existing folder to put fnv-mcp-<version>.zip in."""
     repo, output = Path(repo), Path(output)
-    if output.suffix.lower() != '.zip':
-        raise ValueError('output must be a .zip path')
-    manifest_path = output.with_suffix('.json')
-    if output.exists() or manifest_path.exists():
-        raise FileExistsError('archive or manifest already exists; choose a new output')
+    folder = output if output.is_dir() else None
+    if folder is None and output.suffix.lower() != '.zip':
+        raise ValueError('output must be a .zip path or a folder')
     commit = git(repo, 'rev-parse', '--verify', revision + '^{commit}').decode().strip()
     source = zipfile.ZipFile(io.BytesIO(git(repo, 'archive', '--format=zip', commit)))
     files, excluded = {}, []
@@ -74,8 +87,15 @@ def package(repo, revision, output, working_tree=False):
     module = ast.parse(files['bridge/geck_mcp/__init__.py'].decode())
     declared = [ast.literal_eval(n.value) for n in module.body if isinstance(n, ast.Assign)
                 and any(isinstance(t, ast.Name) and t.id == '__version__' for t in n.targets)]
-    if declared != [version] or f'(v{version})' not in files['README.md'].decode():
-        raise ValueError('release version markers disagree')
+    changelog = files.get('CHANGELOG.md', b'').decode()
+    heading = next((line for line in changelog.splitlines() if line.startswith('## ')), '')
+    if declared != [version] or version not in heading:
+        raise ValueError('release version markers disagree (pyproject, geck_mcp.__version__, CHANGELOG)')
+    if folder is not None:
+        output = folder / ('%s-%s.zip' % (NAME, version))
+    manifest_path = output.with_suffix('.json')
+    if output.exists() or manifest_path.exists():
+        raise FileExistsError('archive or manifest already exists; choose a new output')
     snapshot_hashes = {name: hashlib.sha256(data).hexdigest() for name, data in sorted(files.items())}
     if working_tree:
         files['CANDIDATE.json'] = (json.dumps({'candidateOnly': True, 'releaseReady': False,
@@ -83,12 +103,12 @@ def package(repo, revision, output, working_tree=False):
             indent=2, sort_keys=True) + '\n').encode()
     with output.open('xb') as target, zipfile.ZipFile(target, 'w', zipfile.ZIP_DEFLATED) as archive:
         for name, data in sorted(files.items()):
-            info = zipfile.ZipInfo(PREFIX + name, (1980, 1, 1, 0, 0, 0))
+            info = zipfile.ZipInfo(prefix(version) + name, (1980, 1, 1, 0, 0, 0))
             info.compress_type = zipfile.ZIP_DEFLATED
             info.create_system = 3
             info.external_attr = 0o100644 << 16
             archive.writestr(info, data)
-    manifest = {'version': version, 'sourceCommit': commit, 'archive': output.name,
+    manifest = {'name': NAME, 'version': version, 'sourceCommit': commit, 'archive': output.name,
                 'sha256': hashlib.sha256(output.read_bytes()).hexdigest(),
                 'size': output.stat().st_size, 'files': len(files),
                 'excluded': sorted(excluded), 'publication': 'local-only'}
@@ -104,7 +124,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--repo', type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument('--revision', required=True, help='committed source revision')
-    parser.add_argument('--output', type=Path, required=True, help='new .zip path; never overwritten')
+    parser.add_argument('--output', type=Path, required=True,
+                        help='new .zip path, or a folder for fnv-mcp-<version>.zip; never overwritten')
     parser.add_argument('--working-tree', action='store_true', help='local uncommitted candidate only; embeds releaseReady=false')
     args = parser.parse_args()
     print(json.dumps(package(args.repo, args.revision, args.output, args.working_tree), indent=2))
