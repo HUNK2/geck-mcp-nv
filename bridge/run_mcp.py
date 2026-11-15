@@ -1,9 +1,10 @@
 """Entry point of the geck MCP server (stdio).
 
-By default this process is a small supervisor (geck_mcp/supervisor.py) that runs the server as a child process and
-reloads it when the code under geck_mcp/ or the project file changes, then tells the client the tool list changed,
-so no reconnect is needed after an edit. `--no-reload` (or FNV_MCP_RELOAD=0; the old name GECK_MCP_RELOAD works too) serves directly in this process;
-`--serve` is what the supervisor passes to its child.
+By default this process serves directly. `--reload` (or FNV_MCP_RELOAD=1; the old name GECK_MCP_RELOAD works too)
+starts a small supervisor (geck_mcp/supervisor.py) instead, for development: it runs the server as a child process
+and reloads it when the code under geck_mcp/ or the project file changes, then tells the client the tool list
+changed, so no reconnect is needed after an edit (release plan Task 6.1). `--serve` is what the supervisor passes
+to its child; `--no-reload` is still accepted and serves directly.
 """
 import importlib.util
 import os
@@ -45,7 +46,10 @@ def check_project(argv):
 if __name__ == '__main__':
     args = sys.argv[1:]
     check_project(args)
-    if '--serve' in args or '--no-reload' in args or os.environ.get('FNV_MCP_RELOAD', os.environ.get('GECK_MCP_RELOAD')) == '0':
-        serve([a for a in args if a not in ('--serve', '--no-reload')])
+    flags = ('--serve', '--no-reload', '--reload')
+    rest = [a for a in args if a not in flags]
+    wanted = '--reload' in args or os.environ.get('FNV_MCP_RELOAD', os.environ.get('GECK_MCP_RELOAD')) == '1'
+    if wanted and '--serve' not in args and '--no-reload' not in args:
+        supervise(rest)
     else:
-        supervise(args)
+        serve(rest)

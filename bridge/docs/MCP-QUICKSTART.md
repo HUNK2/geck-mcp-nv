@@ -147,9 +147,11 @@ A generic stdio client configuration uses:
 
 On Windows use `.venv\Scripts\python.exe` and Windows paths.
 
-### Code changes reload by themselves
+### Code changes reload by themselves (developers, `--reload`)
 
-`run_mcp.py` is a small supervisor (`geck_mcp/supervisor.py`) that runs the server as a child process. When a file
+With `--reload` (or `FNV_MCP_RELOAD=1`) in the server registration, `run_mcp.py` is a small supervisor
+(`geck_mcp/supervisor.py`) that runs the server as a child process. Without it, the server runs in one process
+(the default since fnv-mcp 0.5); add the flag when you edit the code while a client is connected. When a file
 under `geck_mcp/` or the project JSON changes, it waits until no call is running, starts a new server with the new
 code, swaps it in and tells the client the tool list changed: `notifications/tools/list_changed` for clients that
 used the `initialize` handshake (the `initialize` result declares `tools.listChanged`), a change event on each
@@ -164,8 +166,8 @@ behaviour:
   that says so; the next call starts a new one. Killing the child to free the game's companion pipe still works.
 - A reload loses what the server held in memory (the same as any restart): a debugger stop, an operation being
   polled. Reloads happen only between calls.
-- `--no-reload` (or `FNV_MCP_RELOAD=0`) serves in one process, as before. Changing the client's arguments, or
-  `run_mcp.py` / `supervisor.py` themselves, still needs the client to restart the server.
+- Changing the client's arguments, or `run_mcp.py` / `supervisor.py` themselves, still needs the client to restart
+  the server.
 
 ### Session argument (0.2.0)
 

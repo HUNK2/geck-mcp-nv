@@ -170,7 +170,7 @@ Paths in the project file may be relative to the project file. `fnv_*` keys go i
 | `FNV_MCP_PIPE` | none | The same as `fnv.engine_pipe` |
 | `FNVSYM_ROOT` | none | The fnvsym checkout the `fnv_name_*` tools need; without it they answer `NO_PROOF_FOLDER` |
 | `FNV_MCP_ZIG` | none | Zig, when `fnv.zig` is not set |
-| `FNV_MCP_RELOAD` | on | `0` serves without the reloading supervisor (same as `run_mcp.py --no-reload`) |
+| `FNV_MCP_RELOAD` | off | `1` starts the reloading supervisor, for development (same as `run_mcp.py --reload`) |
 | `FNV_MCP_SUPERVISOR_LOG` | `<state_dir>/supervisor.log` | The supervisor's log file; empty for none |
 | `FNV_MCP_TRANSPORT` | none | `oneshot` forces one helper launch per call (GECK) |
 

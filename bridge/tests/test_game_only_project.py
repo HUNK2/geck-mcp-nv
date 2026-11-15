@@ -105,7 +105,7 @@ class InvalidProjectTests(unittest.TestCase):
             path = Path(tmp) / 'bad.json'
             path.write_text(json.dumps({'project_id': 'bad', 'game_root': tmp, 'state_dir': 's', 'nonsense': 1}),
                             encoding='utf-8')
-            for extra in ((), ('--no-reload',)):
+            for extra in ((), ('--reload',)):
                 with self.subTest(extra=extra):
                     out = self.run_mcp(path, *extra)
                     self.check(out)
