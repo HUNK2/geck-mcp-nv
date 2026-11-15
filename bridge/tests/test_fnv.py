@@ -3,6 +3,7 @@
 No real decompilation data, game files or crash logs are used: every input is written here.
 """
 import json
+import os
 import sys
 import tempfile
 import textwrap
@@ -10,6 +11,7 @@ import unittest
 from contextlib import redirect_stdout, redirect_stderr
 from io import StringIO
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -227,6 +229,7 @@ class EngineQueryTests(FnvTestBase):
         self.assertEqual((mod['module'], mod['offset']), ('jip_nvse', '0xA2AD'))
         self.assertEqual(self.engine.symbolize(0x00401500)['kind'], 'unknown_exe_address')
 
+    @mock.patch.dict(os.environ, {'FNVSYM_ROOT': tempfile.gettempdir()})   # name_status needs it (D1)
     def test_service_envelopes(self):
         service = FnvService(self.project)
         r = service.func_find('limb damage')

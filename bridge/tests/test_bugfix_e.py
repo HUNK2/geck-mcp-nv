@@ -374,7 +374,7 @@ class DeepLink:
 
 class DeepFixes(unittest.TestCase):
     def tools(self, hooks, status='proven'):
-        engine = SimpleNamespace(resolve=lambda name: 0x5E1550, summary=lambda address: {'status': status,
+        engine = SimpleNamespace(resolve=lambda name: 0x5AC1E0, summary=lambda address: {'status': status,
                                                                                         'name': 'Script::Run'})
         live = SimpleNamespace(link=DeepLink(hooks), engine=lambda: engine, in_game=lambda: None, ready=lambda: None,
                                reads=lambda spans: [None for _ in spans])
@@ -382,27 +382,28 @@ class DeepFixes(unittest.TestCase):
 
     def test_e10_a_watch_does_not_remove_another_tools_hook(self):
         for label in ('dbg 1 Script::Run', 'script_line_dbg', 'act:1', 'tp:3'):
-            tools, live = self.tools([{'id': 7, 'label': label, 'target': '0x005E1550', 'stolen': 6}])
+            tools, live = self.tools([{'id': 7, 'label': label, 'target': '0x005AC1E0', 'stolen': 6}])
             with self.assertRaises(fnv_deep.HookError) as cm:
                 tools.ensure('script_run')
             self.assertEqual(cm.exception.code, 'ALREADY_HOOKED')
             self.assertFalse([op for op in live.link.ops if op[0] == 'unhook'], label)
 
     def test_e10_a_watch_label_on_the_same_function_is_replaced(self):
-        tools, live = self.tools([{'id': 7, 'label': 'script_effect_start', 'target': '0x005E1550', 'stolen': 6}])
+        tools, live = self.tools([{'id': 7, 'label': 'script_effect_start', 'target': '0x005AC1E0', 'stolen': 6}])
         with self.assertRaises(fnv_deep.HookError) as cm:       # then the unreadable function stops it: not ALREADY_HOOKED
             tools.ensure('script_run')
         self.assertEqual(cm.exception.code, 'UNREADABLE')
         self.assertTrue([op for op in live.link.ops if op[0] == 'unhook'])
 
     def test_e20_a_class_proven_function_takes_a_watch_hook(self):
+        # a name that is not one of the fixed watch targets goes through the proof status
         tools, _ = self.tools([], status='class_proven')
-        self.assertEqual(tools._function('Script::Run')[0], 0x5E1550)
+        self.assertEqual(tools._function('Foo::Bar')[0], 0x5AC1E0)
         tools, _ = self.tools([], status='class proven')
-        self.assertEqual(tools._function('Script::Run')[0], 0x5E1550)
+        self.assertEqual(tools._function('Foo::Bar')[0], 0x5AC1E0)
         tools, _ = self.tools([], status='unnamed')
         with self.assertRaises(fnv_deep.HookError):
-            tools._function('Script::Run')
+            tools._function('Foo::Bar')
 
     def test_e11_profile_stop_drops_the_baseline(self):
         tools, _ = self.tools([])
