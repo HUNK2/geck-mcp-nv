@@ -44,6 +44,11 @@ FNVMCP_EXPORT int fnvmcp_module_init(const FnvmcpApi *a) {
 '''
 
 
+SHARING_NOTE = ('Local use only if the source holds decompiled game code (fnv_code output, or functions copied from '
+                'the decomp): such a DLL should not be shared. A plugin made only of your own code calling the '
+                'engine is yours to share.')
+
+
 def mod_name(name):
     return 'fnvmcp plugin %s' % name
 
@@ -156,7 +161,7 @@ class PluginTools:
             raise ConvError('BUILD_FAILED', 'zig cc failed:\n%s' % result.stderr[-6000:],
                             {'stderr': result.stderr[-6000:]})
         return verdict('Built the xNVSE plugin %s' % out.name, 'Next: install (with the game closed), then fnv_restart.',
-                       dll=str(out), hooks=plans, warnings=result.stderr.strip()[-2000:] or None)
+                       dll=str(out), hooks=plans, warnings=result.stderr.strip()[-2000:] or None, note=SHARING_NOTE)
 
     def install(self, name):
         from .fnv_link import enable_mod
@@ -175,7 +180,7 @@ class PluginTools:
         self.live.journal.add({'kind': 'plugin_install', 'plugin': ident, 'target': str(target), 'undo': None})
         return verdict('Installed %s as the MO2 mod "%s"' % (dll.name, mod_name(ident)),
                        'It loads at the next start: fnv_restart (or fnv_launch).', target=str(target),
-                       enabledNow=enabled)
+                       enabledNow=enabled, note=SHARING_NOTE)
 
     def log(self, name):
         ident = c_name(name)

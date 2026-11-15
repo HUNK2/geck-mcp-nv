@@ -2105,7 +2105,9 @@ def register(server, project, annotations, result_type, maintain=True):
         """A native module (the fnv_native API) as a normal xNVSE plugin that needs no engine companion.
         scaffold: a starting source. build [source] hooks=[functions the module hooks]: the runtime, the module
         and the hook prologues (planned from the running game, or from the local game image) compiled with Zig.
-        install: as its own MO2 mod in the dev profile (game closed); fnv_restart loads it. log: its log file."""
+        install: as its own MO2 mod in the dev profile (game closed); fnv_restart loads it. log: its log file.
+        Local use only if the source holds decompiled game code (fnv_code output, or functions copied from the
+        decomp): such a DLL should not be shared. Your own code calling the engine is yours to share."""
         return await invoke('fnv_plugin_build', lambda: plugin_tools.run(action, name=name, source=source,
                                                                          hooks=hooks),
                             'read' if action == 'log' else 'control', action=action)

@@ -97,8 +97,25 @@ class PluginBuildTests(unittest.TestCase):
             self.assertEqual(cm.exception.code, 'EXISTS')
 
 
-if __name__ == '__main__':
-    unittest.main()
+class PluginSharingNoteTests(unittest.TestCase):
+    """Release plan Phase 7 (B6): like fnv_code, fnv_plugin_build says a DLL built from decompiled code is for
+    local use only."""
+
+    def test_install_and_description_say_local_use(self):
+        from geck_mcp import fnv_plugin_build
+        self.assertIn('local use', fnv_plugin_build.SHARING_NOTE.lower())
+        with tempfile.TemporaryDirectory() as tmp:
+            live = live_for(tmp, lambda n: 0x00401000)
+            live.game = SimpleNamespace(process=lambda fresh=False: None)
+            tools = PluginTools(live, zig='zig')
+            folder = Path(tmp) / 'fnv' / 'plugins' / 'my_plugin'
+            folder.mkdir(parents=True)
+            (folder / 'my_plugin.dll').write_bytes(b'MZ')
+            out = tools.install('my plugin')
+            self.assertEqual(out.get('note'), fnv_plugin_build.SHARING_NOTE)
+        from geck_mcp import fnv_live_tools
+        import inspect
+        self.assertIn(fnv_plugin_build.SHARING_NOTE.split('.')[0], ' '.join(inspect.getsource(fnv_live_tools).split()))
 
 
 class CompanionHashTests(unittest.TestCase):
@@ -109,3 +126,7 @@ class CompanionHashTests(unittest.TestCase):
         engine = {'engine/%s' % p.name for p in (fnv_link.NATIVE / 'engine').glob('*.c')}
         self.assertTrue(engine <= names, engine - names)
         self.assertIn('sdk/fnvmcp_module.h', names)
+
+
+if __name__ == '__main__':
+    unittest.main()
