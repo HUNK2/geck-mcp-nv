@@ -4,11 +4,6 @@
 - Source: https://github.com/2Shay96/geck-mcp-nv
 - fnv-mcp is built on it and keeps its full commit history; its copyright notice is kept in `LICENSE`.
 
-## GECK MCP (Fallout 3), by maksimka2432fr23 (MIT)
-- Source: https://github.com/maksimka2432fr23/codex-skill-mcp-fallout3 (commit `b3c1044a`, 2026-09-06)
-- Used in: `windows/` (ported to Fallout: New Vegas; changes listed in `windows/PORT-NOTES.md`)
-- Licence: MIT, full text in `windows/LICENSE`
-
 ## Engine knowledge and crash doctor (`bridge/engine_map/`, `bridge/geck_mcp/fnv_*.py`)
 Nothing from these projects is bundled. The engine map is generated on the user's machine from the
 user's own checkouts and game files; the code here only reads them.
@@ -41,7 +36,6 @@ user's own checkouts and game files; the code here only reads them.
 
 ## Python dependencies (installed by pip, not bundled)
 - MCP Python SDK (MIT), pydantic (MIT), Pillow (MIT-CMU), NumPy (BSD-3-Clause): `bridge/`
-- MCP Python SDK, pywinauto (BSD-3-Clause), psutil (BSD-3-Clause), Pillow: `windows/`
 - PyFFI (BSD-3-Clause) and setuptools (MIT) for `bridge/sprite_flipbook.py` and `bridge/tools/creature_skeleton.py`
 
 ## Not included

@@ -27,10 +27,7 @@ symbol database from their own copies.
 ## Credits
 
 - **2Shay**: author of [geck-mcp-nv](https://github.com/2Shay96/geck-mcp-nv), the project this repository is built
-  on: `bridge/` (GECK bridge, plugin builder, script compiler, runtime diagnostics, console companion) and the FNV
-  port in `windows/`.
-- **maksimka2432fr23**: [GECK MCP for Fallout 3](https://github.com/maksimka2432fr23/codex-skill-mcp-fallout3), the
-  origin of `windows/`.
+  on: `bridge/` (GECK bridge, plugin builder, script compiler, runtime diagnostics, console companion).
 - **HUNK2**: the `fnv_*` live, engine and debugging tools and the engine companion.
 - The [fnv_decomp](https://github.com/momusdigital/fnv_decomp) project, xNVSE, JIP LN NVSE and Yvile's Crash Logger,
   whose work these tools read at runtime; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
