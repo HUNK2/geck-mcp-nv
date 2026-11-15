@@ -1040,19 +1040,20 @@ class PlaceTools:
         return self._ground_info(x, y, z, ignore, reach, sink)[0]
 
     def _ground_info(self, x, y, z, ignore=0, reach=200.0, sink=64.0):
-        """(surface height or None, the nearest surface left overhead or None) at (x, y, z). The ray starts `reach`
+        """(surface height or None, the nearest surface left overhead or None, the pick layer they were found on) at
+        (x, y, z). The ray starts `reach`
         above z, but the first hit from above is not taken as the surface (P1: in a low interior that was the
         ceiling):
         - with `ignore` (the reference being snapped or checked) and its own collision met by the ray: a surface hit
           before the object is wholly above it and is left overhead (a ceiling, a shelf); the first surface hit after
           it is the one it rests on or is sunk into. A wholly buried object cannot be told from one under a ceiling
-          by vertical rays, so it counts as over whatever is under it; check names the overhead surface;
+          by vertical rays: _side decides that from the player's eye;
         - otherwise (a point, or an object whose own collision the ray misses): the first surface at or below
           z + `sink` (a curb, a stair tread or a slope the point is in), one above only when none is under it (a
           point inside a hill)."""
         rays = self.hands.rays if self.hands else None
         if rays is None:
-            return None, None
+            return None, None, None
         for layer in (0x25, 0x26, 6):
             top = z + reach
             surfaces, own_at = [], None
@@ -1073,15 +1074,97 @@ class PlaceTools:
                 over = surfaces[own_at - 1] if own_at else None
                 after = surfaces[own_at:]
                 if after or surfaces:
-                    return (after[0] if after else None), over
+                    return (after[0] if after else None), over, layer
                 continue
             if surfaces:
                 below = [h for h in surfaces if h <= z + sink]
                 if not below:
-                    return surfaces[-1], None
+                    return surfaces[-1], None, layer
                 over = [h for h in surfaces if h > z + sink]
-                return below[0], (over[-1] if over else None)
-        return None, None
+                return below[0], (over[-1] if over else None), layer
+        return None, None, None
+
+    EYE_HEIGHT = 100.0     # over the player's feet: inside its capsule, under any ceiling it stands under
+    EYE_REACH = 3000.0
+
+    def _eye(self):
+        """(the player's reference pointer, a point at its eye) or None: a point known to be in open air."""
+        hands = self.hands
+        if hands is None or not hasattr(hands, '_player'):
+            return None
+        try:
+            player = hands._player()
+            x, y, z = hands._pos(player)
+        except LiveError:
+            return None
+        return player, (x, y, z + self.EYE_HEIGHT)
+
+    def _crossings(self, a, b, skip, layer):
+        """Distances from a of the surfaces the segment a-b crosses, or None when a ray could not tell. Hits on
+        `skip` (references) are passed through. The segment is cast from both ends, because a ray that starts inside
+        a convex shape does not hit it: from one end it meets the entry face, from the other the exit face (a
+        triangle mesh is met from either side). Hits less than 1.5 units apart count once."""
+        rays = self.hands.rays
+        length = math.dist(a, b)
+        if length < 1.0:
+            return []
+        found = []
+        for s, e, back in ((a, b, False), (b, a, True)):
+            d = [(e[i] - s[i]) / length for i in range(3)]
+            start, done = s, 0.0
+            for _ in range(8):
+                hit = rays.cast([(start, e)], layer=layer, refs=True)[0]
+                if hit.get('throttled'):
+                    return None
+                if not hit.get('hit'):
+                    break
+                point = hit.get('point')
+                if point is None:
+                    return None
+                t = math.dist(s, point)
+                if hit.get('ref') not in skip:
+                    found.append(length - t if back else t)
+                done = t + 1.0
+                if done >= length:
+                    break
+                start = tuple(s[i] + d[i] * done for i in range(3))
+            else:
+                return None                     # more surfaces than it follows: do not decide
+        merged = []
+        for t in sorted(found):
+            if not merged or t - merged[-1] > 1.5:
+                merged.append(t)
+        return merged
+
+    def _side(self, x, y, z, over, own, layer):
+        """Round-4 V2: which side of the surface `over` (close over the point) the point is on, seen from the
+        player's eye. 'open': the eye sees the point with nothing between, so it hangs in the player's air under a
+        ceiling or shelf. 'buried': the eye sees the point just over that surface and exactly one surface lies
+        between the eye and the point, so it is under a surface the player is over. None: anything else (no
+        player, too far, a ray could not tell, furniture or a closed slab in the way)."""
+        eye = self._eye()
+        if eye is None or layer is None:
+            return None
+        player, e = eye
+        point = (x, y, z)
+        if math.dist(e, point) > self.EYE_REACH:
+            return None
+        skip = {own, player}
+        to_point = self._crossings(e, point, skip, layer)
+        if to_point == []:
+            return 'open'
+        if to_point is not None and len(to_point) == 1 and self._crossings(e, (x, y, over + 2.0), skip, layer) == []:
+            return 'buried'
+        return None
+
+    def _settle(self, x, y, z, own):
+        """(surface under, surface over, side) for snap and check: side is _side's answer when a surface is close
+        over the object and the ground is well under it or missing, else None."""
+        g, over, layer = self._ground_info(x, y, z, ignore=own, reach=250.0, sink=50.0)
+        side = None
+        if over is not None and over - z <= self.CLOSE_OVER and (g is None or g < z - 5):
+            side = self._side(x, y, z, over, own, layer)
+        return g, over, side
 
     def at(self, base, position=None, near=None, offset=None, rotation=None, scale=None, snap=False):
         self.live.in_game()
@@ -1193,10 +1276,11 @@ class PlaceTools:
 
     CLOSE_OVER = 64.0
 
-    def _ambiguous(self, g, over, z):
+    def _ambiguous(self, g, over, z, side=None):
         """A surface close over the object and the ground found well under it: it is buried under the one over it,
-        or floats under a low ceiling or shelf, and vertical rays cannot tell which (round-4 V2, review I1)."""
-        return g is not None and over is not None and over - z <= self.CLOSE_OVER and g < z - 5
+        or floats under a low ceiling or shelf. Vertical rays cannot tell which (round-4 V2, review I1); it stays
+        ambiguous when the player's eye could not tell either (`side`, from _side)."""
+        return side is None and g is not None and over is not None and over - z <= self.CLOSE_OVER and g < z - 5
 
     @staticmethod
     def _ambiguous_text(g, over, z):
@@ -1208,17 +1292,31 @@ class PlaceTools:
         r = self.live.resolve(ref)
         pose = self._pose(r['ptr'])
         x, y, z = pose['position']
-        centre, over = self._ground_info(x, y, z, ignore=r['ptr'], reach=250.0, sink=50.0)
-        if self._ambiguous(centre, over, z):
+        centre, over, side = self._settle(x, y, z, r['ptr'])
+        if self._ambiguous(centre, over, z, side):
             return {'ref': r['formId'], 'snapped': False, 'surface': round(centre, 2), 'over': round(over, 2),
-                    'note': self._ambiguous_text(centre, over, z) + '; snap does not guess. Look (fnv_photo), then '
-                            'move it with fnv_place nudge offset=[0, 0, dz].'}
-        surface = self._surface(x, y, z, ignore=r['ptr'], reach=250.0, sink=50.0) if align else None
+                    'note': self._ambiguous_text(centre, over, z) + ', and the player\'s eye cannot tell which (no '
+                            'clear line to it, or to the top of the surface over it); snap does not guess. Look '
+                            '(fnv_photo), then move it with fnv_place nudge offset=[0, 0, dz].'}
+        extra = {}
+        if side == 'buried':
+            # onto the surface it is buried under; the slope is read from just over that surface
+            centre, at, reach = over, over + 1.0, 250.0
+            extra = {'buried': True, 'over': round(over, 2), 'side': 'the player\'s eye sees the top of the surface '
+                     'over it, and that surface lies between the eye and the object: it was buried under it'}
+        elif side == 'open' and centre is not None:
+            # in the player's air under a ceiling or shelf: slope rays start under that surface, never on it
+            at, reach = centre + 1.0, max(1.0, over - centre - 2.0)
+            extra = {'over': round(over, 2), 'side': 'the player\'s eye sees it with nothing between: it floats '
+                     'under the surface over it, a ceiling or shelf'}
+        else:
+            at, reach = z, 250.0
+        surface = self._surface(x, y, at, ignore=r['ptr'], reach=reach, sink=50.0) if align else None
         g = surface[0] if surface else centre
         if g is None:
             return {'ref': r['formId'], 'snapped': False, 'note': 'No surface found under it on the pick layers.'}
         if not align:
-            return {**self.adjust(ref, move=[0, 0, g - z]), 'snapped': True, 'ground': round(g, 2)}
+            return {**self.adjust(ref, move=[0, 0, g - z]), 'snapped': True, 'ground': round(g, 2), **extra}
         _, dzdx, dzdy = surface
         heading = pose['rotation'][2]
         pitch, roll = self._tilt(dzdx, dzdy, heading)
@@ -1226,7 +1324,8 @@ class PlaceTools:
                   0]
         out = self.adjust(ref, move=[0, 0, g - z], rotate=rotate)
         slope = math.degrees(math.atan(math.hypot(dzdx, dzdy)))
-        return {**out, 'snapped': True, 'ground': round(g, 2), 'aligned': True, 'slopeDegrees': round(slope, 1),
+        return {**out, 'snapped': True, 'ground': round(g, 2), **extra, 'aligned': True,
+                'slopeDegrees': round(slope, 1),
                 'how': 'the surface slope from five rays 24 units apart (the pick rays carry no normal); SetAngle X '
                        'and Y lay the object on it at its heading'}
 
@@ -1235,13 +1334,17 @@ class PlaceTools:
         r = self.live.resolve(ref)
         pose = self._pose(r['ptr'])
         x, y, z = pose['position']
-        g, over = self._ground_info(x, y, z, ignore=r['ptr'], reach=250.0, sink=50.0)
+        g, over, side = self._settle(x, y, z, r['ptr'])
         issues = []
-        if self._ambiguous(g, over, z):
-            issues.append(self._ambiguous_text(g, over, z))
+        if side == 'buried':
+            issues.append('buried %.0f units under the surface over it' % (over - z))
+            g = over
+        elif self._ambiguous(g, over, z, side):
+            issues.append(self._ambiguous_text(g, over, z) + ', and the player\'s eye cannot tell which')
         elif g is not None and z > g + 10:
-            issues.append('floats %.0f units above the surface under it' % (z - g))
-        if g is not None and z < g - 5:
+            issues.append('floats %.0f units above the surface under it' % (z - g)
+                          + (', under a ceiling or shelf %.0f over it' % (over - z) if side == 'open' else ''))
+        if g is not None and z < g - 5 and side != 'buried':
             issues.append('below the surface under it by %.0f units' % (g - z))
         if g is None:
             issues.append('no surface found under it')
