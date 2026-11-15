@@ -210,6 +210,18 @@ class EngineQueryTests(FnvTestBase):
         with self.assertRaises(fnv_engine.EngineMapError):
             self.engine.resolve('NoSuchFunction')
 
+    def test_regex_search_has_limits(self):
+        # Release plan Phase 7 (L4): a costly pattern is refused, and a search that runs too long stops with a code.
+        for pattern in ('(a+)+b', r'(\w+\s*)*x', r'(?:(\d{2,})?x)+'):
+            with self.assertRaises(fnv_engine.EngineMapError, msg=pattern) as caught:
+                self.engine.find_in_code(pattern, regex=True)
+            self.assertEqual(caught.exception.code, 'REGEX_TOO_COSTLY', pattern)
+        total, _ = self.engine.find_in_code(r'fCombat\w+Mult', regex=True)
+        self.assertEqual(total, 1)
+        with self.assertRaises(fnv_engine.EngineMapError) as caught:
+            self.engine.find_in_code('fCombat', regex=True, timeout=0)
+        self.assertEqual(caught.exception.code, 'SEARCH_TIMEOUT')
+
     def test_code_annotates_proven_names(self):
         code = self.engine.code(0x401000)
         self.assertIn('FUN_00401100/*Actor::ApplyLimbDamage*/', code['code'])

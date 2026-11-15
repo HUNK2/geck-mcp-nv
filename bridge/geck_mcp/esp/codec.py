@@ -178,6 +178,25 @@ def zstring(text):
     return text.encode('cp1252', 'cp1252-bytes') + b'\0'
 
 
+# The largest size a compressed record or BSA file may declare (release audit L4). Real ones stay far below it:
+# the biggest vanilla record inflates to a few MB.
+MAX_INFLATE = 256 * 1024 * 1024
+
+
+def inflate(stream, declared, wbits=15):
+    """A zlib stream inflated to at most `declared` bytes, the size the file states for it. More output, a declared
+    size above MAX_INFLATE or a stream that ends early raise zlib.error, as zlib.decompress would for a bad stream."""
+    if declared < 0 or declared > MAX_INFLATE:
+        raise zlib.error('declared size %d is above the %d byte limit' % (declared, MAX_INFLATE))
+    d = zlib.decompressobj(wbits)
+    data = d.decompress(stream, declared + 1)
+    if len(data) > declared or d.unconsumed_tail:
+        raise zlib.error('inflates past its declared size of %d bytes' % declared)
+    if not d.eof:
+        raise zlib.error('incomplete or truncated stream')
+    return data
+
+
 def decompress(payload, warnings=None):
     """The record bytes of a compressed payload. A stream that inflates to the declared size but fails its Adler-32
     (FalloutNV.esm LAND 00150FC0) is kept, with a line in `warnings`; anything else that does not inflate is a
@@ -186,11 +205,13 @@ def decompress(payload, warnings=None):
         raise FormatError('compressed record shorter than its size prefix')
     size = struct.unpack_from('<I', payload)[0]
     try:
-        data = zlib.decompress(payload[4:])
+        data = inflate(payload[4:], size)
     except zlib.error as e:
+        if size > MAX_INFLATE:
+            raise FormatError('compressed record does not inflate (%s)' % e) from None
         try:
             raw = zlib.decompressobj(-15)              # the deflate stream without the zlib header and checksum
-            data = raw.decompress(payload[6:]) + raw.flush()
+            data = raw.decompress(payload[6:], size + 1) + raw.flush()
         except zlib.error:
             raise FormatError('compressed record does not inflate (%s)' % e) from None
         if not raw.eof or len(data) != size:

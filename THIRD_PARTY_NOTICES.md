@@ -36,6 +36,19 @@ user's own checkouts and game files; the code here only reads them.
 
 ## Python dependencies (installed by pip, not bundled)
 - MCP Python SDK (MIT), pydantic (MIT), Pillow (MIT-CMU), NumPy (BSD-3-Clause): `bridge/`
+- Capstone (BSD-3-Clause; https://www.capstone-engine.org), the `naming` extra: `fnv_probe.py` and the naming
+  tools disassemble engine code with it.
+
+## Tools the user installs (not bundled, not downloaded by fnv-mcp)
+- Zig (MIT; https://ziglang.org): builds the engine companion and native modules (`fnv.zig`). The CI workflow
+  downloads the pinned Zig 0.14.1 archive from ziglang.org and checks its hash.
+- Mod Organizer 2 (GPL-3.0; https://github.com/ModOrganizer2/modorganizer): the game runs through a portable MO2
+  instance the user sets up. The tools write its profile files (`modlist.txt`, `plugins.txt`, `loadorder.txt`,
+  INIs) and start `ModOrganizer.exe`; no MO2 code is used or copied.
+- Steamless (atom0s; https://github.com/atom0s/Steamless): the docs name it as one way for users to unpack their
+  own FalloutNV.exe for `fnv.clean_exe`. fnv-mcp does not run it.
+- Frida (https://frida.re): not used. `fnv_atlas` imports call traces that fnvsym recorded with Frida, in
+  fnvsym's own JSON format, and `fnv_name_export` writes a superset of that format.
 
 ## Not included
 - No Bethesda files: no GECK, no `.esm`/`.esp`/`.bsa` game data and no data derived from them.

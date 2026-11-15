@@ -161,6 +161,11 @@ missing. In short:
 
 ## Tools
 
+Every answer is an envelope: `ok`, `outcome`, `data`, `error`. For an `fnv_*` call that worked, `outcome` is
+`acknowledged` when a control or act tool made its change (the game or the companion confirmed it), and
+`unchanged` for a read, or when the change was already in place. A failure has `ok: false`, an `error.code` and an
+`error.recovery` sentence.
+
 | Tool | Kind | What it does |
 | --- | --- | --- |
 | `fnv_status` | read | Running? Phase (main_menu, loading, in_game, in_menu, paused_menu), cell, loaded plugins, companion ping |
@@ -292,7 +297,8 @@ read after the game quits.
 
 **`fnv_guide`.** Guides are Markdown files in `geck_mcp/guides/` (`crash`, `script`), also served as the MCP
 resource `fnv://guide/{name}`. `engine` searches the Markdown files of `fnv.research_dir` (or the environment
-variable `FNV_RESEARCH_DIR`) by heading section, and the facts in `fnv_facts.py`. A test fails when a guide names
+variable `FNV_RESEARCH_DIR`) by heading section, and the facts in `fnv_facts.py`; with no folder set it searches
+the shipped guides instead and points to `fnv_func_find` for the decomp. A test fails when a guide names
 an `fnv_*` or `geck_*` tool that does not exist.
 
 ## Game time: fnv_time_control and fnv_wait_for (Plan 2, W1)

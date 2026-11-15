@@ -34,9 +34,18 @@ class GameError(Exception):
 
 
 # ---------------------------------------------------------------------- processes
+def system_exe(name):
+    """Full path of a Windows program under %SystemRoot%, so a file of the same name in the current folder or on
+    PATH is never started instead (release audit L5)."""
+    system32 = Path(os.environ.get('SystemRoot') or os.environ.get('WINDIR') or r'C:\Windows') / 'System32'
+    if name.lower() == 'powershell.exe':
+        return system32 / 'WindowsPowerShell' / 'v1.0' / 'powershell.exe'
+    return system32 / name
+
+
 def game_processes():
     """[(pid, start time as FILETIME int)] of running FalloutNV.exe processes."""
-    out = subprocess.run(['tasklist', '/FI', 'IMAGENAME eq %s' % GAME_EXE, '/FO', 'CSV', '/NH'],
+    out = subprocess.run([str(system_exe('tasklist.exe')), '/FI', 'IMAGENAME eq %s' % GAME_EXE, '/FO', 'CSV', '/NH'],
                          capture_output=True, text=True, timeout=15).stdout
     pids = [int(row.split('","')[1]) for row in out.splitlines() if row.lower().startswith('"%s"' % GAME_EXE.lower())]
     return [(pid, process_started(pid)) for pid in pids]
@@ -117,7 +126,7 @@ def image_path(pid):
 
 def mo2_processes(mo2_root):
     """pids of ModOrganizer.exe running from this MO2 instance folder."""
-    out = subprocess.run(['tasklist', '/FI', 'IMAGENAME eq ModOrganizer.exe', '/FO', 'CSV', '/NH'],
+    out = subprocess.run([str(system_exe('tasklist.exe')), '/FI', 'IMAGENAME eq ModOrganizer.exe', '/FO', 'CSV', '/NH'],
                          capture_output=True, text=True, timeout=15).stdout
     pids = [int(row.split('","')[1]) for row in out.splitlines() if row.lower().startswith('"modorganizer.exe"')]
     root = str(mo2_root).lower().rstrip('\\/')
@@ -232,8 +241,19 @@ class Game:
         self.state = Path(project.state_dir) / 'fnv'
         self.state.mkdir(parents=True, exist_ok=True)
         self.link = EngineLink(getattr(fnv, 'engine_pipe', None))
+        self.link.server_check = self._pipe_server_is_the_game
         self._session = None
         self._proc_cache = None    # (monotonic time, process()) - tasklist costs ~100 ms and tools ask often (N11)
+
+    def _pipe_server_is_the_game(self, pid):
+        """Refuse a companion pipe served by anything but the running FalloutNV.exe (release audit L3): another
+        program holding the pipe name is never sent requests."""
+        running = [p for p, _ in game_processes()]
+        if pid is None or pid not in running:
+            raise LinkError('PIPE_NOT_GAME', 'The companion pipe %s is served by process %s, which is not the running '
+                            'FalloutNV.exe (%s). Close the program that holds the pipe, or set fnv.engine_pipe.'
+                            % (self.link.pipe, pid, ', '.join(map(str, running)) or 'none running'),
+                            {'serverPid': pid, 'gamePids': running})
 
     # ------------------------------------------------------------ paths
     @property
@@ -570,7 +590,7 @@ class Game:
         check = self.mo2_root / 'plugin_loadcheck.tmp'
         if not check.exists():
             return []
-        out = subprocess.run(['tasklist', '/FI', 'IMAGENAME eq ModOrganizer.exe', '/FO', 'CSV', '/NH'],
+        out = subprocess.run([str(system_exe('tasklist.exe')), '/FI', 'IMAGENAME eq ModOrganizer.exe', '/FO', 'CSV', '/NH'],
                              capture_output=True, text=True, timeout=15).stdout
         if 'modorganizer.exe' in out.lower():
             return []
@@ -597,7 +617,7 @@ class Game:
         script = ("$s=(New-Object -ComObject WScript.Shell).CreateShortcut('%s'); $s.TargetPath='%s'; "
                   "$s.Arguments='%s'; $s.WorkingDirectory='%s'; $s.Save()") % (
             quote(link), quote(mo2), quote('-p "%s" run -e "%s"' % (self.profile, self.executable)), quote(self.mo2_root))
-        made = subprocess.run(['powershell.exe', '-NoProfile', '-NonInteractive', '-Command', script],
+        made = subprocess.run([str(system_exe('powershell.exe')), '-NoProfile', '-NonInteractive', '-Command', script],
                               capture_output=True, text=True, timeout=60)
         if made.returncode != 0 or not link.exists():
             raise GameError('LAUNCH_BLOCKED', 'The bridge runs in a job object that forbids breakaway and the launch '

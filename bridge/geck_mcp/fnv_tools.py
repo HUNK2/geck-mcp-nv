@@ -12,6 +12,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from . import fnv_engine, fnv_symdb
 from .fnv_engine import EngineMapError, hx, parse_address
 
+SEARCH_SECONDS = 20     # fnv_func_find code and regex searches stop after this (release audit L4)
+
 Status = Literal['proven', 'class_proven', 'probable', 'decomp', 'rejected', 'unnamed']
 FunctionRef = Annotated[str, Field(min_length=1, max_length=300,
                                    description='Function address (0x00573090) or name (TESObjectREFR::GetDismembered, '
@@ -96,7 +98,7 @@ class FnvService:
                             'note': None if total else 'No name matches; try mode="code"',
                             'hints': hints or None, 'identity': e.identity()}
             total, results = e.find_in_code(query, regex=(mode == 'regex'), statuses=statuses, limit=limit,
-                                            offset=offset)
+                                            offset=offset, timeout=SEARCH_SECONDS)
             return {'mode': 'regex' if mode == 'regex' else 'code', 'query': query, 'total': total,
                     'offset': offset, 'results': results, 'identity': e.identity()}
         return self.run('fnv_func_find', action)

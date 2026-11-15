@@ -166,25 +166,32 @@ class GuideTools:
         facts.sort(key=lambda f: -f['hits'])
         folder = self.research_dir
         notes = []
-        if folder and Path(folder).is_dir():
+        # With no folder of the user's own notes, the guides that ship with the server are searched (release audit L8)
+        searched = folder if folder and Path(folder).is_dir() else (self.guides_dir if not folder else None)
+        if searched and Path(searched).is_dir():
             n = len(set(query))
             need = n if n <= 2 else max(2, (n + 1) // 2)
-            for file, line, heading, body in self.sections(folder):
+            source = 'research' if searched == folder else 'guide'
+            for file, line, heading, body in self.sections(searched):
                 text = (heading + '\n' + '\n'.join(body)).lower()
                 head = heading.lower()
                 present = [q for q in set(query) if q in text]
                 if len(present) >= need:
                     score = len(present) * 10 + 5 * sum(1 for q in present if q in head) + min(sum(text.count(q) for q in present), 20) / 10
                     notes.append({'file': file, 'line': line, 'heading': heading, 'score': round(score, 1),
-                                  'excerpt': self.excerpt(body, query)})
+                                  'source': source, 'excerpt': self.excerpt(body, query)})
             notes.sort(key=lambda n: -n['score'])
         reason, nxt = None, None
         if not folder:
-            reason = 'No research folder is set. Only the recorded facts were searched.'
-            nxt = 'Set fnv.research_dir in the project file, or the environment variable FNV_RESEARCH_DIR.'
+            reason = ('No research folder is set: the shipped guides and the recorded facts were searched. The decomp '
+                      'itself is searched with fnv_func_find.')
+            nxt = ('For how the engine does it, call fnv_func_find with the same words (mode="code" searches the '
+                   'decomp source). To search notes of your own too, set fnv.research_dir in the project file, or '
+                   'the environment variable FNV_RESEARCH_DIR.')
         elif not Path(folder).is_dir():
             reason, nxt = 'The research folder %s does not exist.' % folder, 'Fix fnv.research_dir or FNV_RESEARCH_DIR.'
-        head = '%d research sections and %d recorded facts match %r' % (len(notes), len(facts), words)
+        head = '%d %s sections and %d recorded facts match %r' % (
+            len(notes), 'research' if folder else 'guide', len(facts), words)
         if not notes and not facts and not nxt:
             nxt = 'Try other words, or read the decomp with fnv_func_find.'
         out = verdict(head, reason, **page(notes, limit, offset, brief=brief, brief_fields=['file', 'line', 'heading']))

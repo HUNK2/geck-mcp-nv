@@ -177,7 +177,8 @@ def build(project,profile,zig):
 def game_closed(project):
     """Refuse installation/baseline changes while any FNV process runs; never kill it."""
     if os.name!='nt':raise ValueError('Installation requires native Windows')
-    result=subprocess.run(['tasklist','/FI','IMAGENAME eq FalloutNV.exe','/FO','CSV','/NH'],
+    from .fnv_game import system_exe
+    result=subprocess.run([str(system_exe('tasklist.exe')),'/FI','IMAGENAME eq FalloutNV.exe','/FO','CSV','/NH'],
                           capture_output=True,text=True,check=True,timeout=10)
     if 'falloutnv.exe' in result.stdout.lower():raise ValueError('Quit FNV normally before installing/rebinding the companion')
 

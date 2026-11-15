@@ -8,6 +8,7 @@ fnv_memory pools (committed bytes, live NiRefObjects) before and after some more
 import ctypes
 import ctypes.wintypes as wt
 import json
+import os
 import subprocess
 import sys
 import time
@@ -28,7 +29,8 @@ class PMC(ctypes.Structure):
 
 
 def game_pid():
-    out = subprocess.run(['tasklist', '/FI', 'IMAGENAME eq FalloutNV.exe', '/FO', 'CSV', '/NH'],
+    tasklist = Path(os.environ.get('SystemRoot') or r'C:\Windows') / 'System32' / 'tasklist.exe'
+    out = subprocess.run([str(tasklist), '/FI', 'IMAGENAME eq FalloutNV.exe', '/FO', 'CSV', '/NH'],
                          capture_output=True, text=True).stdout.strip()
     if not out or 'FalloutNV' not in out:
         return None

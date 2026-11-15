@@ -20,6 +20,7 @@ import zlib
 from pathlib import Path
 
 from .esp import assets
+from .esp.codec import inflate
 from .fnv_data import DataError, NOT_FORMS, STRING_TAGS, load_order, read_record
 from .fnv_link import profile_locked
 from .fnv_state import atomic_write, write_txn
@@ -80,7 +81,7 @@ def scan_references(path, exists, condition_params=None):
         body = data[body_at:body_at + size]
         if flags & 0x00040000:
             try:
-                body = zlib.decompress(body[4:])
+                body = inflate(body[4:], struct.unpack_from('<I', body.ljust(4, bytes(1)))[0])
             except zlib.error:
                 pos = body_at + size
                 continue

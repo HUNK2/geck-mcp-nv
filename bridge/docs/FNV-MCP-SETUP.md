@@ -156,13 +156,13 @@ Paths in the project file may be relative to the project file. `fnv_*` keys go i
 | `fnv.engine_map` | `<state_dir>/engine_map.json` | The engine map from `engine_map.generate` |
 | `fnv.decomp_root` | the path in the map | Your fnv_decomp checkout |
 | `fnv.symdb` | `<state_dir>/symdb.sqlite` | The symbol database (optional) |
-| `fnv.research_dir` | none | A folder of your own Markdown notes that `fnv_guide` searches |
+| `fnv.research_dir` | none | A folder of your own Markdown notes that `fnv_guide engine` searches; without it, it searches the shipped guides |
 | `fnv.crash_dirs` | `[]` | More folders for crash logs |
 | `fnv.mo2_root` | none | The portable MO2 instance |
 | `fnv.mo2_profile` | none | The MO2 profile the tools act on (one of its own) |
 | `fnv.mo2_executable` | `NVSE` | The MO2 executable entry that starts the game |
 | `fnv.zig` | none | Zig 0.14.1 `zig.exe` |
-| `fnv.engine_pipe` | `fnvmcp-engine` | Name of the engine companion's pipe |
+| `fnv.engine_pipe` | `fnvmcp-engine` | Name of the engine companion's pipe. The tools talk only to a pipe the running FalloutNV.exe serves (`PIPE_NOT_GAME` otherwise) |
 | `fnv.tests_dir` | none | Folder of scenario tests for `fnv_test_run_all` |
 | `fnv.clean_exe` | none | Your unpacked FalloutNV.exe 1.4.0.525 (read locally, never copied) |
 | `FNV_ENGINE_MAP`, `FNV_DECOMP`, `FNV_SYMDB`, `FNV_CRASH_DIRS`, `FNV_RESEARCH_DIR` | none | The same as the `fnv` keys above; the project file wins |

@@ -56,7 +56,8 @@ def bsa_extract(path, wanted):
                 stream.seek(skip, os.SEEK_CUR)
                 size -= skip + 1
             raw = stream.read(size)
-            out[full] = zlib.decompress(raw[4:]) if compressed else raw
+            out[full] = (_codec.inflate(raw[4:], struct.unpack_from('<I', raw.ljust(4, bytes(1)))[0])
+                         if compressed else raw)
     return out
 
 

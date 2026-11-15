@@ -83,6 +83,13 @@ class Envelope(BaseModel):
 Result = Annotated[CallToolResult, Envelope]
 
 
+def display_title(name):
+    """fnv_class_vtable -> 'FNV: class vtable', geck_plugin_save -> 'GECK: plugin save'."""
+    family, _, rest = name.partition('_')
+    prefix = {'fnv': 'FNV', 'geck': 'GECK'}.get(family)
+    return '%s: %s' % (prefix, rest.replace('_', ' ')) if prefix and rest else name.replace('_', ' ')
+
+
 class BridgeServer(MCPServer):
     """The SDK server, with one change: an error the SDK writes itself (arguments that fail the input schema, an
     unknown tool) gets the same structured result as the tools' own errors, so every result matches the declared
@@ -92,6 +99,14 @@ class BridgeServer(MCPServer):
         super().__init__(*args, **kwargs)
         self._project_id = project_id
         self._missing = list(missing)     # GECK settings the project file leaves out (Task 4.3)
+
+    async def list_tools(self):
+        """Every tool with a display title (release audit L6); one set at registration is kept."""
+        tools = await super().list_tools()
+        for tool in tools:
+            if not tool.title:
+                tool.title = display_title(tool.name)
+        return tools
 
     async def call_tool(self, name, arguments, context=None):
         """A deliberate refusal that escaped a tool (a ValueError, or an error with a code) keeps its code and its

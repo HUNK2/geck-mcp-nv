@@ -131,6 +131,14 @@ class GuideToolTests(unittest.TestCase):
         self.assertIn('fnv.research_dir', out['next'])
         self.assertIn('FNV_RESEARCH_DIR', out['next'])
         self.assertTrue(out['facts'])
+        # Release plan Phase 7 (L8): with no folder of notes, the guides that ship with the server are searched
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop('FNV_RESEARCH_DIR', None)
+            out = GuideTools(None).run('engine', 'change engine function')
+        self.assertTrue(out['total'] >= 1, out)
+        self.assertEqual(out['rows'][0]['source'], 'guide')
+        self.assertIn('shipped guides', out['reason'])
+        self.assertIn('fnv_func_find', out['next'])
         with mock.patch.dict(os.environ, {'FNV_RESEARCH_DIR': str(self.research)}):
             self.assertEqual(GuideTools(None).run('engine', 'barter price')['total'], 1)
 

@@ -103,6 +103,23 @@ class EveryToolTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(bad, {}, 'slow calls: %s' % slow)
 
 
+class TitleTests(unittest.IsolatedAsyncioTestCase):
+    """Release plan Phase 7 (L6): every tool has a display title, and no two share one."""
+
+    async def test_every_tool_has_a_title(self):
+        fixture = test_service.ServiceTests()
+        fixture.setUp()
+        self.addCleanup(fixture.tearDown)
+        async with Client(make_server(fixture.p, fixture.service)) as client:
+            listing = await client.list_tools()
+        tools = listing.tools if hasattr(listing, 'tools') else listing
+        titles = {tool.name: tool.title for tool in tools}
+        self.assertEqual([name for name, title in titles.items() if not title], [])
+        self.assertEqual(len(set(titles.values())), len(titles))
+        self.assertEqual(titles['fnv_class_vtable'], 'FNV: class vtable')
+        self.assertEqual(titles['geck_plugin_save'], 'GECK: plugin save')
+
+
 class EscapedErrorTests(unittest.IsolatedAsyncioTestCase):
     """A refusal that escapes a tool keeps its code and sentence; a crash stays TOOL_ERROR with no detail."""
 

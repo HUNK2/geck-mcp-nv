@@ -7,6 +7,7 @@ import json
 import os
 import re
 import threading
+import time
 from bisect import bisect_right
 from collections import OrderedDict, deque
 from pathlib import Path
@@ -18,6 +19,37 @@ EXE_RANGE = (0x00400000, 0x01300000)
 STATUS_RANK = {'proven': 0, 'class_proven': 1, 'probable': 2, 'decomp': 3, 'rejected': 4, 'unnamed': 5}
 PLACEHOLDER_REF = re.compile(r'\b(?:FUN|sub|thunk_FUN)_([0-9a-fA-F]{8})\b')
 ADDRESS = re.compile(r'^(?:0x)?([0-9a-fA-F]{1,8})$')
+
+
+def nested_repeat(pattern):
+    """Does the regex repeat (more than once) a part that itself holds a repeat? (a+)+ and (\\w+\\s*)* do."""
+    import re._constants as C
+    import re._parser as parser
+    repeats = (C.MAX_REPEAT, C.MIN_REPEAT, getattr(C, 'POSSESSIVE_REPEAT', None))
+
+    def walk(items, inside):
+        for op, arg in items:
+            if op in repeats and op is not None:
+                low, high, sub = arg
+                many = high is C.MAXREPEAT or high > 1
+                if many and inside:
+                    return True
+                if walk(sub, inside or many):
+                    return True
+            elif op is C.SUBPATTERN:
+                if walk(arg[-1], inside):
+                    return True
+            elif op is C.BRANCH:
+                if any(walk(branch, inside) for branch in arg[1]):
+                    return True
+            elif op in (C.ASSERT, C.ASSERT_NOT):
+                if walk(arg[1], inside):
+                    return True
+        return False
+    try:
+        return walk(parser.parse(pattern), False)
+    except Exception:  # noqa: BLE001 - re.compile has already accepted it; an unknown node is not a refusal
+        return False
 
 
 class EngineMapError(Exception):
@@ -257,16 +289,30 @@ class EngineMap:
         hits.sort()
         return len(hits), [self.summary(a) for _, a in hits[offset:offset + limit]]
 
-    def find_in_code(self, pattern, regex=False, statuses=None, limit=25, offset=0, max_matches_per_function=3):
+    def find_in_code(self, pattern, regex=False, statuses=None, limit=25, offset=0, max_matches_per_function=3,
+                     timeout=None):
+        """Functions whose decomp code matches. With `timeout` (seconds) the search stops with SEARCH_TIMEOUT once it
+        runs longer; a regex with a quantified part inside a quantified part is refused first (release audit L4)."""
         if self.decomp_root is None:
             raise EngineMapError('DECOMP_UNAVAILABLE', 'No decomp checkout configured (fnv.decomp_root)')
-        rx = re.compile(pattern if regex else re.escape(pattern), re.I)
+        try:
+            rx = re.compile(pattern if regex else re.escape(pattern), re.I)
+        except re.error as e:
+            raise EngineMapError('BAD_REGEX', 'The pattern is not a valid regular expression: %s' % e) from None
+        if regex and nested_repeat(pattern):
+            raise EngineMapError('REGEX_TOO_COSTLY', 'The pattern repeats a part that itself repeats (like (a+)+), '
+                                 'which can take minutes on a long file. Write it without the nested repeat.')
+        deadline = None if timeout is None else time.monotonic() + timeout
         by_file = {}
         for address, f in self.functions.items():
             if f.get('file') and f.get('lines') and (not statuses or f['status'] in statuses):
                 by_file.setdefault(f['file'], []).append(address)
         hits = []
-        for rel in sorted(by_file):
+        files = sorted(by_file)
+        for done, rel in enumerate(files):
+            if deadline is not None and time.monotonic() >= deadline:
+                raise EngineMapError('SEARCH_TIMEOUT', 'The search ran over %s s and was stopped after %d of %d '
+                                     'files. Narrow the pattern, or pass statuses.' % (timeout, done, len(files)))
             path = self.decomp_root / rel
             try:
                 text = path.read_text(encoding='utf-8', errors='replace')

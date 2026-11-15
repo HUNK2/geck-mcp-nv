@@ -65,6 +65,14 @@ def word(value):
     return '%x' % (value & 0xFFFFFFFF)
 
 
+def pipe_server_pid(handle):
+    """The id of the process serving a connected pipe (GetNamedPipeServerProcessId), or None."""
+    import ctypes
+    pid = ctypes.c_ulong()
+    ok = ctypes.windll.kernel32.GetNamedPipeServerProcessId(ctypes.c_void_p(handle), ctypes.byref(pid))
+    return pid.value if ok else None
+
+
 class EngineLink:
     """Synchronous client: one request at a time, guarded by a lock. Reconnects on demand.
 
@@ -89,6 +97,7 @@ class EngineLink:
         self._holding = False       # the companion's last word: gate held or a stop parked
         self._hold_timeout = 120.0  # its dead-man time: with no request for this long it lets go by itself
         self._idle_thread = None
+        self.server_check = None    # called with the pid serving the pipe on each connect; raises LinkError to refuse
 
     # ------------------------------------------------------------------ connection
     def connect(self, wait=0.0):
@@ -110,6 +119,13 @@ class EngineLink:
                 else:
                     time.sleep(0.25)
         self.hello = None
+        if self.server_check is not None:
+            try:
+                self.server_check(pipe_server_pid(self.handle))
+            except BaseException:
+                _winapi.CloseHandle(self.handle)
+                self.handle = None
+                raise
         self._last_use = time.monotonic()
         if self._idle_thread is None:          # cleared by the idle thread under the lock when it ends
             self._idle_thread = threading.Thread(target=self._idle_loop, daemon=True, name='fnvmcp-link-idle')
@@ -421,11 +437,21 @@ def build(state_dir, zig, with_fake_host=False, defines=()):
     targets = [('engine/fnvmcp_engine.c', DLL_NAME, ['-shared'])]
     if with_fake_host:
         targets.append(('engine/fake_host.c', 'fnvmcp_fake_host.exe', []))
+    # A built file is reused only if the last receipt in this folder recorded it with the same digest: a file changed
+    # or put there by anything else is compiled again, never installed (release audit L7).
+    try:
+        recorded = json.loads((folder / 'build.json').read_text(encoding='utf-8')).get('outputs') or {}
+    except (OSError, ValueError, AttributeError):
+        recorded = {}
+    outputs = dict(recorded) if isinstance(recorded, dict) else {}
     for source, output, extra in targets:
-        if not (folder / output).exists():
-            compile_target(zig, NATIVE, source, folder / output, extra, defines)
+        path = folder / output
+        if not (path.exists() and outputs.get(output) == file_digest(path)):
+            compile_target(zig, NATIVE, source, path, extra, defines)
+        outputs[output] = file_digest(path)
+    outputs = {name: digest for name, digest in outputs.items() if (folder / name).exists()}
     receipt = {**identity, 'schema_version': 1, 'build_id': build_id, 'dll': str(folder / DLL_NAME),
-               'sha256': file_digest(folder / DLL_NAME)}
+               'sha256': outputs[DLL_NAME], 'outputs': outputs}
     (folder / 'build.json').write_text(json.dumps(receipt, indent=2) + '\n', encoding='utf-8')
     return receipt
 
