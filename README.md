@@ -46,7 +46,7 @@ client). Then a first prompt:
 
 The tool references are [FNV-ENGINE-TOOLS.md](bridge/docs/FNV-ENGINE-TOOLS.md) and
 [FNV-LIVE-TOOLS.md](bridge/docs/FNV-LIVE-TOOLS.md); the `fnv_guide` tool has step-by-step guides. Open problems are
-listed in [KNOWN-ISSUES.md](bridge/docs/KNOWN-ISSUES.md).
+listed in [KNOWN-ISSUES.md](bridge/docs/KNOWN-ISSUES.md). To remove it again, see "Uninstall" in the setup guide.
 
 ## Credits
 

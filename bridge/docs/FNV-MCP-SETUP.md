@@ -177,6 +177,35 @@ Paths in the project file may be relative to the project file. `fnv_*` keys go i
 The `FNV_MCP_*` variables had other names before 0.5 (`GECK_MCP_ZIG`, `FNVMCP_PIPE`, `GECK_MCP_RELOAD`,
 `GECK_SUPERVISOR_LOG`, `GECK_MCP_TRANSPORT`); the old names still work, and the new name wins when both are set.
 
+## Uninstall
+
+Nothing here runs by itself; there is no uninstall tool. Close the game, the GECK and the MCP client first.
+
+1. **The MCP registration.** With Claude Code: `claude mcp remove fnv-mcp`. For a client with a JSON file, delete
+   the `"fnv-mcp"` entry.
+2. **xNVSE in the game folder.** xNVSE cannot go through MO2, so `tools\fnv_setup_dev_profile.py --apply`
+   copied its loader and DLLs into the game folder (`nvse_loader.exe`, `nvse_*.dll`; its `Data` part is the MO2
+   mod `xNVSE Data`). Every file it added is listed under `gameFilesAdded` in
+   `<mo2 root>\fnv-mcp-install.json`; delete those files. Files that were there before the setup are not listed,
+   so an xNVSE you installed yourself stays. Do this before step 3, which deletes the list.
+3. **The MO2 dev instance** (`fnv.mo2_root`, `C:\Modding\FNV-Dev` in the steps). The setup made it only for
+   fnv-mcp, so deleting the whole folder removes the `Dev` profile, its saves and INIs, and every mod the tools
+   added there. To keep the instance and remove only the tools' parts instead:
+   - the companion: the mod folder `mods\fnvmcp engine companion`, and its line `+fnvmcp engine companion` in
+     `profiles\Dev\modlist.txt`;
+   - plugins shipped with `fnv_plugin_build`: the `mods\fnvmcp plugin <name>` folders and their lines in
+     `modlist.txt`;
+   - plugins installed with `fnv_install`: their mod folders, their `modlist.txt` lines, and their names in
+     `profiles\Dev\plugins.txt` and `loadorder.txt`.
+4. **Files the companion and the server write outside the clone:**
+   - `%LOCALAPPDATA%\fnvmcp`: the companion's exit notes, crash-context files and `companion.log`;
+   - `%TEMP%\geck-mcp`: the busy files the server writes while a call runs.
+5. **The clone.** Everything else stays inside it: `bridge\state` (journals, the engine map, builds, test
+   reports, screenshots, backups), `bridge\.venv` and your `bridge\projects\*.json` files. Delete the clone.
+
+The Steam game itself, its saves in `Documents\My Games\FalloutNV` and its INIs there are not changed by the
+setup: the dev profile keeps its own copies.
+
 ## Known issues
 
 The open problems are listed in [KNOWN-ISSUES.md](KNOWN-ISSUES.md). The ones met during setup:
