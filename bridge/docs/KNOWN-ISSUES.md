@@ -8,6 +8,11 @@ damaged file. Each is tracked as a GitHub issue.
 - The Claude app does not fetch the tool list again after the server announces a change; restart the client after
   updating the server.
 
+## Tool arguments
+
+- A few `fnv_*` parameters are accepted but change nothing in some actions, so a call does not say that an argument
+  had no effect.
+
 ## Undo and the journal
 
 - An undo made between a change and its confirmation is opened again by the confirmation.
@@ -41,7 +46,6 @@ damaged file. Each is tracked as a GitHub issue.
 
 - After a launch in which no game started, `fnv_status` says the game was terminated from outside.
 - The audio-cache setting can stay off when writing it back fails.
-- The quit guard of `fnv_run_script` does not catch `(QuitGame)` or a quit on a later line.
 - `fnv_crawl cells` moves the player with a `coc` that is not journaled.
 - `fnv_snapshot` has no cap on the number of items or on console items.
 - `fnv_window persist` and `fnv_warnings enable` write files although `fnv.engine_control` is `"read"`.

@@ -1015,6 +1015,18 @@ class LiveService:
         command = first.rsplit('.', 1)[-1].lower()
         return command if command in cls.CONSOLE_REFUSED else None
 
+    @classmethod
+    def script_refused(cls, source):
+        """The first refused command word anywhere in a script, or None (W7). Every word outside quoted text and
+        `;` comments counts, so `(QuitGame)`, a quit on a later line and one inside Begin/End are caught. A variable
+        that happens to share a refused name (`save`, `load`, `exit`) is refused too: rename it."""
+        for line in (source or '').splitlines():
+            code = re.sub(r'"[^"]*"?', ' ', line).split(';', 1)[0]
+            for word in re.findall(r'[A-Za-z_][A-Za-z0-9_]*', code):
+                if word.lower() in cls.CONSOLE_REFUSED:
+                    return word.lower()
+        return None
+
     def run_console(self, line, ref=None):
         if '\n' in line or len(line) > 500:
             raise ValueError('One console line of at most 500 characters')
@@ -1032,9 +1044,8 @@ class LiveService:
         return dict(result, output=shown['items'], outputTotal=shown['total'], outputTruncated=shown['truncated'])
 
     def run_script(self, source, ref=None):
-        text = (source or '').strip()
-        refused = self.console_refused(text) if '\n' not in text else None
-        if refused:                    # the same guard as fnv_console (S5 review M10)
+        refused = self.script_refused(source)
+        if refused:                    # the same commands as fnv_console refuses (S5 review M10, W7)
             raise LiveError('CONSOLE_REFUSED', '%s is not run through fnv_run_script. Next: use %s.'
                             % (refused, self.CONSOLE_INSTEAD[refused]), {'command': refused})
         self.ready()

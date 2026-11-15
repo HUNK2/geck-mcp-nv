@@ -53,6 +53,23 @@ class ConsoleAliasTests(unittest.TestCase):
                     fake.live.run_script(source)
                 self.assertEqual(caught.exception.code, 'CONSOLE_REFUSED', source)
 
+    def test_w7_quit_anywhere_in_the_script_refused(self):
+        # Release plan Phase 7 (W7): the guard looked at the first word of a one-line source only.
+        with FakeLive() as fake:
+            sent = []
+            fake.live.link.eval = fake.live.link.run = lambda *a, **k: sent.append(a) or {'ok': True}
+            for source in ('(QuitGame)', 'if 1\n  QuitGame\nendif', 'set x to 1\nplayer.qqq',
+                           'Begin Function { }\n  ExitGame\nEnd', 'if 1 ; tidy up\n QuitGame ; bye\nendif',
+                           'RunBatchScript "x.txt"', 'let x := 1\nCenterOnWorld WastelandNV 0 0'):
+                with self.assertRaises(LiveError, msg=source) as caught:
+                    fake.live.run_script(source)
+                self.assertEqual(caught.exception.code, 'CONSOLE_REFUSED', source)
+            self.assertEqual(sent, [])
+            for source in ('player.GetAV Luck', '; QuitGame in a comment\nset x to 1',
+                           'PrintC "QuitGame and qqq are refused"', 'if 1\n  PrintC "exit"\nendif'):
+                fake.live.run_script(source)
+            self.assertEqual(len(sent), 4)
+
 
 class EncodeTests(unittest.TestCase):
     def setUp(self):
