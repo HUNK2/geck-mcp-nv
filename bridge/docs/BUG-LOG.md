@@ -2262,48 +2262,48 @@ gate's CI and suite runs. Entries get a detail section when they are fixed.
 | ID | Severity | Status | Bug | Where |
 |---|---|---|---|---|
 | N22 | medium | fixed | fnv_procmem / fnv_perf bind msvcrt and ctypes.WinDLL at import: the server cannot import on macOS/Linux (the upstream Wine path); posix CI red since fnv-mcp began | `geck_mcp/fnv_procmem.py:8, fnv_perf.py:27` |
-| N23 | low | open | test_supervisor BusyReloadTests fail under heavy CPU load (cancel reaches in_flight late); pass alone | `tests/test_supervisor.py:207` |
+| N23 | low | open ([#1](https://github.com/HUNK2/fnv-mcp/issues/1)) | test_supervisor BusyReloadTests fail under heavy CPU load (cancel reaches in_flight late); pass alone | `tests/test_supervisor.py:207` |
 | U1 | high | fixed | Out-of-order undo is guarded only for place_adjust, time fixed/speed and hot swaps: memory writes, patches, settings, AVs, positions on one target end with the wrong value | `audit3/state.md H1` |
 | U2 | medium | fixed | Undoing a clock pause made by another server is marked undone while the clock stays paused | `audit3/state.md M1` |
 | U3 | medium | fixed | A hot-swap undo whose reply times out after the swap landed stays open; a retry swaps the code back | `audit3/state.md M2` |
-| U4 | low | open | An undo between a change and its confirm is reopened by the confirm | `audit3/state.md L1` |
-| U5 | low | open | fnv_undo (count) is stuck on a newest pending entry with a non-repeatable op | `audit3/state.md L2` |
-| U6 | low | open | Compaction fallback rewrites journal.jsonl in place (not atomic) | `audit3/state.md L3` |
-| U7 | low | open | A journal line with a wrong field type breaks every journal read | `audit3/state.md L4` |
-| U8 | low | open | Probe-remove undo reads and writes probe_session.json outside one lock | `audit3/state.md L5` |
-| U9 | low | open | A speed change from an out-of-range multiplier is not journaled | `audit3/state.md L6` |
+| U4 | low | open ([#2](https://github.com/HUNK2/fnv-mcp/issues/2)) | An undo between a change and its confirm is reopened by the confirm | `audit3/state.md L1` |
+| U5 | low | open ([#3](https://github.com/HUNK2/fnv-mcp/issues/3)) | fnv_undo (count) is stuck on a newest pending entry with a non-repeatable op | `audit3/state.md L2` |
+| U6 | low | open ([#4](https://github.com/HUNK2/fnv-mcp/issues/4)) | Compaction fallback rewrites journal.jsonl in place (not atomic) | `audit3/state.md L3` |
+| U7 | low | open ([#5](https://github.com/HUNK2/fnv-mcp/issues/5)) | A journal line with a wrong field type breaks every journal read | `audit3/state.md L4` |
+| U8 | low | open ([#6](https://github.com/HUNK2/fnv-mcp/issues/6)) | Probe-remove undo reads and writes probe_session.json outside one lock | `audit3/state.md L5` |
+| U9 | low | open ([#7](https://github.com/HUNK2/fnv-mcp/issues/7)) | A speed change from an out-of-range multiplier is not journaled | `audit3/state.md L6` |
 | K1 | high | fixed | An int3 can land inside a hook's patched bytes or be copied into its trampoline: the game crashes | `audit3/companion.md H1` |
 | K2 | medium | fixed | A worker parked at a stop the main thread waits on cannot be released while the bridge keeps talking (dead-man reset by unserved requests) | `audit3/companion.md M1` |
 | K3 | medium | fixed | Hook stubs and record rings are never reused: ~1000 installs end every hook tool; each recording hook leaks 768 KB | `audit3/companion.md M2` |
 | K4 | medium | fixed | fnv_flow trace takes an old parked stop of a cleared break with the same bp id as its own hit | `audit3/companion.md M3` |
-| K5 | low | open | A thread=main trap break that falls to int3 parks every thread (E24 incomplete) | `audit3/companion.md L1` |
-| K6 | low | open | A failed unhook silently ends the action or hold; break clear drops the record anyway | `audit3/companion.md L2` |
-| K7 | low | open | op_hookact rewrites a live skip stub in place | `audit3/companion.md L3` |
-| K8 | low | open | Fault stops do not reload the thread's debug registers after the park | `audit3/companion.md L4` |
-| K9 | low | open | fnv_flow NOT_CALLED: a hit between the last poll and bp clear leaves a parked stop | `audit3/companion.md L5` |
-| K10 | low | open | fnv_flow _read_trace takes the lowest new step stop of any thread | `audit3/companion.md L6` |
-| K11 | low | open | ACT_RESULT counted as applied when the shadow stack was full | `audit3/companion.md L7` |
-| K12 | low | open | _store_pred keeps a claimed slot when pred set fails | `audit3/companion.md L8` |
-| K13 | low | open | A main-thread stop that closed the gate reopens it on release, dropping a hold sent meanwhile | `audit3/companion.md L9` |
+| K5 | low | open ([#8](https://github.com/HUNK2/fnv-mcp/issues/8)) | A thread=main trap break that falls to int3 parks every thread (E24 incomplete) | `audit3/companion.md L1` |
+| K6 | low | open ([#9](https://github.com/HUNK2/fnv-mcp/issues/9)) | A failed unhook silently ends the action or hold; break clear drops the record anyway | `audit3/companion.md L2` |
+| K7 | low | open ([#10](https://github.com/HUNK2/fnv-mcp/issues/10)) | op_hookact rewrites a live skip stub in place | `audit3/companion.md L3` |
+| K8 | low | open ([#11](https://github.com/HUNK2/fnv-mcp/issues/11)) | Fault stops do not reload the thread's debug registers after the park | `audit3/companion.md L4` |
+| K9 | low | open ([#12](https://github.com/HUNK2/fnv-mcp/issues/12)) | fnv_flow NOT_CALLED: a hit between the last poll and bp clear leaves a parked stop | `audit3/companion.md L5` |
+| K10 | low | open ([#13](https://github.com/HUNK2/fnv-mcp/issues/13)) | fnv_flow _read_trace takes the lowest new step stop of any thread | `audit3/companion.md L6` |
+| K11 | low | open ([#14](https://github.com/HUNK2/fnv-mcp/issues/14)) | ACT_RESULT counted as applied when the shadow stack was full | `audit3/companion.md L7` |
+| K12 | low | open ([#15](https://github.com/HUNK2/fnv-mcp/issues/15)) | _store_pred keeps a claimed slot when pred set fails | `audit3/companion.md L8` |
+| K13 | low | open ([#16](https://github.com/HUNK2/fnv-mcp/issues/16)) | A main-thread stop that closed the gate reopens it on release, dropping a hold sent meanwhile | `audit3/companion.md L9` |
 | W1 | high | fixed | Read-classed fnv_snapshot, fnv_diff and fnv_watch run caller console lines and xNVSE expressions (T1 incomplete) | `audit3/contract.md H1` |
 | W2 | high | fixed | resolve() evaluates any bare identifier as an xNVSE expression: fnv_ref ref=QuitGame runs QuitGame under read | `audit3/contract.md H2` |
 | W3 | medium | fixed | fnv_warnings capture start and fnv_window mouse/unpause change the game as 'control' without the engine_control check | `audit3/contract.md M1` |
 | W4 | medium | fixed | fnv_formid_live (read) pastes free text into a quoted xNVSE expression | `audit3/contract.md M2` |
-| W5 | low | open | After a launch where no game started, fnv_status says 'terminated from outside' | `audit3/contract.md L1` |
-| W6 | low | open | The audio-cache flag can stay off when its restore write fails (N21 incomplete) | `audit3/contract.md L2` |
-| W7 | low | open | fnv_run_script's quit guard is bypassed by (QuitGame) or a multi-line source | `audit3/contract.md L3` |
-| W8 | low | open | fnv_crawl cells moves the player with an unjournaled cow | `audit3/contract.md L4` |
-| W9 | low | open | fnv_snapshot items has no length cap; console items uncapped | `audit3/contract.md L5` |
+| W5 | low | open ([#17](https://github.com/HUNK2/fnv-mcp/issues/17)) | After a launch where no game started, fnv_status says 'terminated from outside' | `audit3/contract.md L1` |
+| W6 | low | open ([#18](https://github.com/HUNK2/fnv-mcp/issues/18)) | The audio-cache flag can stay off when its restore write fails (N21 incomplete) | `audit3/contract.md L2` |
+| W7 | low | open ([#19](https://github.com/HUNK2/fnv-mcp/issues/19)) | fnv_run_script's quit guard is bypassed by (QuitGame) or a multi-line source | `audit3/contract.md L3` |
+| W8 | low | open ([#20](https://github.com/HUNK2/fnv-mcp/issues/20)) | fnv_crawl cells moves the player with an unjournaled cow | `audit3/contract.md L4` |
+| W9 | low | open ([#21](https://github.com/HUNK2/fnv-mcp/issues/21)) | fnv_snapshot items has no length cap; console items uncapped | `audit3/contract.md L5` |
 | X1 | high | fixed | fnv_name_export writes to any path the call names, under a read-only annotation | `audit3/parsers.md H1` |
 | X2 | medium | fixed | fnv_asset_check's folder check is lexical: Data\..\.. escapes it (T7 incomplete) | `audit3/parsers.md M1` |
 | X3 | medium | fixed | The record index keeps rows of a plugin path that left the load order; lookups serve them | `audit3/parsers.md M2` |
-| X4 | low | open | records.text accepts U+0080..U+009F and writes other characters | `audit3/parsers.md L1` |
-| X5 | low | open | P9 incomplete: generic text fields and dialogue responses write an embedded NUL | `audit3/parsers.md L2` |
-| X6 | low | open | codec.parse RecursionError on deeply nested groups (P3 incomplete) | `audit3/parsers.md L3` |
-| X7 | low | open | scan_references raises raw struct.error on truncated subrecords | `audit3/parsers.md L4` |
-| X8 | low | open | Build asset check ignores BSAs inside enabled MO2 mods | `audit3/parsers.md L5` |
-| X9 | low | open | BSA readers raise raw struct.error on a truncated archive | `audit3/parsers.md L6` |
-| X10 | low | open | fnv_profile_set writes unchecked plugin names into plugins.txt | `audit3/parsers.md L7` |
+| X4 | low | open ([#22](https://github.com/HUNK2/fnv-mcp/issues/22)) | records.text accepts U+0080..U+009F and writes other characters | `audit3/parsers.md L1` |
+| X5 | low | open ([#23](https://github.com/HUNK2/fnv-mcp/issues/23)) | P9 incomplete: generic text fields and dialogue responses write an embedded NUL | `audit3/parsers.md L2` |
+| X6 | low | open ([#24](https://github.com/HUNK2/fnv-mcp/issues/24)) | codec.parse RecursionError on deeply nested groups (P3 incomplete) | `audit3/parsers.md L3` |
+| X7 | low | open ([#25](https://github.com/HUNK2/fnv-mcp/issues/25)) | scan_references raises raw struct.error on truncated subrecords | `audit3/parsers.md L4` |
+| X8 | low | open ([#26](https://github.com/HUNK2/fnv-mcp/issues/26)) | Build asset check ignores BSAs inside enabled MO2 mods | `audit3/parsers.md L5` |
+| X9 | low | open ([#27](https://github.com/HUNK2/fnv-mcp/issues/27)) | BSA readers raise raw struct.error on a truncated archive | `audit3/parsers.md L6` |
+| X10 | low | open ([#28](https://github.com/HUNK2/fnv-mcp/issues/28)) | fnv_profile_set writes unchecked plugin names into plugins.txt | `audit3/parsers.md L7` |
 
 ### Round 3 details
 
@@ -2454,21 +2454,21 @@ tests/test_r4_contract.py, test_r4_state.py, test_p1_place_surface.py, test_engi
 | V2 | medium | fixed, verified live (was: ruled a design limit, mitigated; then "ambiguous" after review I1) | A wholly buried object cannot be told from one under a ceiling by vertical rays. Neither suggested Havok signal separates them. The hit normal (pick+0x30) is flipped toward the ray start by hkpTriangleShape castRay 0x00D20A70, so on mesh collision it never tells a floor from a ceiling. Closest points find no contact for an object wholly under a thin floor or terrain. Now `_side` asks from the player's eye, a point in open air. Eye -> object meets nothing: it hangs in the player's air, so snap drops it and check says "floats N ..., under a ceiling or shelf M over it". The eye sees the point just over the surface above it, and exactly one surface lies between the eye and the object (cast from both ends, so a convex or closed table top counts twice): it is buried, so snap lifts it onto that surface (also when nothing is under it, which used to answer "no surface found") and check says "buried N units under the surface over it". Anything else stays "ambiguous", as before. Lifting needs the eye to see the top of the surface, so a ceiling over the player can never be the target (LV1). Left: a single open plane (a one-face table top, one two-sided slab between storeys) between the eye and an object floating under it reads as buried. Tests: test_p1_place_surface EyeSideTests (8; PlaneRays now casts slanted rays). Live in NPCTextureTest: SSBottle01 60 under the ceiling checks "floats 196 ..., under a ceiling or shelf 60 over it" and snaps (also with align) to the floor at 16704; one 44 under the floor checks "buried 44 units under the surface over it" and snaps up to 16704 | `audit4/state.md M1`, `audit4/review.md I1` |
 | V3 | medium | fixed | U1 order targets keyed on line text: undos restoring one value through different lines (Enable/Disable, SetScale, MoveToCell/SetPos, EditorID/form id, SetAV/ForceAV) never conflicted. Now keyed by the state restored | `audit4/state.md M2` |
 | V4 | medium | fixed | fnv_script_hot_swap journaled after the swap: a lost reply left new code with no undo entry. Entry now pending before, confirmed after | `audit4/state.md M3` |
-| V5 | low | open | Pause undo ignores what resume() reports | `audit4/state.md L1` |
-| V6 | low | open | U1 check makes fnv_revert_all quadratic (22 s for 3000 entries) | `audit4/state.md L2` |
+| V5 | low | open ([#29](https://github.com/HUNK2/fnv-mcp/issues/29)) | Pause undo ignores what resume() reports | `audit4/state.md L1` |
+| V6 | low | open ([#30](https://github.com/HUNK2/fnv-mcp/issues/30)) | U1 check makes fnv_revert_all quadratic (22 s for 3000 entries) | `audit4/state.md L2` |
 | V7 | low | fixed | test_p1_place_surface docstring described an old rule | `audit4/state.md L3` |
-| Q3 | low | open | _hook_hold counts removed hooks as ALREADY_HOOKED: a re-set function break falls back to a trap break | `audit4/companion.md L1` |
-| Q4 | low | open | K4 parked-stop snapshot on the shared FlowTools object: two traces at once (suspected) | `audit4/companion.md L2` |
-| Y3 | low | open | Read actions that install a hook for the length of the call (fnv_detection recompute, fnv_anim events, fnv_audio log/subtitles, fnv_physics triggers) or fnv_form bytes writing globals | `audit4/contract.md L1` |
-| Y4 | low | open | fnv_perk_entries evaluate ends a recording the caller started | `audit4/contract.md L2` |
-| Y5 | low | open | EngineAITools._hook removes a same-label hook first: concurrent calls lose records | `audit4/contract.md L3` |
-| Y6 | low | open | fnv_window persist and fnv_warnings enable write files under read (control kind; same class as release-audit B2) | `audit4/contract.md L4` |
-| Y7 | low | open | Purity checker's `movs` prefix also matches movsx/movss/movsd (over-refuses only) | `geck_mcp/fnv_oracle.py` STRING_WRITE |
-| Z1 | low | open | X3 fix: SQLite lower() folds ASCII only (non-ASCII plugin names) | `audit4/parsers.md L1` |
-| Z2 | low | open | X3 handles two copies of a name only; a disabled plugin's rows still label lookups | `audit4/parsers.md L2` |
-| Z3 | low | open | fnv_name_export can overwrite fnvsym's own Frida trace | `audit4/parsers.md L3` |
-| Z4 | low | open | One unreadable active plugin breaks every index-based record tool (and fnv_loadorder) | `audit4/parsers.md L4` |
-| N24 | low | open | test_engine_races test_bp_two_threads_same_int3 waits a fixed 0.5 s for the second thread to trap: failed once on the CI Windows runner (1 stop of 2), passed on the re-run and locally; should wait for the trap, not sleep | `tests/test_engine_races.py:243` |
+| Q3 | low | open ([#31](https://github.com/HUNK2/fnv-mcp/issues/31)) | _hook_hold counts removed hooks as ALREADY_HOOKED: a re-set function break falls back to a trap break | `audit4/companion.md L1` |
+| Q4 | low | open ([#32](https://github.com/HUNK2/fnv-mcp/issues/32)) | K4 parked-stop snapshot on the shared FlowTools object: two traces at once (suspected) | `audit4/companion.md L2` |
+| Y3 | low | open ([#33](https://github.com/HUNK2/fnv-mcp/issues/33)) | Read actions that install a hook for the length of the call (fnv_detection recompute, fnv_anim events, fnv_audio log/subtitles, fnv_physics triggers) or fnv_form bytes writing globals | `audit4/contract.md L1` |
+| Y4 | low | open ([#34](https://github.com/HUNK2/fnv-mcp/issues/34)) | fnv_perk_entries evaluate ends a recording the caller started | `audit4/contract.md L2` |
+| Y5 | low | open ([#35](https://github.com/HUNK2/fnv-mcp/issues/35)) | EngineAITools._hook removes a same-label hook first: concurrent calls lose records | `audit4/contract.md L3` |
+| Y6 | low | open ([#36](https://github.com/HUNK2/fnv-mcp/issues/36)) | fnv_window persist and fnv_warnings enable write files under read (control kind; same class as release-audit B2) | `audit4/contract.md L4` |
+| Y7 | low | open ([#37](https://github.com/HUNK2/fnv-mcp/issues/37)) | Purity checker's `movs` prefix also matches movsx/movss/movsd (over-refuses only) | `geck_mcp/fnv_oracle.py` STRING_WRITE |
+| Z1 | low | open ([#38](https://github.com/HUNK2/fnv-mcp/issues/38)) | X3 fix: SQLite lower() folds ASCII only (non-ASCII plugin names) | `audit4/parsers.md L1` |
+| Z2 | low | open ([#39](https://github.com/HUNK2/fnv-mcp/issues/39)) | X3 handles two copies of a name only; a disabled plugin's rows still label lookups | `audit4/parsers.md L2` |
+| Z3 | low | open ([#40](https://github.com/HUNK2/fnv-mcp/issues/40)) | fnv_name_export can overwrite fnvsym's own Frida trace | `audit4/parsers.md L3` |
+| Z4 | low | open ([#41](https://github.com/HUNK2/fnv-mcp/issues/41)) | One unreadable active plugin breaks every index-based record tool (and fnv_loadorder) | `audit4/parsers.md L4` |
+| N24 | low | open ([#42](https://github.com/HUNK2/fnv-mcp/issues/42)) | test_engine_races test_bp_two_threads_same_int3 waits a fixed 0.5 s for the second thread to trap: failed once on the CI Windows runner (1 stop of 2), passed on the re-run and locally; should wait for the trap, not sleep | `tests/test_engine_races.py:243` |
 
 Round-4 fix review (fresh Opus, [audit4/review.md](audit4/review.md)): 0 Critical, 2 Important, 10 Minor.
 - I1 fixed: snap moved a wholly buried object (or one sunk into a slab with no own hit) further down on the V2 ruling. Now a surface within 64 over it with the ground more than 5 under it is "ambiguous": snap refuses (snapped false, with what it saw and to nudge after a look), check reports it instead of "floats", and the overhead note appears only when nothing is under it (also review M1: a table under a shelf had issues). An object floating within 64 under a ceiling is refused the same way; points (at, array) are unaffected. Tests: test_p1_place_surface AmbiguousSnapTests and BuriedTests.
