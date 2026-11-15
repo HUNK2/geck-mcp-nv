@@ -87,6 +87,28 @@ class LinkIdleTests(unittest.TestCase):
         self.idle()
         self.assertIsNone(self.link.handle, 'the pipe stayed held after the dead-man switch opened the gate')
 
+    def test_a_stop_that_parked_after_the_last_reply_keeps_the_pipe(self):
+        # Task 6.4: a disconnect releases every stop, so the link asks once before an idle close. The stop here parks
+        # on a worker thread after the console reply, so the link's last word was "nothing held".
+        link = self.link
+        hook = link.one('hook', fnv_link.word(self.host.t['hookme']), fnv_link.word(6), '-', '0', '0', '0', '0', '1',
+                        '0', '0', '0', '0', fnv_link.hexs('idlehold'))['hook']['id']
+        try:
+            self.assertTrue(link.one('hookact', fnv_link.word(hook), 'hold', 'ff').get('ok'))
+            link.console('hookthread 4')
+            end = time.time() + 5
+            while not link.one('stops')['stops'] and time.time() < end:
+                time.sleep(0.02)
+            link._holding = False                       # as if the last reply came before the stop parked
+            self.idle()
+            self.assertIsNotNone(link.handle, 'closed the pipe (and so released the stop) while a stop was parked')
+            self.assertEqual(len(link.one('stops')['stops']), 1)
+        finally:
+            link.one('hookact', fnv_link.word(hook), '0', '0', '0', '0', '-')
+            for stop in link.one('stops')['stops']:
+                link.one('resume', fnv_link.word(stop['seq']), 'run')
+            link.one('unhook', fnv_link.word(hook))
+
     def test_zero_disables(self):
         self.link.idle_release_seconds = 0
         self.link.ping()

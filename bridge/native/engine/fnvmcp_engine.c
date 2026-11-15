@@ -54,6 +54,8 @@ __declspec(dllexport) volatile LONG fnvmcp_hook_reuse_ms = 60000;
 #define WIRE_VERSION 2
 #define EVENT_DEADMAN 0x3E9 /* event record type: the gate's dead-man switch opened a held gate */
 #define EVENT_INJECT 0x3EA  /* event record type: the input injector faulted and released its jobs */
+#define EVENT_PIPE 0x3EB    /* event record type: the pipe could not be created (H4) */
+#define EVENT_LEFT 0x3EC    /* event record type: the bridge disconnected and what it held was let go (H4) */
 #define REQUEST_MAX (1u << 20)
 #define RESPONSE_MAX (4u << 20)
 #define READ_MAX 65536u
@@ -267,6 +269,8 @@ static const char *message_name(int type) {
                                   "deferred_init"};
     if (type == EVENT_DEADMAN) return "deadman";
     if (type == EVENT_INJECT) return "inject";
+    if (type == EVENT_PIPE) return "pipe";
+    if (type == EVENT_LEFT) return "disconnect";
     return type >= 0 && type < (int)(sizeof(names) / sizeof(names[0])) ? names[type] : "message";
 }
 
@@ -738,11 +742,20 @@ static void code_byte(uint32_t address, unsigned char value) {
     }
     FlushInstructionCache(GetCurrentProcess(), p, 1);
 }
+/* The bytes may span pages with different protections: each page is opened and put back with its own (H4). */
+#define CODE_WRITE_PAGES 16
 static bool code_write(uint32_t address, const void *bytes, size_t length) {
-    DWORD old;
-    if (!VirtualProtect((void *)(uintptr_t)address, length, PAGE_EXECUTE_READWRITE, &old)) return false;
-    memcpy((void *)(uintptr_t)address, bytes, length);
-    VirtualProtect((void *)(uintptr_t)address, length, old, &old);
+    if (!length) return true;
+    uint32_t first = address & ~0xFFFu, last = (uint32_t)(address + length - 1) & ~0xFFFu;
+    if (last < first || (last - first) / 0x1000u >= CODE_WRITE_PAGES) return false;
+    unsigned pages = (last - first) / 0x1000u + 1, opened = 0;
+    DWORD old[CODE_WRITE_PAGES], ignored;
+    for (; opened < pages; opened++)
+        if (!VirtualProtect((void *)(uintptr_t)(first + opened * 0x1000u), 1, PAGE_EXECUTE_READWRITE, &old[opened])) break;
+    if (opened == pages) memcpy((void *)(uintptr_t)address, bytes, length);
+    for (unsigned i = 0; i < opened; i++)
+        VirtualProtect((void *)(uintptr_t)(first + i * 0x1000u), 1, old[i], &ignored);
+    if (opened != pages) return false;
     FlushInstructionCache(GetCurrentProcess(), (void *)(uintptr_t)address, length);
     return true;
 }
@@ -903,7 +916,7 @@ static void op_hook(int argc, char **argv) {
             char *comma = strchr(item, ',');
             if (comma) *comma = 0;
             uint32_t offset, rel;
-            if (!parse_u32(item, &offset) || offset + 4 > stolen) { hook_retire(h); return fail("bad_relocation"); }
+            if (!parse_u32(item, &offset) || offset > stolen - 4) { hook_retire(h); return fail("bad_relocation"); }
             memcpy(&rel, tramp + offset, 4);
             rel += target - (uint32_t)(uintptr_t)tramp;
             memcpy(tramp + offset, &rel, 4);
@@ -1855,6 +1868,8 @@ static void op_probe(int argc, char **argv) {
  * exception address and time. */
 static char context_dir[MAX_PATH];
 static volatile LONG context_files, serving_request, exiting;
+#define CONTEXT_NUMBERED 7 /* fault sites with a numbered context file; later ones share the -latest file */
+#define CONTEXT_SITES 256  /* fault addresses remembered as survived */
 /* At the game's exit message: one small file next to the crash-context files saying how the game was asked to quit
  * (the console's qqq or a script's QuitGame give the console exit message; closing the window or the menu's Quit give
  * the plain one), whether the companion was serving a request then, and the frame. fnv_status / fnv_crash_explain and
@@ -1917,10 +1932,23 @@ static LONG CALLBACK on_exception(EXCEPTION_POINTERS *e) {
     /* After xNVSE's exit messages the game is shutting down; plugins fault in their exit cleanup there
      * (seen with the companion off too), which is not worth a context file. */
     if (!context_dir[0] || code == EXCEPTION_STACK_OVERFLOW || exiting) return EXCEPTION_CONTINUE_SEARCH;
-    LONG n = InterlockedIncrement(&context_files);
-    if (n > 8) return EXCEPTION_CONTINUE_SEARCH;
     static volatile LONG busy;
     if (InterlockedExchange(&busy, 1)) return EXCEPTION_CONTINUE_SEARCH;
+    /* Faults the game recovers from must not use up the files (H4). A fault at an address that faulted before was
+     * survived the first time (the game runs on), so it gets no new file. The first CONTEXT_NUMBERED fault sites keep
+     * their own file; every later new site overwrites crash-context-<pid>-latest.json, so a real crash late in a
+     * session always leaves its context. */
+    static uint32_t sites[CONTEXT_SITES];
+    static unsigned site_count;
+    uint32_t site = (uint32_t)(uintptr_t)e->ExceptionRecord->ExceptionAddress;
+    bool seen = site_count >= CONTEXT_SITES;
+    for (unsigned i = 0; i < site_count && !seen; i++) seen = sites[i] == site;
+    if (seen) {
+        InterlockedExchange(&busy, 0);
+        return stop_fault(e);
+    }
+    sites[site_count++] = site;
+    LONG n = InterlockedIncrement(&context_files);
     context_len = 0;
     FILETIME now;
     GetSystemTimeAsFileTime(&now);
@@ -1971,7 +1999,10 @@ static LONG CALLBACK on_exception(EXCEPTION_POINTERS *e) {
     }
     ctx("]}\n");
     char path[MAX_PATH + 64];
-    snprintf(path, sizeof(path), "%s\\crash-context-%lu-%ld.json", context_dir, (unsigned long)pid, n);
+    if (n <= CONTEXT_NUMBERED)
+        snprintf(path, sizeof(path), "%s\\crash-context-%lu-%ld.json", context_dir, (unsigned long)pid, n);
+    else
+        snprintf(path, sizeof(path), "%s\\crash-context-%lu-latest.json", context_dir, (unsigned long)pid);
     HANDLE file = CreateFileA(path, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
     if (file != INVALID_HANDLE_VALUE) {
         DWORD written;
@@ -2412,6 +2443,46 @@ static void serve_request(char *line) {
 }
 
 /* ------------------------------------------------------------------------------------ pipe */
+/* Appends one line to %LOCALAPPDATA%\fnvmcp\companion.log: what the companion cannot report over its pipe. */
+static void companion_log(const char *text) {
+    if (!context_dir[0]) return;
+    char path[MAX_PATH + 32], line[512];
+    SYSTEMTIME t;
+    GetLocalTime(&t);
+    snprintf(path, sizeof(path), "%s\\companion.log", context_dir);
+    int n = snprintf(line, sizeof(line), "%04u-%02u-%02u %02u:%02u:%02u pid %lu: %s\r\n", t.wYear, t.wMonth, t.wDay,
+                     t.wHour, t.wMinute, t.wSecond, (unsigned long)pid, text);
+    HANDLE f = CreateFileA(path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_ALWAYS,
+                           FILE_ATTRIBUTE_NORMAL, NULL);
+    if (f == INVALID_HANDLE_VALUE) return;
+    DWORD written;
+    WriteFile(f, line, n > 0 ? (DWORD)(n < (int)sizeof(line) ? n : (int)sizeof(line) - 1) : 0, &written, NULL);
+    CloseHandle(f);
+}
+/* The pipe could not be created (another game holds the name): logged once, then at most once a minute (H4). */
+static unsigned pipe_failures;
+static void pipe_create_failed(DWORD error) {
+    static ULONGLONG logged_at;
+    static bool logged;
+    ULONGLONG now = GetTickCount64();
+    pipe_failures++;
+    if (logged && now - logged_at < 60000) return;
+    logged = true;
+    logged_at = now;
+    char text[300];
+    snprintf(text, sizeof(text), "cannot create the pipe %s (Windows error %lu, %u tries); is another game with the "
+             "companion running?", pipe_name, (unsigned long)error, pipe_failures);
+    companion_log(text);
+    record_event(EVENT_PIPE, text);
+}
+static void pipe_created(void) {
+    if (!pipe_failures) return;
+    char text[200];
+    snprintf(text, sizeof(text), "pipe %s created after %u failed tries", pipe_name, pipe_failures);
+    companion_log(text);
+    record_event(EVENT_PIPE, text);
+    pipe_failures = 0;
+}
 static bool write_all(HANDLE pipe, const char *data, size_t length) {
     while (length) {
         DWORD n = 0;
@@ -2464,13 +2535,23 @@ static void serve_client(HANDLE pipe) {
             *tab = 0;
             ping(pipe, buffer);
         } else {
+            /* A request the last client left behind may still be running (H4): it ends first, and its done_event
+             * must not answer this one. */
+            while (InterlockedCompareExchange(&pending, 0, 0) != 0) {
+                if (client_gone(pipe)) return;
+                Sleep(5);
+            }
+            ResetEvent(done_event);
             memcpy(request, buffer, line_length + 1);
             InterlockedExchange(&pending, 1);
             SetEvent(request_event);
             for (;;) {
                 if (WaitForSingleObject(done_event, 250) == WAIT_OBJECT_0) break;
-                if (client_gone(pipe) && InterlockedCompareExchange(&pending, 0, 1) == 1) {
-                    InterlockedExchange(&request_dropped, 1); /* never served: pings no longer count (K2) */
+                if (client_gone(pipe)) {
+                    if (InterlockedCompareExchange(&pending, 0, 1) == 1)
+                        InterlockedExchange(&request_dropped, 1); /* never served: pings no longer count (K2) */
+                    /* else the main thread took it: it finishes without a reader, or gate_let_go ends a step or until
+                     * that is still running. Either way the pipe is free for the next client now (H4). */
                     return;
                 }
             }
@@ -2502,11 +2583,21 @@ static DWORD WINAPI pipe_thread(void *unused) {
         HANDLE pipe = CreateNamedPipeA(pipe_name, PIPE_ACCESS_DUPLEX | FILE_FLAG_FIRST_PIPE_INSTANCE,
                                        PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS, 1,
                                        RESPONSE_MAX, REQUEST_MAX, 0, &security);
-        if (pipe == INVALID_HANDLE_VALUE) { Sleep(1000); continue; }
-        if (ConnectNamedPipe(pipe, NULL) || GetLastError() == ERROR_PIPE_CONNECTED) serve_client(pipe);
+        if (pipe == INVALID_HANDLE_VALUE) {
+            pipe_create_failed(GetLastError());
+            Sleep(1000);
+            continue;
+        }
+        pipe_created();
+        bool served = false;
+        if (ConnectNamedPipe(pipe, NULL) || GetLastError() == ERROR_PIPE_CONNECTED) {
+            serve_client(pipe);
+            served = true;
+        }
         FlushFileBuffers(pipe);
         DisconnectNamedPipe(pipe);
         CloseHandle(pipe);
+        if (served) gate_client_gone(); /* nothing the bridge held outlives it (H4) */
     }
 }
 
@@ -2525,6 +2616,7 @@ static void main_loop(void) {
     run_hook_scripts();
     if (scripts && scripts->CallFunction) run_periodic();
     SEAM(6); /* tests: the main thread is busy elsewhere and takes no request (K2) */
+    gate_let_go();
     if (InterlockedCompareExchange(&pending, 2, 1) == 1) serve_request(request);
     gate_park();
 }

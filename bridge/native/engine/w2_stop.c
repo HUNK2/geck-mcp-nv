@@ -84,8 +84,8 @@ static bool stop_release(Stop *s, uint32_t mode, uint32_t arg, uint32_t arg2) {
     SetEvent(s->event);
     return true;
 }
-/* Releases every listed stop with run (the dead-man switch, MSG_EXIT). */
-static void stop_release_all(bool deadman) {
+/* Releases every listed stop with run (the dead-man switch, MSG_EXIT, a disconnect). Returns how many. */
+static unsigned stop_release_all(bool deadman) {
     unsigned released = 0;
     for (int i = 0; i < (int)STOPS; i++) {
         Stop *s = &stops_table[i];
@@ -97,6 +97,7 @@ static void stop_release_all(bool deadman) {
                  (unsigned)gate_timeout);
         record_event(EVENT_DEADMAN, text);
     }
+    return released;
 }
 /* The main thread waits here and serves requests (resume among them) until its stop is released. */
 static void stop_serve_wait(Stop *s) {

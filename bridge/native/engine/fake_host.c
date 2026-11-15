@@ -279,8 +279,12 @@ static DWORD WINAPI crash_worker(LPVOID arg) {
 }
 /* Recovery for a fault nobody handles: the process ends with code 77 (a crash that is expected, not a hang). Added
  * after the companion's handlers, so it runs only when the companion lets the exception continue. */
+static volatile LONG handled_expected; /* "handled <n>": the host recovers from its own ud2 faults, like the game */
 static LONG CALLBACK last_chance(EXCEPTION_POINTERS *e) {
-    (void)e;
+    if (handled_expected && e->ExceptionRecord->ExceptionCode == EXCEPTION_ILLEGAL_INSTRUCTION) {
+        e->ContextRecord->Eip += 2; /* over the ud2 of ud2fn, to its ret */
+        return EXCEPTION_CONTINUE_EXECUTION;
+    }
     if (crash_expected) TerminateProcess(GetCurrentProcess(), 77);
     return EXCEPTION_CONTINUE_SEARCH;
 }
@@ -348,6 +352,17 @@ static bool run_line(const char *line, void *ref) {
     if (!strcmp(line, "crash")) {
         crash_expected = 1;
         crash_done = (uint32_t)call_faulter(0) + 1; /* not reached unless the fault is handled and resumed */
+        return true;
+    }
+    /* handled <n>: n faults at one address, each recovered by the host (faults the game survives). */
+    if (!strncmp(line, "handled ", 8)) {
+        int count = atoi(line + 8);
+        handled_expected = 1;
+        for (int i = 0; i < count; i++) ((int (*)(void))(void *)ud2fn)();
+        handled_expected = 0;
+        char out[64];
+        snprintf(out, sizeof(out), "handled %d", count);
+        append_log(out);
         return true;
     }
     if (!strcmp(line, "crashthread")) {

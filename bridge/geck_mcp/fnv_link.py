@@ -148,10 +148,25 @@ class EngineLink:
             if self.lock.acquire(blocking=False):      # never while a request runs
                 try:
                     if (self.handle is not None and not self._pins and not self._held()
-                            and time.monotonic() - self._last_use >= limit):
+                            and time.monotonic() - self._last_use >= limit and not self._parked_since()):
                         self.close()
                 finally:
                     self.lock.release()
+
+    def _parked_since(self):
+        """Before an idle close, while the last reply said nothing was held: ask once. Closing the pipe makes the
+        companion let go of everything (Task 6.4), and a stop may have parked after that reply (a hook hold hit
+        later). If something is held now, the pipe stays open until the companion's own dead-man time from now."""
+        if self._holding:
+            return False
+        try:
+            self.ping()
+        except LinkError:
+            return False
+        if self._holding:
+            self._last_use = time.monotonic()
+            return True
+        return False
 
     def _note(self, results):
         """Track whether the companion holds the gate or parks a stop (then the pipe is not released when idle)."""

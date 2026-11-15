@@ -76,6 +76,13 @@ to the game: it waits for requests (an event the pipe thread sets, no busy loop)
 - Call `DisableProcessWindowsGhosting()` once at load.
 - Dead-man switch: while held, with no request and no `ping` for the timeout, open the gate, record an event
   (`events` op, type `0x3E9` "deadman") and go on. Every request and every ping counts as contact.
+- Disconnect: when the client's pipe closes (the bridge exited or was killed), the companion does not wait for the
+  dead-man time. Stopped threads are resumed with `run` at once; on the next frame the gate opens, held input is
+  released and a `step` or `until` still running ends without a reply. An event of type `0x3EC` "disconnect" says
+  what was let go. A request the client left behind finishes before the next client's first request is taken.
+- If the pipe cannot be created (another game with the companion holds the name), the companion writes a line to
+  `%LOCALAPPDATA%\fnvmcp\companion.log` and an event of type `0x3EB` "pipe", once and then at most once a minute,
+  and keeps trying every second.
 - `ping` gains `"held"`, `"stepLeft"`, `"parked"` (number of parked threads, W2) and `"lastFrameTick"`.
 - Holds never nest: `hold on` while held only changes the timeout.
 - On `MSG_EXIT` the gate opens.
@@ -135,7 +142,7 @@ A stop is a thread parked by the companion: by a hook hold, a trap breakpoint, a
   engine calls on the main thread still work but this thread is frozen.
 - Holds and breakpoints are ignored while a request is being served (`serving_request`), so a served engine call
   cannot stop inside itself, and ignored on the pipe thread.
-- The dead-man switch resumes every stop with `run` (and opens the gate). `MSG_EXIT` does the same.
+- The dead-man switch resumes every stop with `run` (and opens the gate). `MSG_EXIT` and a disconnect do the same.
 - `ping` reports `"parked"`.
 
 | Op | Effect and result |

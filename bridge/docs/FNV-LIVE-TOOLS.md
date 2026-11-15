@@ -77,14 +77,20 @@ exit stub:   (optional) the caller's return address is swapped for it; records e
 A hook records into a ring (4096 calls: registers, up to 8 arguments, a 96-byte copy of what an argument
 points to, the frame, the result and the time) and/or a per-key table (calls, total and worst time), which
 the bridge reads with `rd`. A filter records only calls where a register or argument has a given value.
-Hooks only observe: every call goes on unchanged. The stub code never touches the x87 stack (a float result
-in st0 survives) and keeps the thread's LastError. Unhooking restores the original bytes if the jump is
+A watch hook without an action only observes: every call goes on unchanged. The stub code never touches the x87
+stack (a float result in st0 survives) and keeps the thread's LastError. One exception: if a hook's return finds its
+shadow stack inconsistent (a frame it pushed is gone), there is no safe address to return to, and the companion ends
+the game on purpose (exit code `0xF4C0DE01`) instead of jumping somewhere wrong. Unhooking restores the original bytes if the jump is
 still ours; stub memory stays allocated so calls already inside finish normally.
 
 The companion also installs a vectored exception handler that only observes: at a hardware fault it writes
 `%LOCALAPPDATA%\fnvmcp\crash-context-<pid>-<n>.json` (the hooked calls active on the faulting thread with
-their `this`/argument form ids, the op being served, the console line being run, recent events). It writes
-nothing once xNVSE has announced the game is exiting.
+their `this`/argument form ids, the op being served, the console line being run, recent events). A fault at an
+address that faulted before was survived (the game recovered), so it gets no new file. The first 7 fault
+addresses get numbered files; each later new one overwrites `crash-context-<pid>-latest.json`, so a real crash
+late in a session always leaves its context. It writes nothing once xNVSE has announced the game is exiting.
+What the companion cannot say over its pipe (the pipe could not be created) goes to
+`%LOCALAPPDATA%\fnvmcp\companion.log`.
 
 ### Mass probes and the action atlas
 
@@ -1040,7 +1046,7 @@ The point is a closed loop: an agent changes a mod, runs it, sees what the game 
 without a person clicking. Where the game has a function or a data structure for it, the tools use that.
 
 - **fnv_trace** hooks a proven function (status proven or class proven only) with the companion's observe-only
-  watch hook and decodes each call with the decomp signature: `this`, stack and register arguments by calling
+  watch hook (see "Watch hooks" for its one exception) and decodes each call with the decomp signature: `this`, stack and register arguments by calling
   convention (fastcall: integer and pointer arguments in ecx/edx), forms named with RTTI and the plugin
   indexes, the result (float results are in st0, not recorded), the caller named from the engine map. The
   ring keeps 4096 calls; `overwritten` says how many fell out between reads. Example: in two seconds

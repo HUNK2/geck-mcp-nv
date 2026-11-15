@@ -12,7 +12,7 @@
 static void serve_ops(char *ops, bool first);
 static void serve_request(char *line);
 static void inp_release_all(void);
-static void stop_release_all(bool deadman); /* w2_stop.c */
+static unsigned stop_release_all(bool deadman); /* w2_stop.c */
 static bool stop_main_parked(void);         /* w2_stop.c */
 
 static volatile LONG gate_held, step_left, suspend_kind;
@@ -20,6 +20,7 @@ static volatile LONG gate_held, step_left, suspend_kind;
  * since the last served one (K2: a stuck main thread must not be kept "in contact" by an agent that keeps polling). */
 static volatile ULONGLONG last_contact;
 static volatile LONG request_dropped; /* the pipe thread gave up on a request the main thread never took */
+static volatile LONG client_left;     /* the bridge disconnected: the main thread lets go of what it held (H4) */
 static volatile uint32_t gate_timeout = GATE_TIMEOUT;
 static HANDLE request_event;            /* set by the pipe thread when it queues a request */
 static uint32_t gate_disable_fn, gate_enable_fn, gate_timer;
@@ -78,6 +79,38 @@ static void gate_deadman(void) {
     record_event(EVENT_DEADMAN, text);
 }
 
+/* Pipe thread, after a client disconnected (H4): stopped threads are released here at once; the gate, held input and
+ * a running step or until are let go by the main thread (gate_let_go), woken now. */
+static void gate_client_gone(void) {
+    unsigned released = stop_release_all(false);
+    if (released) {
+        char text[96];
+        snprintf(text, sizeof(text), "the bridge disconnected: %u stop(s) released", released);
+        record_event(EVENT_LEFT, text);
+    }
+    InterlockedExchange(&client_left, 1);
+    SetEvent(request_event);
+}
+/* Main thread: after a disconnect the gate opens, held input is let go, and a step or until still running ends
+ * without its reply (no one is left to read it). Nothing waits on done_event for it: the pipe thread left. */
+static void gate_let_go(void) {
+    if (!InterlockedExchange(&client_left, 0)) return;
+    bool had = gate_held || gate_want_hold || suspend_kind != SUSP_NONE;
+    if (suspend_kind != SUSP_NONE) {
+        InterlockedExchange(&suspend_kind, SUSP_NONE);
+        InterlockedExchange(&step_left, 0);
+        until_pred = -1;
+        suspend_next = NULL;
+        gate_suspending = false;
+        InterlockedExchange(&serving_request, 0);
+        InterlockedCompareExchange(&pending, 0, 2);
+    }
+    gate_want_hold = false;
+    gate_open();
+    inp_release_all();
+    if (had) record_event(EVENT_LEFT, "the bridge disconnected: gate opened, input released");
+}
+
 /* Called once per frame while a step or until runs (from the main-loop message, after the frame). */
 static void gate_stop(bool met);
 static void gate_frame_tick(void) {
@@ -123,6 +156,8 @@ static void gate_abort_stopped(void) {
  * request or ping arrived for the timeout. Returns when the gate opens. */
 static void gate_park(void) {
     while (gate_held) {
+        gate_let_go(); /* the bridge left: open now, not at the dead-man time (H4) */
+        if (!gate_held) return;
         if (InterlockedCompareExchange(&pending, 2, 1) == 1) {
             serve_request(request); /* may open the gate again (step, until, hold off) */
             continue;
