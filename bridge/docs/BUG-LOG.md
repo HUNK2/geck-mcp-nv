@@ -2468,6 +2468,7 @@ tests/test_r4_contract.py, test_r4_state.py, test_p1_place_surface.py, test_engi
 | Z2 | low | open | X3 handles two copies of a name only; a disabled plugin's rows still label lookups | `audit4/parsers.md L2` |
 | Z3 | low | open | fnv_name_export can overwrite fnvsym's own Frida trace | `audit4/parsers.md L3` |
 | Z4 | low | open | One unreadable active plugin breaks every index-based record tool (and fnv_loadorder) | `audit4/parsers.md L4` |
+| N24 | low | open | test_engine_races test_bp_two_threads_same_int3 waits a fixed 0.5 s for the second thread to trap: failed once on the CI Windows runner (1 stop of 2), passed on the re-run and locally; should wait for the trap, not sleep | `tests/test_engine_races.py:243` |
 
 Round-4 fix review (fresh Opus, [audit4/review.md](audit4/review.md)): 0 Critical, 2 Important, 10 Minor.
 - I1 fixed: snap moved a wholly buried object (or one sunk into a slab with no own hit) further down on the V2 ruling. Now a surface within 64 over it with the ground more than 5 under it is "ambiguous": snap refuses (snapped false, with what it saw and to nudge after a look), check reports it instead of "floats", and the overhead note appears only when nothing is under it (also review M1: a table under a shelf had issues). An object floating within 64 under a ceiling is refused the same way; points (at, array) are unaffected. Tests: test_p1_place_surface AmbiguousSnapTests and BuriedTests.
