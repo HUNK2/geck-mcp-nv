@@ -639,9 +639,31 @@ packs' "items added" boxes on a coc start, are closed), stops at the first failu
 the game window. If the game dies, the report carries the crash doctor's diagnosis of the new crash log
 and the game is relaunched. Reports are saved in `state/fnv/test-reports`.
 
-Files are a YAML subset (block mappings and lists, flow `{}` and `[]`, quoted or plain scalars, `|`
-blocks, comments) or JSON; no YAML library is needed. Numbers with a leading zero (`00138562`) stay text, so
-form ids can be written bare. Examples: `examples/fnv-tests/`.
+Files are a YAML subset or JSON; no YAML library is needed. The rules are below. Examples:
+`examples/fnv-tests/`.
+
+### Scenario file format
+
+A scenario file is either JSON (the whole file starts with `{` or `[`) or the YAML subset described here. A
+file a full YAML parser reads differently is read by these rules, not YAML's.
+
+- **Structure.** Block mappings (`key: value`) and block lists (`- item`), nested by indentation. Indent with
+  spaces; a tab in the indentation is refused. A list may sit at the same indentation as its key. `- key: value`
+  starts a mapping inside a list item. `---` lines are ignored.
+- **Flow values.** `{a: 1, b: x}` and `[1, 2]`, nested, on one line. Text after the closing bracket is refused.
+- **Plain scalars.** `true` `yes` `on` and `false` `no` `off` (any case) are booleans; `null` and `~` are null.
+  Whole numbers become integers and decimals (`1.5`, `.5`, `1.5e3`) become floats. A number with a leading zero
+  (`00138562`), hex (`0x1F`) and `1E5` (no decimal point) stay text, so form ids can be written bare. Quote a word
+  you want as text: `'yes'`.
+- **Quoted scalars.** `'single'` takes the text as written (`''` is one quote). `"double"` takes JSON escapes
+  (`\t`, `\n`, `\"`, `\u00e9`); any other backslash is refused, so write a Windows path in single quotes.
+- **Comments.** `#` at the start of a line, or after a space or tab, starts a comment, except inside quotes.
+  `x#y` is text.
+- **Block scalars.** `|` joins the more-indented lines that follow with line breaks, `>` with spaces. Unlike
+  YAML, blank lines are dropped, each line's own indentation is dropped, and a ` #` inside starts a comment.
+  Chomping and indentation indicators (`|-`, `|2`) are not supported: the lines after them are refused.
+- **Not supported.** Anchors and aliases (`&x`, `*x`) and tags (`!!str`) are read as plain text. Keys are text.
+  No multi-document files and no multi-line flow values.
 
 ### Agent steps and checks
 
