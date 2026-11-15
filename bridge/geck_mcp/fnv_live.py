@@ -165,7 +165,8 @@ class LiveService:
         """What an entry's undo restores, as targets: ('mem', start, end) byte ranges, or keys compared for equality.
         An older undo of a target a newer open entry also changed would set a value that the newer entry's undo then
         overwrites, so only the newest may run first (S3 review B I4/I5; U1: every absolute-value undo, not only
-        place_adjust and time)."""
+        place_adjust and time). A target names the state restored, never the line's text (round 4 M2): Enable,
+        Disable and ref_enabled all restore ('ref', R, 'enabled'), SetScale <old> restores ('ref', R, 'scale')."""
         undo = entry.get('undo') or {}
         op = undo.get('op')
         try:
@@ -176,19 +177,19 @@ class LiveService:
                 return [('mem', int(a, 16), int(a, 16) + len(h) // 2) for a, h in undo['writes']]
         except (KeyError, TypeError, ValueError):
             return []
-        ref = str(undo.get('ref') or '').upper()
+        ref = cls._norm_id(undo['ref']) if undo.get('ref') else ''
         if op == 'console_ref' and ref:
             lines = [str(line).split() for line in undo.get('lines') or []]
             verbs = {words[0].lower() for words in lines if words}
             if 'markfordelete' in verbs:
                 return []       # a delete: later changes to the ref become moot, so it may run first (review I2)
-            return [cls._line_target(words, ref) for words in lines if words]
+            return [t for words in lines if words for t in cls._line_targets(words, ref)]
         if op == 'ref_enabled' and ref:
             return [('ref', ref, 'enabled')]
         if op == 'actor_flag' and ref:
             return [('ref', ref, 'flag', str(undo.get('flag')).lower())]
         if op == 'item_count' and ref:
-            return [('ref', ref, 'item', str(undo.get('item')).upper())]
+            return [('ref', ref, 'item', cls._norm_id(undo.get('item')))]
         if op == 'console':
             words = str(undo.get('line') or '').split()
             if not words:
@@ -197,24 +198,72 @@ class LiveService:
             if verb.split('.')[-1] in cls.WEATHER_VERBS:
                 return [('weather',)]
             if verb.startswith('player.'):      # the player's ref, as console_ref entries name it
-                return [cls._line_target([words[0][7:]] + words[1:], PLAYER_FORM_ID)]
-            return [cls._line_target(words, None)]
+                return cls._line_targets([words[0][7:]] + words[1:], PLAYER_FORM_ID)
+            return cls._line_targets(words, None)
         if op == 'time_restore' and undo.get('what') in ('fixed', 'speed'):
             return [('time', undo['what'])]
         if op in ('fly_set', 'hud_set'):
             return [(op,)]
         return []
 
-    # Commands whose second argument also names the value (an objective index, a quest stage).
-    INDEXED_VERBS = {'setobjectivecompleted', 'setobjectivedisplayed', 'setstage', 'setquestobject'}
+    @staticmethod
+    def _norm_id(text):
+        """A form id in one spelling (0x15169, 15169 and 00015169 are one item); anything else upper-cased."""
+        text = str(text or '').strip()
+        try:
+            return '%08X' % form_id(text) if is_form_id(text) else text.upper()
+        except ValueError:
+            return text.upper()
+
+    # Undo line verb -> the state it sets, from its arguments (lower-cased, quotes stripped), as key tails. The long
+    # and short names of a command share one state; a verb not listed keys on the verb alone (no value: safest).
+    @staticmethod
+    def _axes(name, a):
+        return [(name, a[0])] if a else [(name, axis) for axis in 'xyz']
+
+    @staticmethod
+    def _named(name, a, n=1):
+        return [(name, *[LiveService._norm_id(w) if is_form_id(w) else w for w in a[:n]])]
+
+    REF_STATE = {
+        'enable': lambda a: [('enabled',)], 'disable': lambda a: [('enabled',)],
+        'setscale': lambda a: [('scale',)],
+        'setpos': lambda a: LiveService._axes('pos', a),
+        'setangle': lambda a: LiveService._axes('angle', a),
+        # a cell move sets the cell and every position axis
+        'movetocell': lambda a: [('cell',)] + LiveService._axes('pos', []),
+        'moveto': lambda a: [('cell',)] + LiveService._axes('pos', []),
+        'setunconscious': lambda a: [('flag', 'unconscious')],
+        'setrestrained': lambda a: [('flag', 'restrained')],
+        'additem': lambda a: LiveService._named('item', a),
+        'removeitem': lambda a: LiveService._named('item', a),
+        **dict.fromkeys(('setav', 'setactorvalue', 'forceav', 'forceactorvalue', 'modav', 'modactorvalue', 'damageav',
+                         'damageactorvalue', 'restoreav', 'restoreactorvalue'),
+                        lambda a: LiveService._named('av', a)),     # base or current: one actor value
+    }
+    # The same for the global console. Objective lines keep their quest and index, a stage its quest.
+    CONSOLE_STATE = {
+        'set': lambda a: LiveService._named('var', a),
+        'removeimagespacemodifier': lambda a: LiveService._named('imod', a),
+        'setstage': lambda a: LiveService._named('stage', a),
+        'setquestobject': lambda a: LiveService._named('questobject', a),
+        'setobjectivecompleted': lambda a: LiveService._named('objectivecompleted', a, 2),
+        'setobjectivedisplayed': lambda a: LiveService._named('objectivedisplayed', a, 2),
+        **dict.fromkeys(('setgs', 'setgamesetting', 'setnumericgamesetting', 'con_setgamesetting'),
+                        lambda a: LiveService._named('gamesetting', a)),
+        **dict.fromkeys(('setini', 'setinisetting', 'setnumericinisetting', 'con_setinisetting'),
+                        lambda a: LiveService._named('inisetting', a)),
+    }
 
     @classmethod
-    def _line_target(cls, words, ref):
-        """One undo line's target: the command and the value it names (SetAV Health, SetPos X, SetGS name, an
-        objective index), on a ref or in the global console."""
+    def _line_targets(cls, words, ref):
+        """One undo line's targets: the state it sets (the enabled state, the scale, a position axis, an actor
+        value, an item, a setting, an objective), on a ref or in the global console."""
         verb = words[0].lower()
-        key = [w.lower() for w in words[1:3 if verb in cls.INDEXED_VERBS else 2]]
-        return ('ref', ref, verb, *key) if ref else ('console', verb, *key)
+        args = [w.strip('"').lower() for w in words[1:]]
+        table = cls.REF_STATE if ref else cls.CONSOLE_STATE
+        keys = table[verb](args) if verb in table else [(verb,)]
+        return [('ref', ref, *k) if ref else ('console', *k) for k in keys]
 
     @staticmethod
     def _targets_meet(a, b):
@@ -1387,6 +1436,15 @@ class LiveService:
                       'play_idle': 'PlayIdle %s', 'cast': 'Cast %s player', 'equip': 'EquipItem %s', 'unequip': 'UnequipItem %s',
                       'add_item': 'AddItem %s 1', 'remove_item': 'RemoveItem %s 1', 'look_at': 'Look %s', 'say_to': 'SayTo %s'}
 
+    def _item_form_id(self, item):
+        """An item's form id (an EditorID resolved now); the name itself when it does not resolve."""
+        if is_form_id(item):
+            return item
+        try:
+            return self.resolve(item).get('formId') or item
+        except (LiveError, ValueError):
+            return item
+
     def actor_control(self, ref, action, target=None, value=None):
         self.in_game()
         r = self.resolve(ref)
@@ -1412,7 +1470,8 @@ class LiveService:
                 command = 'AddItem %s %d' % (t, int(value or 1))
                 before = self.values(['GetItemCount %s' % t], r['ptr'])[0]
                 if before is not None:
-                    undo = {'op': 'item_count', 'ref': r['formId'], 'item': t, 'count': int(before)}
+                    # the item by form id, so its undo meets one of the same item named by form id (round 4 M2)
+                    undo = {'op': 'item_count', 'ref': r['formId'], 'item': self._item_form_id(t), 'count': int(before)}
             elif action == 'remove_item':
                 command = 'RemoveItem %s %d' % (t, int(value or 1))
         elif action in ('set_av', 'force_av'):
@@ -1591,7 +1650,8 @@ class LiveService:
         if later:
             return {'id': entry['id'], 'undone': False, 'kind': entry.get('kind'),
                     'reason': 'undo the later change first', 'later': later}
-        if entry.get('state') == 'pending' and not op.repeatable:
+        repeatable_if = getattr(op, 'repeatable_if', None)
+        if entry.get('state') == 'pending' and not (op.repeatable or repeatable_if and repeatable_if(undo)):
             # The tool failed between its intent and its confirm: the change may or may not be in the game, and
             # this op is only right when it is (S3.2).
             return {'id': entry['id'], 'undone': False, 'kind': entry.get('kind'),
@@ -1656,12 +1716,14 @@ class LiveService:
 # One registry: an entry's undo {'op': name, ...} runs UNDO_OPS[name](live, entry, undo). An op returns None when
 # the change is reverted, or a dict merged into the result ({'undone': False, 'reason': ...} when it could not).
 # `repeatable` (S3.2): running the op when the change never happened is harmless (it restores, not toggles).
+# `repeatable_if(undo)`: the same for one entry, when only some entries of an op restore (a hot swap with spans).
 UNDO_OPS = {}
 
 
-def undo_op(name, repeatable=False):
+def undo_op(name, repeatable=False, repeatable_if=None):
     def register(fn):
         fn.repeatable = repeatable
+        fn.repeatable_if = repeatable_if
         UNDO_OPS[name] = fn
         return fn
     return register
@@ -1871,7 +1933,9 @@ def _undo_time_restore(live, entry, undo):
     return None
 
 
-@undo_op('swap_script')
+# with spans the undo writes both scripts' saved fields back: a restore, so a pending entry (round 4 M3: the swap
+# is journaled before it runs) is safe to undo whether or not any write landed
+@undo_op('swap_script', repeatable_if=lambda undo: bool(undo.get('spans')))
 def _undo_swap_script(live, entry, undo):
     """A swap exchanges two code buffers: it is only right in reverse order, so a swap with a later open swap of
     the same script is refused."""

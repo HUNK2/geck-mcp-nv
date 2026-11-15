@@ -728,15 +728,18 @@ class DataTools:
         spans = [(SCRIPT_HEADER, 0x10), (SCRIPT_DATA, 4), (SCRIPT_REFS, 8), (SCRIPT_VARS, 8)]
         saved = {name: live.reads([(base + off, n) for off, n in spans]) for name, base in (('target', target),
                                                                                            ('holder', fresh))}
-        before = saved['target'][1]
-        old_data = struct.unpack('<I', before)[0] if before else 0
-        swapped = swap_script_code(live, target, fresh)
-        entry = live.journal.add({'kind': 'script_hot_swap', 'script': target_info.get('formId'), 'target': '0x%08X' % target,
-                                  'holder': '0x%08X' % fresh,
+        if any(v is None for vs in saved.values() for v in vs):
+            raise DataError('UNREADABLE', 'A script object is unreadable')     # before the entry and any write
+        old_data = struct.unpack('<I', saved['target'][1])[0]
+        # The intent first (round 4 M3, N10): a lost reply or SWAP_FAILED after some writes landed still leaves an
+        # entry, and its undo writes the saved fields back (harmless when no write landed).
+        entry = live.journal.add({'kind': 'script_hot_swap', 'state': 'pending', 'script': target_info.get('formId'),
+                                  'target': '0x%08X' % target, 'holder': '0x%08X' % fresh,
                                   'undo': {'op': 'swap_script', 'target': '0x%08X' % target, 'holder': '0x%08X' % fresh,
                                            'data': '0x%08X' % old_data,
-                                           'spans': None if any(v is None for vs in saved.values() for v in vs)
-                                           else {k: [v.hex() for v in vs] for k, vs in saved.items()}}})
+                                           'spans': {k: [v.hex() for v in vs] for k, vs in saved.items()}}})
+        swapped = swap_script_code(live, target, fresh)
+        live.journal.confirm(entry['id'])
         return {'script': target_info, 'owner': owner, 'swapped': swapped, 'variablesAdded': added,
                 'variablesMoved': moved or None, 'variablesDropped': dropped or None,
                 'statements': len(compiled.get('statements') or []), 'journalId': entry['id'],
