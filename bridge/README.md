@@ -13,7 +13,7 @@ The bridge is the original part of GECK MCP for New Vegas. It has two layers:
 
 | Launcher (`"launcher"` in the profile) | Platform | Status |
 | --- | --- | --- |
-| `native` | Windows | **Tested** on Windows 11 with the vanilla Steam GECK: status, build, install, plugin load and reload, cell verify, Render Window capture, preview, script compile, crash recovery ([docs/TESTING.md](../docs/TESTING.md)) |
+| `native` | Windows | **Tested** on Windows 11 with the vanilla Steam GECK: status, build, install, plugin load and reload, cell verify, Render Window capture, preview, script compile, crash recovery |
 | `wine` | Linux (Wine/Proton) | **Untested.** The helper must run in the same prefix as GECK |
 | `crossover` | macOS + CrossOver | Tested on Mac via CrossOver (not a supported platform) |
 

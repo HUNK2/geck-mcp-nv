@@ -143,8 +143,7 @@ files were archived. Existing workshop companion was preserved.
 
 Offline coverage includes native hash/mapping/form/query rejection, timeout and
 context-change paths, typed queries, teleport success/mismatch, duplicate claims,
-JSON/RPC precision and setup restrictions. See STATUS.md for exact final counts,
-package identity and evidence. This is a local feedback beta, not publication.
+JSON/RPC precision and setup restrictions. This is a local feedback beta, not publication.
 
 References: [BuildRef safety](https://geckwiki.com/index.php/BuildRef),
 [condition readback units](https://geckwiki.com/index.php/GetEquippedCurrentHealth).

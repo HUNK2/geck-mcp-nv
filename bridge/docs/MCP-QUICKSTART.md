@@ -286,7 +286,3 @@ The v0.4.0 candidate now includes separate opt-in `geck_console_readiness`,
 `geck_console_execute`, `geck_console_status` and `geck_console_release` tools.
 Read-only telemetry is unchanged. See [console setup, commands and outcome semantics](CONSOLE-COMMANDS.md).
 Real FNV acceptance is pending; this candidate is not release-ready.
-
-
-For hash-identified local beta testing, load/recovery review and canonical-field
-reconciliation, see [beta testing](../../docs/BETA-TESTING.md).
