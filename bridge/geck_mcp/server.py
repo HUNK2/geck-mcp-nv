@@ -2,6 +2,7 @@
 import argparse
 import json
 import sys
+import time
 import uuid
 from functools import partial
 from typing import Annotated, Literal, Any
@@ -91,6 +92,30 @@ class BridgeServer(MCPServer):
         self._project_id = project_id
         self._missing = list(missing)     # GECK settings the project file leaves out (Task 4.3)
 
+    async def _call_with_progress(self, ctx, params):
+        """The SDK's call, with a progress notification every PROGRESS_SECONDS while it runs (Task 6.2): a client that
+        sent a progress token sees the call is alive and can keep waiting. Without a token report_progress does
+        nothing."""
+        started = time.monotonic()
+        result = None
+
+        async def ticker():
+            while True:
+                await anyio.sleep(PROGRESS_SECONDS)
+                elapsed = round(time.monotonic() - started)
+                try:
+                    await ctx.session.report_progress(elapsed, None, '%s still running (%d s)' % (params.name, elapsed))
+                except Exception:  # noqa: BLE001 - a closed stream must not fail the call itself
+                    return
+
+        async with anyio.create_task_group() as group:
+            group.start_soon(ticker)
+            try:
+                result = await super()._handle_call_tool(ctx, params)
+            finally:
+                group.cancel_scope.cancel()
+        return result
+
     def _envelope(self, name, code, message, recovery):
         return {'ok': False, 'operationId': str(uuid.uuid4()), 'operation': name, 'projectId': self._project_id,
                 'outcome': 'failed_before_change', 'data': None,
@@ -108,7 +133,7 @@ class BridgeServer(MCPServer):
                 'tools.' % missing)
             return CallToolResult(content=[TextContent(type='text', text=json.dumps(envelope))],
                                   structured_content=envelope, is_error=True)
-        result = await super()._handle_call_tool(ctx, params)
+        result = await self._call_with_progress(ctx, params)
         if isinstance(result, CallToolResult) and result.is_error and result.structured_content is None:
             text = ' '.join(getattr(c, 'text', '') for c in result.content).strip()
             code = ('INVALID_ARGUMENTS' if 'validation error' in text else
@@ -119,6 +144,9 @@ class BridgeServer(MCPServer):
             result = CallToolResult(content=result.content, structured_content=envelope, is_error=True)
         return result
 
+
+# Seconds between progress notifications while a tool call runs (Task 6.2).
+PROGRESS_SECONDS = 5
 
 # geck_* tools that need none of the GECK settings, so they answer on a project file for the game alone.
 NO_GECK_SETTINGS = {'geck_capabilities', 'geck_image_cutout', 'geck_operation_get', 'geck_inspect_windows'}
