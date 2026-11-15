@@ -36,7 +36,9 @@ from .pe import Image  # noqa: E402
 
 SCHEMA = 1
 GAME_BUILD = '1.4.0.525'
-GENERATOR = 'geck-mcp-nv engine_map 1'
+from geck_mcp import NAME as _NAME, __version__ as _VERSION  # noqa: E402 - one name and version (Task 5.1)
+
+GENERATOR = '%s %s engine_map 1' % (_NAME, _VERSION)
 
 
 def log(*args):

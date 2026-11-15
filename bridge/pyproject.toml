@@ -1,7 +1,8 @@
 [project]
-name = "geck-bridge-mcp"
-version = "0.4.0"
-description = "Project-scoped Model Context Protocol tools for Fallout New Vegas GECK"
+name = "fnv-mcp"
+# 0.5.0-beta.1 (decision D7), in its normalised Python form
+version = "0.5.0b1"
+description = "MCP tools for Fallout: New Vegas: the running game, the engine and the GECK"
 requires-python = ">=3.12"
 dependencies = ["mcp==2.2.0", "pillow==12.3.0", "numpy==2.5.3"]
 

@@ -16,6 +16,7 @@ import time
 import uuid
 from pathlib import Path
 
+from . import envvars
 from .fnv_state import atomic_write, locked
 from .esp import codec as _codec  # noqa: F401,E402 - registers the cp1252-bytes error handler
 
@@ -77,7 +78,7 @@ class EngineLink:
     DEFAULT_TIMEOUT = 15.0
 
     def __init__(self, pipe=None, timeout=DEFAULT_TIMEOUT):
-        self.pipe = r'\\.\pipe\%s' % (pipe or os.environ.get('FNVMCP_PIPE') or DEFAULT_PIPE)
+        self.pipe = r'\\.\pipe\%s' % (pipe or envvars.get('FNV_MCP_PIPE') or DEFAULT_PIPE)
         self.timeout = timeout
         self.handle = None
         self.lock = threading.RLock()
@@ -354,11 +355,11 @@ def source_hashes():
 
 def find_zig(project=None):
     fnv = getattr(project, 'fnv', None) if project else None
-    for candidate in (getattr(fnv, 'zig', None), os.environ.get('GECK_MCP_ZIG')):
+    for candidate in (getattr(fnv, 'zig', None), envvars.get('FNV_MCP_ZIG')):
         if candidate and Path(candidate).is_file():
             return Path(candidate)
     raise LinkError('ZIG_MISSING', 'Zig 0.14.1 is needed to build the engine companion: set fnv.zig in the project '
-                    'file or the GECK_MCP_ZIG environment variable')
+                    'file or the FNV_MCP_ZIG environment variable')
 
 
 COMPILE_FLAGS = ('cc', '-target', 'x86-windows-gnu', '-std=c11', '-O2', '-Wall', '-Wextra', '-Werror')

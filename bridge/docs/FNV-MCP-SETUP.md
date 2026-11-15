@@ -72,18 +72,18 @@ Nothing here downloads files or ships game files, the decompilation or anything 
    [FNV-ENGINE-TOOLS.md](FNV-ENGINE-TOOLS.md) has the optional inputs (`--exe` for the full call graph, the
    script-extender sources) and the symbol database.
 
-5. **Zig.** Unpack Zig 0.14.1 and set `fnv.zig` to its `zig.exe` (or set the `GECK_MCP_ZIG` environment variable).
+5. **Zig.** Unpack Zig 0.14.1 and set `fnv.zig` to its `zig.exe` (or set the `FNV_MCP_ZIG` environment variable).
 
 6. **Register the MCP server** with your client. With Claude Code (use your own absolute paths):
 
    ```powershell
-   claude mcp add fnv -- C:\path\to\bridge\.venv\Scripts\python.exe C:\path\to\bridge\run_mcp.py --project C:\path\to\bridge\projects\my-fnv.json
+   claude mcp add fnv-mcp -- C:\path\to\bridge\.venv\Scripts\python.exe C:\path\to\bridge\run_mcp.py --project C:\path\to\bridge\projects\my-fnv.json
    ```
 
    For a client with a JSON file, the entry is:
 
    ```json
-   "fnv": {
+   "fnv-mcp": {
      "command": "C:/path/to/bridge/.venv/Scripts/python.exe",
      "args": ["C:/path/to/bridge/run_mcp.py", "--project", "C:/path/to/bridge/projects/my-fnv.json"]
    }
@@ -163,12 +163,15 @@ Paths in the project file may be relative to the project file. `fnv_*` keys go i
 | `fnv.clean_exe` | none | Your unpacked FalloutNV.exe 1.4.0.525 (read locally, never copied) |
 | `FNV_ENGINE_MAP`, `FNV_DECOMP`, `FNV_SYMDB`, `FNV_CRASH_DIRS`, `FNV_RESEARCH_DIR` | none | The same as the `fnv` keys above; the project file wins |
 | `FNV_CLEAN_EXE` | none | The same as `fnv.clean_exe`; `fnv_plugin_build` then falls back to `%USERPROFILE%\.fnvdecomp\FalloutNV.exe` |
-| `FNVMCP_PIPE` | none | The same as `fnv.engine_pipe` |
+| `FNV_MCP_PIPE` | none | The same as `fnv.engine_pipe` |
 | `FNVSYM_ROOT` | none | The fnvsym checkout the `fnv_name_*` tools need; without it they answer `NO_PROOF_FOLDER` |
-| `GECK_MCP_ZIG` | none | Zig, when `fnv.zig` is not set |
-| `GECK_MCP_RELOAD` | on | `0` serves without the reloading supervisor (same as `run_mcp.py --no-reload`) |
-| `GECK_SUPERVISOR_LOG` | `<state_dir>/supervisor.log` | The supervisor's log file; empty for none |
-| `GECK_MCP_TRANSPORT` | none | `oneshot` forces one helper launch per call (GECK) |
+| `FNV_MCP_ZIG` | none | Zig, when `fnv.zig` is not set |
+| `FNV_MCP_RELOAD` | on | `0` serves without the reloading supervisor (same as `run_mcp.py --no-reload`) |
+| `FNV_MCP_SUPERVISOR_LOG` | `<state_dir>/supervisor.log` | The supervisor's log file; empty for none |
+| `FNV_MCP_TRANSPORT` | none | `oneshot` forces one helper launch per call (GECK) |
+
+The `FNV_MCP_*` variables had other names before 0.5 (`GECK_MCP_ZIG`, `FNVMCP_PIPE`, `GECK_MCP_RELOAD`,
+`GECK_SUPERVISOR_LOG`, `GECK_MCP_TRANSPORT`); the old names still work, and the new name wins when both are set.
 
 ## Known issues
 

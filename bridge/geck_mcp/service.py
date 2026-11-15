@@ -150,7 +150,7 @@ def make_transport(project):
 
 
 def _project_zig(project):
-    """The Zig set in the project file (fnv.zig, then GECK_MCP_ZIG), or None. Tools never take a compiler path."""
+    """The Zig set in the project file (fnv.zig, then FNV_MCP_ZIG), or None. Tools never take a compiler path."""
     from .fnv_link import LinkError, find_zig
     try:
         return find_zig(project)
@@ -184,7 +184,7 @@ class Service:
                 zig = _project_zig(self.project)   # the project file's compiler only, never a caller path (B2)
                 if zig is None:
                     raise BridgeError('ZIG_MISSING', 'Zig 0.14.1 is needed to build the companion: set fnv.zig in '
-                                      'the project file or the GECK_MCP_ZIG environment variable')
+                                      'the project file or the FNV_MCP_ZIG environment variable')
                 return {**console.build(self.project, zig, expected_plugin_hash), '_outcome':'built'}
             if mode == 'install':
                 if not build_receipt: raise ValueError('Provide owned build.json path returned by setup build')

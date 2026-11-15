@@ -451,7 +451,7 @@ def register(server, project, annotations, result_type, maintain=True):
 
     @server.tool(annotations=control)
     async def fnv_companion_install() -> result_type:
-        """Build the fnvmcp engine companion (C, Zig 0.14.1 from fnv.zig or GECK_MCP_ZIG) and install it into the dev
+        """Build the fnvmcp engine companion (C, Zig 0.14.1 from fnv.zig or FNV_MCP_ZIG) and install it into the dev
         profile as the MO2 mod "fnvmcp engine companion". The game must be closed; it loads at the next launch."""
         def action():
             if live.game.process():

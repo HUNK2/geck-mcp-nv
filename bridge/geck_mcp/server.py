@@ -11,7 +11,7 @@ from mcp.server import MCPServer
 from mcp.types import CallToolResult, TextContent, ToolAnnotations
 from pydantic import BaseModel, Field, ConfigDict
 
-from . import __version__
+from . import NAME, __version__
 from .config import Project
 from .service import CAPABILITIES, Service
 from . import fnv_guide, fnv_tools
@@ -148,7 +148,7 @@ def server_capabilities(server):
 
 def make_server(project, service=None):
     service = service or Service(project)
-    server = BridgeServer('geck-bridge', version=__version__, project_id=project.project_id,
+    server = BridgeServer(NAME, version=__version__, project_id=project.project_id,
                           missing=project.missing_geck_settings(),
                        instructions='Use status then attach. editor_session is optional (omit it to use the running '
                        'GECK); always pass the expected values (title, plugin hash, models). '
@@ -224,7 +224,7 @@ def make_server(project, service=None):
     async def geck_console_setup(mode: Literal['preflight', 'build', 'install'], expected_plugin_hash: Hash,
                                  request_key: Key, build_receipt: str | None = None) -> Result:
         """Supported explicit opt-in companion setup. Preflight previews paths/restrictions without install.
-        Build uses the local Zig 0.14.1 set in the project file (fnv.zig, else GECK_MCP_ZIG), no downloads. Install accepts only an owned build receipt,
+        Build uses the local Zig 0.14.1 set in the project file (fnv.zig, else FNV_MCP_ZIG), no downloads. Install accepts only an owned build receipt,
         requires FNV normally closed, preserves backups, refuses modified/foreign DLLs; restart required."""
         return await invoke(service.console_setup, mode, expected_plugin_hash, request_key, build_receipt)
 

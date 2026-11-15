@@ -116,7 +116,7 @@ review those before sharing. Never commit raw player logs, saves or private prof
 
 ## Helper transport
 
-By default the server keeps one persistent helper (`Probe.Mcp.exe serve`) and falls back to one helper launch per call if the handshake fails. Set `"transport": "oneshot"` in the project JSON or `GECK_MCP_TRANSPORT=oneshot` to force the legacy path. `geck_status` reports the active mode under `bridgeTransport`.
+By default the server keeps one persistent helper (`Probe.Mcp.exe serve`) and falls back to one helper launch per call if the handshake fails. Set `"transport": "oneshot"` in the project JSON or `FNV_MCP_TRANSPORT=oneshot` to force the legacy path. `geck_status` reports the active mode under `bridgeTransport`.
 
 ## Start the server
 
@@ -164,7 +164,7 @@ behaviour:
   that says so; the next call starts a new one. Killing the child to free the game's companion pipe still works.
 - A reload loses what the server held in memory (the same as any restart): a debugger stop, an operation being
   polled. Reloads happen only between calls.
-- `--no-reload` (or `GECK_MCP_RELOAD=0`) serves in one process, as before. Changing the client's arguments, or
+- `--no-reload` (or `FNV_MCP_RELOAD=0`) serves in one process, as before. Changing the client's arguments, or
   `run_mcp.py` / `supervisor.py` themselves, still needs the client to restart the server.
 
 ### Session argument (0.2.0)

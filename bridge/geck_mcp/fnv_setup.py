@@ -110,7 +110,7 @@ def setup_check(project):
     except Exception:
         zig, zig_version = None, None
     add('Zig 0.14.1', zig_version == '0.14.1', '%s %s' % (zig, zig_version) if zig else 'fnv.zig not set',
-        'Install Zig 0.14.1 and set fnv.zig (or GECK_MCP_ZIG); it builds the engine companion.')
+        'Install Zig 0.14.1 and set fnv.zig (or FNV_MCP_ZIG); it builds the engine companion.')
     installed = mo2 / 'mods' / fnv_link.MOD_NAME / 'NVSE/Plugins' / fnv_link.DLL_NAME if mo2 else None
     current = None
     receipt = Path(project.state_dir) / 'engine/install.json'

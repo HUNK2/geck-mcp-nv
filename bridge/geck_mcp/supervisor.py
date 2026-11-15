@@ -516,9 +516,9 @@ def main(script, argv):
 
 
 def log_path(root, project):
-    """GECK_SUPERVISOR_LOG wins (empty: no log file); else the project's state_dir (so a test project with a
+    """FNV_MCP_SUPERVISOR_LOG (or GECK_SUPERVISOR_LOG) wins (empty: no log file); else the project's state_dir (so a test project with a
     temporary state folder never writes into the real log); else <root>/state when it exists."""
-    override = os.environ.get('GECK_SUPERVISOR_LOG')
+    override = os.environ.get('FNV_MCP_SUPERVISOR_LOG', os.environ.get('GECK_SUPERVISOR_LOG'))
     if override is not None:
         return Path(override) if override else None
     if project is not None:

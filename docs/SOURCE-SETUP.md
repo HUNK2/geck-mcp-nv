@@ -36,7 +36,7 @@ these jobs through the engine companion.
 Editor work needs no companion DLL. Console execution and typed inventory reads require a DLL built locally for
 your installed project plugin. Supported configuration: Windows, Steam FNV 1.4.0.525, xNVSE 6.4.9+ 6.x and a locally
 provided [Zig 0.14.1](https://ziglang.org/download/0.14.1/) compiler, named by `fnv.zig` in the project file (or
-`GECK_MCP_ZIG`). The tools do not download a compiler or install xNVSE for you.
+`FNV_MCP_ZIG`). The tools do not download a compiler or install xNVSE for you.
 
 With the project plugin installed, ask your agent to hash that file and use:
 

@@ -272,16 +272,17 @@ class AutoTransport:
 
     The decision is made once, at the first call, from the serve handshake. A
     handshake failure never dispatches an editor operation, so falling back is safe.
-    Set GECK_MCP_TRANSPORT=oneshot to force the legacy path.
+    Set FNV_MCP_TRANSPORT=oneshot (or GECK_MCP_TRANSPORT) to force the legacy path.
     """
 
     def __init__(self, project, persistent=None, oneshot=None):
         self.project = project
         self.persistent = persistent or PersistentTransport(project)
         self.oneshot = oneshot or Transport(project)
-        forced = os.environ.get('GECK_MCP_TRANSPORT', '').lower()
+        from . import envvars
+        forced = (envvars.get('FNV_MCP_TRANSPORT') or '').lower()
         self.mode = 'oneshot' if forced == 'oneshot' else None
-        self.fallback_reason = 'forced by GECK_MCP_TRANSPORT' if self.mode else None
+        self.fallback_reason = 'forced by FNV_MCP_TRANSPORT' if self.mode else None
 
     def _choose(self):
         if self.mode is None:
