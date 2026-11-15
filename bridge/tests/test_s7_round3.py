@@ -1,11 +1,13 @@
 """PLAN-3 S7: fixes for the round-3 audit (BUG-LOG Round 3: U, K, W, X)."""
 import ast
+import os
 import sqlite3
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -73,7 +75,10 @@ class NameExportPathTests(unittest.TestCase):
             tools, state = self.tools(tmp)
             want = state / 'traces' / 't.json'
             self.assertEqual(tools._export_path(str(want)), want.resolve())
-            self.assertEqual(tools._export_path(None).suffix, '.json', 'the default stays in fnvsym/traces')
+            with mock.patch.dict(os.environ, {'FNVSYM_ROOT': tmp}):        # no machine default (release Task 4.1)
+                default = tools._export_path(None)
+            self.assertEqual(default.suffix, '.json', 'the default stays in fnvsym/traces')
+            self.assertEqual(default.parent, Path(tmp) / 'traces')
 
     def test_the_state_folder_itself_is_refused(self):
         # S7 batch-1 review I3: engine_map.json and the other state files live there

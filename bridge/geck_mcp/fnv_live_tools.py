@@ -317,7 +317,7 @@ def register(server, project, annotations, result_type, maintain=True):
     live.probe_tools = probe_tools
     from .fnv_atlas import AtlasTools
     atlas = AtlasTools(live, probe_tools, world)
-    from .fnv_naming import NamingTools
+    from .fnv_naming import NamingTools, fnvsym_root
     naming = NamingTools(live, probe_tools, atlas)
     from .fnv_oracle import OracleTools
     oracle = OracleTools(live, naming, agent)
@@ -975,15 +975,17 @@ def register(server, project, annotations, result_type, maintain=True):
                         action: Literal['start', 'read', 'stop', 'list'] = 'start',
                         filter: dict[str, Any] | None = None,
                         limit: Annotated[int, Field(ge=1, le=500)] = 50,
-                        include_calls: bool = True) -> result_type:
-        """Watch any proven engine function while the game runs: start installs an observe-only hook, read returns
+                        include_calls: bool = True,
+                        allow_unproven: bool = False) -> result_type:
+        """Watch any proven engine function while the game runs (allow_unproven=true: any function of the engine map;
+        the hook only observes, but a wrong address can still crash the game): start installs an observe-only hook, read returns
         the calls since the last read: `this` and every argument decoded with the function's decomp signature (forms
         and refs named), the result, the time, and the caller named from the engine map, plus counts by caller and by
         `this`. filter keeps only calls where this / caller / paramN equals a ref ({on: this, ref: MyNPC}) or a value
         ({on: param1, value: 5}). Answers "does the engine run X for my object, from where, with what". stop removes
         the hook; list shows running traces."""
-        return await invoke('fnv_trace', lambda: agent.trace(function, action, filter, limit, include_calls),
-                            action=action)
+        return await invoke('fnv_trace', lambda: agent.trace(function, action, filter, limit, include_calls,
+                                                              allow_unproven), action=action)
 
     @server.tool(annotations=act)
     async def fnv_watch(items: list[Any],
@@ -1445,7 +1447,7 @@ def register(server, project, annotations, result_type, maintain=True):
         common base, form types, argument classes, the result's shape (constant, bool, enum, int/float range, pointer
         class), threads and the top caller chains. Ends with suggested next tests (oracle, experiment, family packet,
         layout squeeze)."""
-        return await invoke('fnv_name_dossier', lambda: naming.dossier(function, harvest, max_items))
+        return await invoke('fnv_name_dossier', lambda: fnvsym_root() and naming.dossier(function, harvest, max_items))
 
     @server.tool(annotations=act)
     async def fnv_name_oracle(action: Literal['run', 'purity', 'calibrate', 'sweep'] = 'run',
@@ -1469,7 +1471,7 @@ def register(server, project, annotations, result_type, maintain=True):
                 engine = live.engine()
                 return dict(oracle.purity().check(engine.resolve(function)), function=engine.summary(engine.resolve(function)))
             return _public(oracle.run(function, mode, harvest, radius))
-        return await invoke('fnv_name_oracle', action_fn, 'read', action=action)
+        return await invoke('fnv_name_oracle', lambda: fnvsym_root() and action_fn(), 'read', action=action)
 
     @server.tool(annotations=act)
     async def fnv_name_test(action: Literal['test', 'battery', 'panels'] = 'test', hypothesis: dict | None = None,
@@ -1490,7 +1492,7 @@ def register(server, project, annotations, result_type, maintain=True):
             if not hypothesis:
                 raise ValueError('test needs hypothesis')
             return experiments.test(hypothesis)
-        return await invoke('fnv_name_test', action_fn, 'read', action=action)
+        return await invoke('fnv_name_test', lambda: fnvsym_root() and action_fn(), 'read', action=action)
 
     @server.tool(annotations=control)     # writes a file (X1)
     async def fnv_name_export(path: Annotated[str, Field(max_length=500)] | None = None) -> result_type:
@@ -1499,7 +1501,7 @@ def register(server, project, annotations, result_type, maintain=True):
         measured accuracy of each method (PROOF 4.1). fnvsym's `python -m namer.runtime2` turns it into evidence.
         With nothing recorded yet it writes no file (changed: false, exported: 0). path: a .json file under
         fnvsym/traces or <state>/traces; an existing file only when it is a trace (else BAD_PATH)."""
-        return await invoke('fnv_name_export', lambda: naming.export(path))
+        return await invoke('fnv_name_export', lambda: fnvsym_root() and naming.export(path))
 
     @server.tool(annotations=act)
     async def fnv_field_watch(action: Literal['find', 'watch'] = 'watch', ref: str | None = None,

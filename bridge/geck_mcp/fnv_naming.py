@@ -18,7 +18,23 @@ from pathlib import Path
 
 from .fnv_probe import CALLER_SLOTS, WORDS, ProbeError, call_kind, decode_sample, vtable_class
 
-FNVSYM = Path(os.environ.get('FNVSYM_ROOT', r'C:\DecompModGithub\fnvsym'))
+
+
+class ProofFolderError(Exception):
+    code = 'NO_PROOF_FOLDER'
+
+
+def fnvsym_root(required=True):
+    """The fnvsym checkout (names, proofs, evidence, traces) from FNVSYM_ROOT. There is no default: the naming tools
+    are an optional extra (decision D1). required=False answers None when it is not set."""
+    root = os.environ.get('FNVSYM_ROOT')
+    if root:
+        return Path(root)
+    if required:
+        raise ProofFolderError('The fnv_name_* tools need a fnvsym checkout: set the FNVSYM_ROOT environment variable '
+                               'to its folder (in the MCP server registration, "env": {"FNVSYM_ROOT": "C:/path/to/'
+                               'fnvsym"}) and restart the server.')
+    return None
 RUNTIME_SCHEMA = '''
     CREATE TABLE IF NOT EXISTS harvests (id INTEGER PRIMARY KEY, run INTEGER, at REAL, probes INTEGER,
         functions INTEGER, samples INTEGER, callers INTEGER, notes TEXT);
@@ -234,7 +250,7 @@ class StaticIndex:
     def claims(self, address):
         if self._claims is None:
             claims = defaultdict(list)  # filled privately, then published whole (parallel calls)
-            folder = FNVSYM / 'evidence'
+            folder = fnvsym_root() / 'evidence'
             for path in sorted(folder.glob('*.jsonl')) if folder.exists() else []:
                 with open(path, encoding='utf-8') as f:
                     for line in f:
@@ -249,12 +265,12 @@ class StaticIndex:
 
     def names_row(self, address):
         if self._names is None:
-            self._names = self._csv(FNVSYM / 'names.csv')
+            self._names = self._csv(fnvsym_root() / 'names.csv')
         return self._names.get(address)
 
     def verified_row(self, address):
         if self._verified is None:
-            self._verified = self._csv(FNVSYM / 'proofs' / 'verified.csv')
+            self._verified = self._csv(fnvsym_root() / 'proofs' / 'verified.csv')
         return self._verified.get(address)
 
     @staticmethod
@@ -450,9 +466,10 @@ class NamingTools:
         path was written, under a read-only annotation; review I3: not the state folder itself, which holds the engine
         map). An existing file is replaced only when it is a trace."""
         if not path:
-            return FNVSYM / 'traces' / ('fnvmcp-%s.json' % time.strftime('%Y%m%d'))
+            return fnvsym_root() / 'traces' / ('fnvmcp-%s.json' % time.strftime('%Y%m%d'))
         target = Path(path).resolve()
-        roots = [(FNVSYM / 'traces').resolve()]
+        fnvsym = fnvsym_root(required=False)
+        roots = [(fnvsym / 'traces').resolve()] if fnvsym else []
         state = getattr(self.live.project, 'state_dir', None)
         if state:
             roots.append((Path(state) / 'traces').resolve())
@@ -720,8 +737,9 @@ def community_layouts():
     base class that declares an inherited member."""
     global _LAYOUTS
     if _LAYOUTS is None:
-        path = FNVSYM / 'evidence' / 'layouts.json'
-        _LAYOUTS = json.loads(path.read_text(encoding='utf-8')) if path.exists() else {}
+        root = fnvsym_root(required=False)      # optional here: the layout tools work without it
+        path = root / 'evidence' / 'layouts.json' if root else None
+        _LAYOUTS = json.loads(path.read_text(encoding='utf-8')) if path and path.exists() else {}
     return _LAYOUTS
 
 

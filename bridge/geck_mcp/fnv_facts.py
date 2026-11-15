@@ -34,6 +34,19 @@ FACTS = {
     'ScriptLocals.variables': {'offset': 0x0C, 'evidence': 'decomp ScriptLocals m_pVariableList (checked)'},
 }
 
+# The functions the tools' own watch hooks sit on (fnv_deep.WATCHES: script profile, script trace, damage log), by
+# address, so they work from a plain engine map without the fnvsym proof table (decision D2). Each was proven in the
+# fnvsym table and checked live; the hook still checks the prologue bytes against the running game before patching.
+# A function a caller names (fnv_trace, fnv_hook_set...) still needs a proven name or allow_unproven.
+WATCH_TARGETS = {
+    'Script::Run': 0x005AC1E0,
+    'Script::RunScriptEffectStart': 0x005AC340,
+    'Script::RunScriptEffectFinish': 0x005AC380,
+    'Script::RunScriptEffectUpdate': 0x005AC3C0,
+    'ScriptRunner::EvaluateLine': 0x005E1550,
+    'Actor::DamageHealthAndFatigue': 0x0089D6F0,
+}
+
 # FNV script names of the 77 actor values in code order (decomp src/fallout_shared/actorvalue.cpp,
 # RegisterActorValue calls; "SleepDeprevation" is the game's own spelling).
 ACTOR_VALUES = (

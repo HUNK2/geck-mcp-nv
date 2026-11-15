@@ -152,6 +152,8 @@ class FnvService:
 
     def name_status(self, name_or_address):
         def action():
+            from .fnv_naming import fnvsym_root
+            fnvsym_root()          # the naming tools are an optional extra and need the fnvsym checkout (D1)
             e = self.engine()
             address = parse_address(name_or_address)
             if address is not None and address in e.functions:

@@ -39,7 +39,11 @@ cd bridge
 ```
 
 - `--decomp` (required): a checkout of [fnv_decomp](https://github.com/momusdigital/fnv_decomp).
-- `--verified`: fnvsym's `proofs/verified.csv`. Without it no name counts as proven.
+- `--verified` (optional): fnvsym's `proofs/verified.csv`. Without it no name counts as proven: the tools' own
+  hooks (script profile, script trace, damage log) still work, because they find their functions by address
+  (`fnv_facts.WATCH_TARGETS`); a function you name for `fnv_trace`, `fnv_hook_set` or `fnv_engine_call` then
+  needs `allow_unproven=true`. The `fnv_name_*` tools need the fnvsym checkout itself: set the `FNVSYM_ROOT`
+  environment variable to its folder, or they answer `NO_PROOF_FOLDER`.
 - `--exe`: an **unpacked** FalloutNV.exe 1.4.0.525 (the Steam exe is DRM-packed; Steamless unpacks it).
   It is checked against the decomp's 16 image probes and then gives the full call graph, Windows imports,
   setting addresses and defaults, RTTI class hierarchy and vtables, and the vanilla command tables. Only addresses, names and hashes are

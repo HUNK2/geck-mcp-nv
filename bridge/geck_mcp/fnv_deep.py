@@ -21,7 +21,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 from . import fnv_engine, fnv_procmem, fnv_symdb
-from .fnv_facts import SCRIPT_BLOCKS
+from .fnv_facts import SCRIPT_BLOCKS, WATCH_TARGETS
 from .fnv_args import capped
 from .fnv_link import hexs, quoted, word
 from .fnv_live import LiveError, _fid, _num
@@ -246,11 +246,22 @@ class DeepTools:
         return next((h for h in self.hooks() if h['label'] == label), None)
 
     def _function(self, name):
+        """(address, map record) of a watch target. The tools' own targets come from fnv_facts.WATCH_TARGETS by
+        address, so no proof table is needed (D2); a function must start there in the map."""
         engine = self.live.engine()
-        address = engine.resolve(name)
-        record = engine.summary(address)
-        if record.get('status') not in ('proven', 'class proven', 'class_proven'):   # the engine map writes class_proven
-            raise HookError('UNPROVEN_FUNCTION', '%s is %s: watch hooks go on proven functions only' % (name, record.get('status')))
+        address = WATCH_TARGETS.get(name)
+        if address is None:
+            address = engine.resolve(name)
+            record = engine.summary(address)
+            if record.get('status') not in ('proven', 'class proven', 'class_proven'):   # the map writes class_proven
+                raise HookError('UNPROVEN_FUNCTION', '%s is %s: watch hooks go on proven functions only'
+                                % (name, record.get('status')))
+            return address, record
+        try:
+            record = engine.summary(address)
+        except Exception as e:  # noqa: BLE001 - an address the map does not know
+            raise HookError('ENGINE_MAP_MISMATCH', 'The engine map has no function starting at 0x%08X (%s): regenerate '
+                            'it from the decomp checkout' % (address, name)) from e
         return address, record
 
     def ensure(self, watch, filter_value=None):

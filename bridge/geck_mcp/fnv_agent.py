@@ -208,13 +208,14 @@ class AgentTools:
         return out
 
     # ================================================================== fnv_trace
-    def _trace_function(self, function):
+    def _trace_function(self, function, allow_unproven=False):
         engine = self.live.engine()
         address = engine.resolve(function)
         record = engine.summary(address)
-        if record.get('status') not in ('proven', 'class_proven', 'class proven'):
-            raise HookError('UNPROVEN_FUNCTION', '%s is %s: traces go on proven functions only (fnv_func_find shows '
-                            'the status)' % (record.get('name') or function, record.get('status')), {'function': record})
+        if record.get('status') not in ('proven', 'class_proven', 'class proven') and not allow_unproven:
+            raise HookError('UNPROVEN_FUNCTION', '%s is %s, not proven: pass allow_unproven=true to trace it anyway '
+                            '(fnv_func_find shows the status)' % (record.get('name') or function, record.get('status')),
+                            {'function': record})
         fn = engine.functions.get(address, {})
         sig = parse_signature(fn.get('signature') or '')
         return address, record, fn.get('signature'), sig
@@ -275,7 +276,7 @@ class AgentTools:
             raise HookError('HOOK_REFUSED', 'The companion refused the hook: %s' % result.get('error'), result)
         return result['hook'], True
 
-    def trace(self, function=None, action='start', filter=None, limit=50, include_calls=True):
+    def trace(self, function=None, action='start', filter=None, limit=50, include_calls=True, allow_unproven=False):
         """action: start | read | stop | list."""
         self.live.in_game()
         if action == 'list':
@@ -284,7 +285,7 @@ class AgentTools:
                                for h in self.deep.hooks() if h['label'].startswith(TRACE_PREFIX)]}
         if not function:
             raise ValueError('function is required')
-        address, record, signature, sig = self._trace_function(function)
+        address, record, signature, sig = self._trace_function(function, allow_unproven)
         args_layout, nargs = layout_args(sig) if sig else ([], 8)
         label = TRACE_PREFIX + '%08X' % address
         if action == 'stop':
