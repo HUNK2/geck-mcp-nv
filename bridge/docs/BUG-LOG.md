@@ -2427,3 +2427,52 @@ gate's CI and suite runs. Entries get a detail section when they are fixed.
 - Fix: the trace notes the stops parked before it arms, and takes only a new bp stop with its id at the traced function's address; _free_bp_id also skips ids that parked stops still hold. Tests: tests/test_s7_round3.py FlowStaleStopTests; the trace fakes in test_fnv_flow and test_bugfix_e now park the hit when the breakpoint is set.
 - Status: fixed
 
+
+### LV1 — fnv_place snap/check find the ceiling, not the surface below, in low interiors (logged as P1, a round-2 id)
+- Severity: medium
+- Found by: live use (building a bar in NPCTextureTest, ceiling 256 units above the floor), 2026-11-14
+- Repro: fnv_place array base=Whiskey snap=true position just above a wall shelf at z 16835 (ceiling z 16960): every bottle lands at z ~16960-16980, on the ceiling. fnv_place check on a bottle resting on the shelf at z 16831 reports surface 16960 and "below the surface under it by 129 units".
+- Cause: PlaceTools._ground started the ray 200 units over the point (250 for snap and check) and took the first hit as the surface, so in a room lower than that the ceiling won.
+- Fix: a point (at, array) takes the first surface at or under it, and one above only when nothing is under it (a point inside a hill is still lifted out). An object (snap, check) skips the surfaces hit before its own collision (wholly above it) and takes the first one after it; with no collision of its own the point rule applies with the old 50-unit sink. Tests: tests/test_p1_place_surface.py (16). Live in NPCTextureTest (floor 16704, ceiling 16960): at snap from z 16835 lands on 16704; a bottle 55 under the ceiling checks as floating 201 and snaps to the floor; sunk 20 checks as below by 20; snap align lifts it out.
+- Status: fixed, verified live
+- Round-4 audit of this fix before it was committed: V1 (a point just under a curb or tread fell through: points now count a surface up to 64 over them) and V2 (buried objects, ruled below).
+
+## Round 4 (PLAN-3 S7 exit gate re-audit, 2026-11-15)
+
+Four fresh Opus reviewers, one per area, read-only, after LV1 was fixed. Full findings are in [audit4/](audit4/):
+companion.md (Q), contract.md (Y), state.md (V), parsers.md (Z). Highs and mediums fixed with RED->GREEN tests in
+tests/test_r4_contract.py, test_r4_state.py, test_p1_place_surface.py, test_engine_bp.py and test_stab_gate.py.
+
+| ID | Severity | Status | Bug | Where |
+|---|---|---|---|---|
+| LV1 | medium | fixed, verified live | fnv_place snap/check find the ceiling, not the surface below, in low interiors | `geck_mcp/fnv_create.py` `_ground` |
+| Y1 | high | fixed | fnv_engine_get (read) runs proven "getters" that write through an out-pointer or a global, and calls unguarded: under read it writes game memory and a bad `this` crashes the game. Now only functions the Purity checker proves pure run, always through the guarded call; others answer MAY_WRITE (use fnv_engine_call) | `audit4/contract.md H1` |
+| V1 | high | fixed | (in the uncommitted LV1 fix) a point a few units under a curb, tread or platform fell through to what is under it | `audit4/state.md H1` |
+| Q1 | medium | fixed | A hook chained on an entry probe, removed after the probe was disarmed, put back a jump into probe code nothing tracked; the next probe set sent the function's calls into another function. Unhook now writes the probe's clean bytes back and marks it disarmed | `audit4/companion.md M1` |
+| Q2 | medium | fixed | fnv_code patches and int3 sites could overlap (raised from a K1 deferred minor): a 0xCC saved into a swap's "old", or a break clear cutting the swap jump, crashes the game. Live code patches are tracked and count as patched bytes; a patch over an int3, hook or probe is refused | `audit4/companion.md (deferred raised)` |
+| Y2 | medium | fixed | fnv_perk_entries start/stop/evaluate install hooks under read (no MUTATING_ACTIONS row); same gap in fnv_systems barter (found by the fixer) | `audit4/contract.md M1` |
+| V2 | medium | ruled: design limit, mitigated | A wholly buried object cannot be told from one under a ceiling by vertical rays; it counts as over what is under it. check now names a surface within 64 units over it ("a low ceiling or shelf, or it is buried under it") | `audit4/state.md M1` |
+| V3 | medium | fixed | U1 order targets keyed on line text: undos restoring one value through different lines (Enable/Disable, SetScale, MoveToCell/SetPos, EditorID/form id, SetAV/ForceAV) never conflicted. Now keyed by the state restored | `audit4/state.md M2` |
+| V4 | medium | fixed | fnv_script_hot_swap journaled after the swap: a lost reply left new code with no undo entry. Entry now pending before, confirmed after | `audit4/state.md M3` |
+| V5 | low | open | Pause undo ignores what resume() reports | `audit4/state.md L1` |
+| V6 | low | open | U1 check makes fnv_revert_all quadratic (22 s for 3000 entries) | `audit4/state.md L2` |
+| V7 | low | fixed | test_p1_place_surface docstring described an old rule | `audit4/state.md L3` |
+| Q3 | low | open | _hook_hold counts removed hooks as ALREADY_HOOKED: a re-set function break falls back to a trap break | `audit4/companion.md L1` |
+| Q4 | low | open | K4 parked-stop snapshot on the shared FlowTools object: two traces at once (suspected) | `audit4/companion.md L2` |
+| Y3 | low | open | Read actions that install a hook for the length of the call (fnv_detection recompute, fnv_anim events, fnv_audio log/subtitles, fnv_physics triggers) or fnv_form bytes writing globals | `audit4/contract.md L1` |
+| Y4 | low | open | fnv_perk_entries evaluate ends a recording the caller started | `audit4/contract.md L2` |
+| Y5 | low | open | EngineAITools._hook removes a same-label hook first: concurrent calls lose records | `audit4/contract.md L3` |
+| Y6 | low | open | fnv_window persist and fnv_warnings enable write files under read (control kind; same class as release-audit B2) | `audit4/contract.md L4` |
+| Y7 | low | open | Purity checker's `movs` prefix also matches movsx/movss/movsd (over-refuses only) | `geck_mcp/fnv_oracle.py` STRING_WRITE |
+| Z1 | low | open | X3 fix: SQLite lower() folds ASCII only (non-ASCII plugin names) | `audit4/parsers.md L1` |
+| Z2 | low | open | X3 handles two copies of a name only; a disabled plugin's rows still label lookups | `audit4/parsers.md L2` |
+| Z3 | low | open | fnv_name_export can overwrite fnvsym's own Frida trace | `audit4/parsers.md L3` |
+| Z4 | low | open | One unreadable active plugin breaks every index-based record tool (and fnv_loadorder) | `audit4/parsers.md L4` |
+
+Round-4 fix review (fresh Opus, [audit4/review.md](audit4/review.md)): 0 Critical, 2 Important, 10 Minor.
+- I1 fixed: snap moved a wholly buried object (or one sunk into a slab with no own hit) further down on the V2 ruling. Now a surface within 64 over it with the ground more than 5 under it is "ambiguous": snap refuses (snapped false, with what it saw and to nudge after a look), check reports it instead of "floats", and the overhead note appears only when nothing is under it (also review M1: a table under a shelf had issues). An object floating within 64 under a ceiling is refused the same way; points (at, array) are unaffected. Tests: test_p1_place_surface AmbiguousSnapTests and BuriedTests.
+- I2 fixed: Q2 covered fnv_code only; fnv_patch and its undo write through `wr`. The companion's `wr` into executable memory now refuses over a live int3, hook or probe (in_use) and keeps the write as a code site (cleared when the old bytes go back). Tests: test_engine_bp test_no_int3_inside_a_raw_code_write_until_it_is_put_back, test_no_raw_code_write_over_a_live_int3 (not run against the old DLL separately).
+- M5 fixed: one lock around the shared Purity checker in fnv_engine_get.
+- M10 fixed: FNV-LIVE-TOOLS.md names the new act actions and fnv_engine_get's clean exe + capstone need.
+- Deferred (minor): M2 a surface between two own hits counts as the ground (as before the fix); M3 points on a platform 64-200 over the anchor still drop under it; M4 engine_get accepts a raw `this` (a pure getter walking a cycle can hang under read); M6 the code-site table drops sites past 1024, records no-op patches, leaks on out-of-order overlapping undos; M7 a swap leaves out call sites refused in_use and still reports success, unswap says busy for in_use; M8 the Q1 unhook writes the probe's stolen length without checking bytes past the hook's 5; M9 fnv_systems zone and progression run engine functions Purity does not prove pure.
+
