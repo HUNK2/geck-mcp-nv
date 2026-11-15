@@ -412,7 +412,7 @@ class FnvService:
                 'note': 'Compiler-exact layout from the debug info of the units that define this type; the best '
                         'definition (most members) is shown.'}
 
-    def class_vtable(self, class_name):
+    def class_vtable(self, class_name, limit=80, offset=0):
         def action():
             e = self.engine()
             rtti_key = e.rtti_lower.get(class_name.strip().lower())
@@ -448,6 +448,11 @@ class FnvService:
                 out.update({'slots': [dict(v, slot=k) for k, v in sorted(declared.items())],
                             'note': 'No RTTI for this class in the map (generate with --exe): header '
                                     'declarations only.'})
+            slots = out.get('slots') or []
+            out.update(total=len(slots), offset=offset, slots=slots[offset:offset + limit])
+            if offset + limit < len(slots):
+                out['more'] = 'Slots %d to %d of %d shown; call again with offset=%d for the next ones.' % (
+                    offset, offset + limit - 1, len(slots), offset + limit)
             return out
         return self.run('fnv_class_vtable', action)
 
@@ -788,13 +793,13 @@ def register(server, project, observe, result_type):
         return await invoke(service.func_code, function, max_lines)
 
     @server.tool(annotations=observe)
-    async def fnv_func_callers(function: FunctionRef, depth: Depth = 1, limit: Limit = 100) -> result_type:
+    async def fnv_func_callers(function: FunctionRef, depth: Depth = 1, limit: Limit = 50) -> result_type:
         """Functions that call this one directly (call graph read from the game exe), up to `depth` levels.
         Calls through vtables or function pointers are not visible."""
         return await invoke(service.func_graph, function, 'callers', depth, limit)
 
     @server.tool(annotations=observe)
-    async def fnv_func_callees(function: FunctionRef, depth: Depth = 1, limit: Limit = 100) -> result_type:
+    async def fnv_func_callees(function: FunctionRef, depth: Depth = 1, limit: Limit = 50) -> result_type:
         """Functions this one calls directly (and Windows/DLL imports it calls), up to `depth` levels."""
         return await invoke(service.func_graph, function, 'callees', depth, limit)
 
@@ -845,10 +850,12 @@ def register(server, project, observe, result_type):
         return await invoke(service.symbols, action, function, address, file, line, name, limit, offset)
 
     @server.tool(annotations=observe)
-    async def fnv_class_vtable(class_name: Annotated[str, Field(min_length=1, max_length=200)]) -> result_type:
+    async def fnv_class_vtable(class_name: Annotated[str, Field(min_length=1, max_length=200)],
+                               limit: Limit = 80, offset: Offset = 0) -> result_type:
         """Virtual table of an engine class: each slot's implementing function (name, proof status) read from
-        the game's RTTI, with the declaration from the decomp headers where one exists."""
-        return await invoke(service.class_vtable, class_name)
+        the game's RTTI, with the declaration from the decomp headers where one exists. Paged: `limit` slots from
+        slot `offset`; `total` and `more` say how to get the rest."""
+        return await invoke(service.class_vtable, class_name, limit, offset)
 
     @server.tool(annotations=observe)
     async def fnv_class_tree(class_name: Annotated[str, Field(min_length=1, max_length=200)],

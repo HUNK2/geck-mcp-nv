@@ -92,6 +92,19 @@ class BridgeServer(MCPServer):
         self._project_id = project_id
         self._missing = list(missing)     # GECK settings the project file leaves out (Task 4.3)
 
+    def _capped(self, result, params):
+        """The answer cut to ANSWER_CAP characters (Task 6.3); images and other content items are kept."""
+        if not isinstance(result, CallToolResult) or not isinstance(result.structured_content, dict):
+            return result
+        tool = self._tool_manager.get_tool(params.name)
+        parameters = set(((tool.parameters or {}).get('properties') or {}) if tool else ())
+        capped = cap_answer(result.structured_content, parameters, params.arguments)
+        if capped is result.structured_content:
+            return result
+        content = [TextContent(type='text', text=json.dumps(capped))] + [
+            c for c in result.content if getattr(c, 'type', None) != 'text']
+        return CallToolResult(content=content, structured_content=capped, is_error=result.is_error)
+
     async def _call_with_progress(self, ctx, params):
         """The SDK's call, with a progress notification every PROGRESS_SECONDS while it runs (Task 6.2): a client that
         sent a progress token sees the call is alive and can keep waiting. Without a token report_progress does
@@ -134,6 +147,7 @@ class BridgeServer(MCPServer):
             return CallToolResult(content=[TextContent(type='text', text=json.dumps(envelope))],
                                   structured_content=envelope, is_error=True)
         result = await self._call_with_progress(ctx, params)
+        result = self._capped(result, params)
         if isinstance(result, CallToolResult) and result.is_error and result.structured_content is None:
             text = ' '.join(getattr(c, 'text', '') for c in result.content).strip()
             code = ('INVALID_ARGUMENTS' if 'validation error' in text else
@@ -147,6 +161,66 @@ class BridgeServer(MCPServer):
 
 # Seconds between progress notifications while a tool call runs (Task 6.2).
 PROGRESS_SECONDS = 5
+# Characters of one answer (its JSON); a longer one is cut at a row boundary (Task 6.3).
+ANSWER_CAP = 40000
+
+
+def _largest_list(node, path=()):
+    """(serialized size, path, list) of the largest list of rows in a JSON-like value, or None."""
+    best = None
+    if isinstance(node, list) and len(node) > 1:
+        best = (len(json.dumps(node, default=str)), path, node)
+    items = node.items() if isinstance(node, dict) else enumerate(node) if isinstance(node, list) else ()
+    for key, value in items:
+        if isinstance(value, (dict, list)):
+            found = _largest_list(value, path + (key,))
+            if found and (best is None or found[0] > best[0]):
+                best = found
+    return best
+
+
+def cap_answer(structured, parameters, arguments, cap=None):
+    """structured cut to at most `cap` characters of JSON by dropping whole rows from the end of its largest list,
+    with truncated: true and a note naming the paging argument. Unchanged when it fits or has no list to cut."""
+    cap = cap or ANSWER_CAP
+    if not isinstance(structured, dict) or len(json.dumps(structured, default=str)) <= cap:
+        return structured
+    out = json.loads(json.dumps(structured, default=str))
+    holder = out['data'] if isinstance(out.get('data'), dict) else out
+    found = _largest_list(holder)
+    if not found:
+        return structured
+    _, path, _ = found
+    parent = holder
+    for key in path[:-1]:
+        parent = parent[key]
+    rows = parent[path[-1]] if path else holder
+    total = len(rows)
+    holder['truncated'] = True
+    holder['truncatedNote'] = ''
+    low, high = 0, total                          # the most rows that fit, by bisection
+    while low < high:
+        mid = (low + high + 1) // 2
+        parent[path[-1]] = rows[:mid]
+        holder['truncatedNote'] = _cap_note(mid, total, path, parameters, arguments)
+        if len(json.dumps(out, default=str)) <= cap:
+            low = mid
+        else:
+            high = mid - 1
+    parent[path[-1]] = rows[:low]
+    holder['truncatedNote'] = _cap_note(low, total, path, parameters, arguments)
+    return out
+
+
+def _cap_note(kept, total, path, parameters, arguments):
+    name = '.'.join(map(str, path)) or 'the rows'
+    start = int((arguments or {}).get('offset') or 0)
+    text = 'Cut to fit %d characters: %d of the %d rows of %s.' % (ANSWER_CAP, kept, total, name)
+    if 'offset' in parameters:
+        return text + ' Call again with offset=%d for the next rows.' % (start + kept)
+    if 'limit' in parameters:
+        return text + ' Call again with a smaller limit, or narrower arguments.'
+    return text + ' Ask for a narrower answer (fewer items or a more specific argument).'
 
 # geck_* tools that need none of the GECK settings, so they answer on a project file for the game alone.
 NO_GECK_SETTINGS = {'geck_capabilities', 'geck_image_cutout', 'geck_operation_get', 'geck_inspect_windows'}
