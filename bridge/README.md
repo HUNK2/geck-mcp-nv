@@ -122,7 +122,7 @@ or a quest lookup error. EditorIDs may also be unavailable in the vanilla game c
   blank result is retried with a repaint request (about 12 s), then a DPI-aware screen copy is tried if nothing
   covers the Render Window. Look at the PNG: the tool only checks that it is not one flat colour.
 
-Docs: [docs/MCP-QUICKSTART.md](docs/MCP-QUICKSTART.md) · [docs/PHOTO.md](docs/PHOTO.md) · [docs/M1-FAST-BRIDGE.md](docs/M1-FAST-BRIDGE.md)
+Docs: [docs/MCP-QUICKSTART.md](docs/MCP-QUICKSTART.md) · [docs/PHOTO.md](docs/PHOTO.md) · [docs/KNOWN-ISSUES.md](docs/KNOWN-ISSUES.md)
 
 ## 0.4.0 candidate compile recovery
 

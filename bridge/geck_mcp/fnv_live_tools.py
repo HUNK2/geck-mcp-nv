@@ -1718,7 +1718,7 @@ def register(server, project, annotations, result_type, maintain=True):
                         value: Annotated[str, Field(max_length=100)] | None = None,
                         mode: Literal['instruction', 'into', 'over', 'out', 'line'] | None = None,
                         file: Annotated[str, Field(max_length=200)] | None = None) -> result_type:
-        """Source-level debugger for the running game (plan: Plan 2 wave 2). break op=set location=<function | 0xADDR |
+        """Source-level debugger for the running game. break op=set location=<function | 0xADDR |
         file:line | fault> sets a stop (when = a predicate such as "frame >= 100"; do=log with log=[expression] records
         values instead; hits=N stops from the Nth hit that passes when). break op=list / op=clear break_id. status: stopped or running, the place, the source
         lines and why. stack and locals (frame n) read the stop; eval and set work on a stop's frame. continue, step
@@ -2054,7 +2054,7 @@ def register(server, project, annotations, result_type, maintain=True):
                          export: Annotated[str, Field(max_length=100)] | None = None,
                          args: list[int | float] | None = None,
                          since: Annotated[int, Field(ge=0)] | None = None) -> result_type:
-        """C code running inside the game (Plan 2 W5). headers functions=[names] classes=[names]: the module API
+        """C code running inside the game. headers functions=[names] classes=[names]: the module API
         (fnvmcp_module.h) and fnv_engine.h with FNV_ADDR_<name>, typed pointers FNV_<name> and padded structs from
         the symbol database. build source=<C text or .c path> name=N: zig cc to a DLL (compiler errors returned).
         load name=N: loaded on the main thread, fnvmcp_module_init(api) runs, the hooks it asked for (api->hook) are
@@ -2100,8 +2100,8 @@ def register(server, project, annotations, result_type, maintain=True):
                                name: Annotated[str, Field(min_length=1, max_length=60)],
                                source: Annotated[str, Field(max_length=200000)] | None = None,
                                hooks: list[Annotated[str, Field(max_length=200)]] | None = None) -> result_type:
-        """A native module (the fnv_native API) as a normal xNVSE plugin that needs no engine companion (Plan 2
-        W5). scaffold: a starting source. build [source] hooks=[functions the module hooks]: the runtime, the module
+        """A native module (the fnv_native API) as a normal xNVSE plugin that needs no engine companion.
+        scaffold: a starting source. build [source] hooks=[functions the module hooks]: the runtime, the module
         and the hook prologues (planned from the running game, or from the local game image) compiled with Zig.
         install: as its own MO2 mod in the dev profile (game closed); fnv_restart loads it. log: its log file."""
         return await invoke('fnv_plugin_build', lambda: plugin_tools.run(action, name=name, source=source,
@@ -2117,7 +2117,7 @@ def register(server, project, annotations, result_type, maintain=True):
                           before: Annotated[str, Field(max_length=300)] | None = None,
                           after: Annotated[str, Field(max_length=300)] | None = None,
                           top: Annotated[int, Field(ge=1, le=200)] = 25) -> result_type:
-        """Where the frame time goes (Plan 2 W6). sample: suspend the thread(s) rate times a second for seconds
+        """Where the frame time goes. sample: suspend the thread(s) rate times a second for seconds
         from outside the game (nothing patched), read the call chain, and report self time per function and per
         decomp source line, inclusive time, the callers of the hottest functions, the frame rate meanwhile, and a
         folded-stack file for flame graphs (saved under state/fnv/profiles). diff before after: two saved profiles
@@ -2162,7 +2162,7 @@ def register(server, project, annotations, result_type, maintain=True):
                            name: Annotated[str, Field(max_length=60)] | None = None,
                            a: Annotated[str, Field(max_length=300)] | None = None,
                            b: Annotated[str, Field(max_length=300)] | None = None) -> result_type:
-        """Line coverage of engine code (Plan 2 W6). start files=[decomp paths, e.g. tesobjectrefr.cpp] or
+        """Line coverage of engine code. start files=[decomp paths, e.g. tesobjectrefr.cpp] or
         functions=[names]: a one-shot trap at every source line start of those functions (verified functions only),
         each removing itself on its first hit. stop: lines run and never run per file, functions entered; saved
         under state/fnv/coverage. diff a b: lines that ran in one saved run and not the other."""
@@ -2239,7 +2239,7 @@ def register(server, project, annotations, result_type, maintain=True):
                           index: Annotated[int, Field(ge=0, le=15)] | None = None,
                           start: float | None = None, stop: float | None = None,
                           steps: Annotated[int, Field(ge=1, le=100)] = 10) -> result_type:
-        """Game systems (Plan 2 W6). formulas: the catalog (skill value, XP for a level, walk and run speed, item
+        """Game systems. formulas: the catalog (skill value, XP for a level, walk and run speed, item
         value by condition, force-lock chance). formula name args: call it (or any engine function by name) with
         those inputs, guarded. sweep name args index start stop [steps]: one argument over a range. progression:
         level, XP, the XP the next level needs. needs: hardcore values and radiation. perk name=<PERK>: can the player
@@ -2291,7 +2291,7 @@ def register(server, project, annotations, result_type, maintain=True):
 
     @server.tool(annotations=read)
     async def fnv_selftest() -> result_type:
-        """Check what the tool families rely on, against the running game (Plan 2 W7): the companion and its wire,
+        """Check what the tool families rely on, against the running game: the companion and its wire,
         the engine map and symbol database, the singletons the tools read, the prologues hooks plan, the camera, and a
         cheap call into each family (memory, systems, eyes, profile, modules, code placement, coverage). Each row is
         ok, degraded or broken with the fact that failed. Use after a game, xNVSE, plugin or decomp update."""
