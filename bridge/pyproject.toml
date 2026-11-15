@@ -6,8 +6,6 @@ requires-python = ">=3.12"
 dependencies = ["mcp==2.2.0", "pillow==12.3.0", "numpy==2.5.3"]
 
 [project.optional-dependencies]
-# sprite_flipbook.py and tools/creature_skeleton.py; PyFFI imports distutils, which Python 3.12 removed
-sprites = ["PyFFI==2.2.3", "setuptools==84.0.0"]
 # fnv_probe.py: the probe planner and caller decoding (fnv_probe / fnv_atlas)
 naming = ["capstone==5.0.7"]
 

@@ -77,17 +77,12 @@ see [runtime profiles, identity, capture, assertions and lifecycle](docs/MCP-QUI
 
 The same jobs are available from the command line: `build_plugin.py` (`--project` uses the profile's state and build
 folders), `install_plugin.py`, `live_load.py` (`--if-needed`), `cell_verify.py`, `compile_scripts.py` (build, then load in
-GECK, compile every script, save and cache the compiled bytecode), `recover.py` (list or clear recovery barriers),
-`sprite_flipbook.py` (an animated sprite billboard NIF from PNG frames; `--collision-material organic`
-sets the sound when it is knocked about) and `tools/creature_skeleton.py` (a creature's own skeleton and animations;
-`--project` finds the game Data folder). Both use PyFFI from the lock file and write the same bytes for the same input.
+GECK, compile every script, save and cache the compiled bytecode) and `recover.py` (list or clear recovery barriers).
 
 ## Using this bridge from a separate workshop
 
 Keep project specs, assets, profiles and state in the workshop, and run this repo's commands with an explicit
 workshop profile. This is the authoritative implementation; do not maintain a copied `geck_mcp` package or helper.
-Version 0.2.1 includes `sprite_flipbook.py --collision-static` for fixed, unmovable collision as well as collision
-material selection. The sprite manifest reports the collision material and motion system read back from the NIF.
 
 ## FormIDs in the game console
 

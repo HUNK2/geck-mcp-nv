@@ -26,8 +26,6 @@ sys.path.insert(0, str(BRIDGE / 'tests'))
 # (scenario file, expected outcome, what it needs). expected: pass | fail | crash. The crash runs last: its relaunch
 # fails when the runner itself cannot start the game (a sandboxed shell), and nothing after it would have a game.
 SCENARIOS = [
-    # Runs in the current game and expects a player with no caps: first, before hello-quest pays out 100.
-    ('examples/hello-courier/tests/s1-play.json', 'pass', None),
     ('examples/fnv-tests/hello-wasteland.yaml', 'pass', None),
     ('examples/fnv-tests/broken-expectation.yaml', 'fail', None),
     ('examples/fnv-tests/agent_wave.yaml', 'pass', 'save:agentwave'),

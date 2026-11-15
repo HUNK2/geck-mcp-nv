@@ -847,11 +847,10 @@ What was seen:
 
 ## Acceptance scenarios S1, S2, S4, S6 (Plan 2, run in the game 2026-11-11 night)
 
-Each scenario was run against a plugin built for it with the spec builder (`examples/hello-courier`, `hello-bug`,
-`hello-s6`, `hello-crash`), its scripts compiled by the running game. What failed on the way was fixed and is listed.
+Each scenario was run against a plugin built for it with the spec builder (`examples/hello-bug` is in the
+repository; the other three needed game files it cannot ship), its scripts compiled by the running game. What failed on the way was fixed and is listed.
 
-**S1, build a quest mod and play it as a player** (`examples/hello-courier`, one `fnv_do` call,
-`tests/s1-play.json`): PASSED, 23 steps in 64 s, no console and no teleport. The player walks to a contact, talks,
+**S1, build a quest mod and play it as a player** (one `fnv_do` call): PASSED, 23 steps in 64 s, no console and no teleport. The player walks to a contact, talks,
 picks "Sure, I'll look for them." (stage 20, set by the line's result script), walks to and picks up three tokens
 (stage 30 from the quest script), talks again, hands them in (stage 40, the tokens taken, 100 caps given by the
 result script), and a photo sheet of the contact is taken. Fixed on the way:
@@ -885,7 +884,7 @@ the way:
 - Quest scripts do not run while the pause menu is open (it opens when the game window loses focus): the guide says
   to close it with `fnv_menu_control`.
 
-**S6, a new mesh looks wrong** (`examples/hello-s6`): PASSED. A crate mesh shipped loose in its mod names a
+**S6, a new mesh looks wrong**: PASSED. A crate mesh shipped loose in its mod names a
 misspelled texture (`CrateLarge0l.dds`). The photo sheet (four angles) showed it without its paint beside the
 vanilla crate; `fnv_asset_check` named the missing texture and the mesh; the mesh file was fixed in the mod folder;
 `fnv_asset reload` took 0.66 s with no restart; the sheet after shows both crates alike. Fixed on the way:
@@ -896,7 +895,7 @@ vanilla crate; `fnv_asset_check` named the missing texture and the mesh; the mes
 - Not fixed: `fnv_asset file_log` did not see the missing texture (the engine never asked `FileFinder::GetFile` for
   it); `fnv_asset_check` finds it offline.
 
-**S2, a load order crashes on entering a cell** (`examples/hello-crash`): PASSED. The crate mesh of HelloCrashRoom
+**S2, a load order crashes on entering a cell**: PASSED. The crate mesh of HelloCrashRoom
 has its root node's child pointing at its strip data. With the crash hold on (`fnv_debug break location=fault`),
 `coc HelloCrashRoom` faulted on a loader thread in `NiAVObject::AttachParent` (from `NiNode::SetChildAt`,
 `ReadChildListFromStream`, `NiStream::Load`, `QueuedModel::Run`); the game stayed alive, held. `fnv_debug status`
@@ -1199,7 +1198,7 @@ example is [examples/hello-quest](../examples/hello-quest/README.md).
 Dialogue: a `DIAL` record in the spec takes `infos`, lines with `key`, `quest`, `responses`, `conditions`, `choices`,
 `flags` and a `result` script (`geck_mcp/esp/dialogue.py` has the format). `"override": true` on a master topic
 (`GREETING`) adds lines to it; the topic is copied from its template dump (`tools/esm_research.py dump`).
-`fnv_scripts_compile` compiles the result scripts too. Example: [examples/hello-courier](../examples/hello-courier/).
+`fnv_scripts_compile` compiles the result scripts too.
 
 Scenario expressions (`until`, `eval`, `console`, `run`) and references accept EditorIDs from any active
 plugin: names the game does not keep are replaced by their form ids from the record index.
