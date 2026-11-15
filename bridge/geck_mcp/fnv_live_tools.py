@@ -282,6 +282,25 @@ FNV_LIVE_TOOLS = {
 }
 
 
+# One shape for a position (release audit M1): [x, y, z] in game units. Where a null is allowed it keeps that axis.
+Xyz = Annotated[list[float | None], Field(min_length=3, max_length=3,
+                                          description='[x, y, z]; null keeps that axis. The old {x, y, z} object works '
+                                                      'too.')]
+XyzFull = Annotated[list[float], Field(min_length=3, max_length=3, description='[x, y, z] in game units')]
+
+
+def xyz_dict(value):
+    """[x, y, z] (null keeps an axis) or the old {x, y, z} object, as the {axis: value} the tools use."""
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        bad = set(value) - set('xyz')
+        if bad:
+            raise ValueError('A position or rotation has the axes x, y and z only (got %s)' % ', '.join(sorted(bad)))
+        return {axis: float(v) for axis, v in value.items() if v is not None}
+    return {axis: float(v) for axis, v in zip('xyz', value) if v is not None}
+
+
 def register(server, project, annotations, result_type, maintain=True):
     import json
     from functools import partial
@@ -1050,12 +1069,15 @@ def register(server, project, annotations, result_type, maintain=True):
     @server.tool(annotations=act)
     async def fnv_move(ref: Ref = 'player', to: Ref | None = None,
                        cell: Annotated[str, Field(pattern=r'^[A-Za-z0-9_]{1,120}$')] | None = None,
-                       position: dict[str, float] | None = None, rotation: dict[str, float] | None = None,
+                       position: Xyz | dict[str, float] | None = None,
+                       rotation: Xyz | dict[str, float] | None = None,
                        timeout_seconds: Annotated[int, Field(ge=10, le=600)] = 180) -> result_type:
         """Teleport the player or any ref: to another ref (MoveTo), to a cell (the player by coc; other refs need a
-        position in it, PositionCell), or to a position {x, y, z} in its current cell; rotation {z} in degrees.
-        Waits for the new cell to load when the player changes cells. Journaled: fnv_undo puts it back."""
-        return await invoke('fnv_move', lambda: agent.move(ref, to, cell, position, rotation, timeout_seconds), 'act')
+        position in it, PositionCell), or to a position [x, y, z] in its current cell (null keeps an axis);
+        rotation [x, y, z] in degrees, for example [null, null, 90]. Waits for the new cell to load when the player
+        changes cells. Journaled: fnv_undo puts it back."""
+        return await invoke('fnv_move', lambda: agent.move(ref, to, cell, xyz_dict(position), xyz_dict(rotation),
+                                                           timeout_seconds), 'act')
 
     @server.tool(annotations=act)
     async def fnv_spawn(form: Ref, near: Ref = 'player', count: Annotated[int, Field(ge=1, le=20)] = 1,
@@ -1197,17 +1219,19 @@ def register(server, project, annotations, result_type, maintain=True):
         return await invoke('fnv_pathing', lambda: engine_ai.pathing(actor))
 
     @server.tool(annotations=read)
-    async def fnv_raycast(start: dict[str, float] | None = None, end: dict[str, float] | None = None,
+    async def fnv_raycast(start: XyzFull | dict[str, float] | None = None,
+                          end: XyzFull | dict[str, float] | None = None,
                           from_ref: Ref | None = None, to_ref: Ref | None = None,
                           layer: Literal['line_of_sight', 'path_pick', 'projectile'] = 'line_of_sight',
                           ground_at: dict[str, float] | None = None) -> result_type:
-        """Cast a ray through the game's Havok world (the engine's own TES::Pick): from start to end positions, or
+        """Cast a ray through the game's Havok world (the engine's own TES::Pick): from start to end [x, y, z], or
         from one ref to another (eye height); returns whether it hits, the hit object and its reference, and the
         hit point. ground_at {x, y} instead returns the terrain height there."""
         if ground_at:
             return await invoke('fnv_raycast', lambda: engine_ai.ground_height(ground_at.get('x', 0.0),
                                                                                 ground_at.get('y', 0.0)))
-        return await invoke('fnv_raycast', lambda: engine_ai.raycast(start, end, from_ref, to_ref, layer))
+        return await invoke('fnv_raycast', lambda: engine_ai.raycast(xyz_dict(start), xyz_dict(end), from_ref, to_ref,
+                                                                     layer))
 
     @server.tool(annotations=read)
     async def fnv_cell_grid() -> result_type:
