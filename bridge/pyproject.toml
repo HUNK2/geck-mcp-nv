@@ -12,5 +12,15 @@ dependencies = ["mcp==2.2.0", "pydantic==2.13.5", "anyio==4.15.1", "pillow==12.3
 # fnv_probe.py: the probe planner and caller decoding (fnv_probe / fnv_atlas); the setup guide installs it
 naming = ["capstone==5.0.7"]
 
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+extend-exclude = ["state", "native"]
+
+[tool.ruff.lint]
+# Errors that break code: syntax errors, undefined names, misused comparisons. Unused imports and variables (F401,
+# F841, about 80 lines) are not yet enforced: some imports are patch targets for the tests.
+select = ["E9", "F63", "F7", "F82"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

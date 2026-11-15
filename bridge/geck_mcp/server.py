@@ -9,6 +9,7 @@ from typing import Annotated, Literal, Any
 
 import anyio
 from mcp.server import MCPServer
+from mcp.server.mcpserver.exceptions import UnexpectedToolError
 from mcp.types import CallToolResult, TextContent, ToolAnnotations
 from pydantic import BaseModel, Field, ConfigDict
 
@@ -91,6 +92,25 @@ class BridgeServer(MCPServer):
         super().__init__(*args, **kwargs)
         self._project_id = project_id
         self._missing = list(missing)     # GECK settings the project file leaves out (Task 4.3)
+
+    async def call_tool(self, name, arguments, context=None):
+        """A deliberate refusal that escaped a tool (a ValueError, or an error with a code) keeps its code and its
+        sentence; the SDK would replace both with "Error executing tool X". Other exceptions are still crashes."""
+        try:
+            return await super().call_tool(name, arguments, context)
+        except UnexpectedToolError as wrapped:
+            error = wrapped.__cause__
+            code = getattr(error, 'code', None)
+            if not (isinstance(code, str) and code) and not isinstance(error, ValueError):
+                raise
+            envelope = self._envelope(name, code if isinstance(code, str) and code else 'INVALID_ARGUMENT',
+                                      str(error), 'Read the message, fix what it names, and call again.')
+            if getattr(error, 'uncertain', False):
+                envelope['outcome'] = 'outcome_unknown'
+                envelope['error']['retrySafe'] = False
+                envelope['error']['recovery'] = 'Read status and operation evidence before retrying.'
+            return CallToolResult(content=[TextContent(type='text', text=json.dumps(envelope))],
+                                  structured_content=envelope, is_error=True)
 
     def _capped(self, result, params):
         """The answer cut to ANSWER_CAP characters (Task 6.3); images and other content items are kept."""
