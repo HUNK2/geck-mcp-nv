@@ -4,7 +4,8 @@
 
 crossover/wine: runs csc.exe inside the configured bottle/prefix.
 native (Windows): runs %WINDIR%\\Microsoft.NET\\Framework\\v4.0.30319\\csc.exe directly (tested on Windows 11).
-GitHub includes a prebuilt Probe.Mcp.exe; source-only downloads require this build once.
+The repository has no prebuilt Probe.Mcp.exe: build it once (and again after Probe.cs changes). Only the geck_*
+tools need it; the fnv_* tools do not.
 """
 import argparse
 import os

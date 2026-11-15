@@ -35,8 +35,8 @@ python3 -m venv .venv
    .venv/bin/python esm_index.py FalloutNV.esm
    ```
 2. **Make a profile.** Copy `projects/example-<your OS>.json` to `projects/hellowasteland.json` and fix the paths.
-3. **Build the helper for this version.** Release downloads ship source only, with no DLL or EXE. Rebuild even if an
-   older Git checkout contains a helper. See [AI-assisted source setup](../docs/SOURCE-SETUP.md). On Windows this uses the C# compiler that comes with
+3. **Build the helper for this version** (only the `geck_*` tools need it; the `fnv_*` tools do not). The repository
+   has no EXE or DLL: build it once with `build_helper.py`, and again after `Probe.cs` changes. See [AI-assisted source setup](../docs/SOURCE-SETUP.md). On Windows this uses the C# compiler that comes with
    the .NET Framework 4 (already part of Windows):
    ```sh
    .venv\Scripts\python build_helper.py --project projects\hellowasteland.json

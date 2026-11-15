@@ -7,6 +7,9 @@ bridge/build/
 bridge/evidence/
 bridge/photos/
 bridge/tools/photo/bin/
+# no binaries in the repository: the GECK helper is built with bridge/build_helper.py
+*.exe
+*.dll
 bridge/projects/*.json
 !bridge/projects/example-*.json
 windows/backups/
