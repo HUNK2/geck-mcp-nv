@@ -53,8 +53,14 @@ Nothing here downloads files or ships game files, the decompilation or anything 
    }
    ```
 
-   `engine_control` is `"read"` by default (the act tools refuse); `"full"` allows memory writes, engine calls,
-   console changes and hot-swap, all journaled and undoable. `clean_exe` is optional.
+   `engine_control` has two levels. `"read"` (the default): look at the game, start and stop the dev game (only
+   the game `fnv_launch` started), and install the engine companion. `"full"`: change the game and run code in
+   it: memory writes, engine calls, console changes, hot-swap, hooks, and anything that puts agent-chosen code
+   or files into the game or its mod profile (`fnv_plugin_build` build and install, `fnv_install`,
+   `fnv_profile_set` without `dry_run`). **`"full"` means code execution as your Windows user**: `fnv_native`
+   compiles C and loads it into the game process. Changes to the running game are journaled and undoable; files
+   put into the mod profile are not. The tools act on the MO2 profile named in `fnv.mo2_profile`, so point it at a
+   profile of its own, not the one you play with. `clean_exe` is optional.
 4. **Register the MCP server** with your client (MCP-QUICKSTART.md) and call **`fnv_setup_check`**: it lists
    each prerequisite with what to do when one is missing.
 5. With the game closed, call **`fnv_companion_install`** (builds the engine companion with Zig and installs it

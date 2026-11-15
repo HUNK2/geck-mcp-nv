@@ -620,12 +620,18 @@ class FnvService:
                     'identity': e.identity()}
         return self.run('fnv_string_xrefs', action)
 
+    def _read_path(self, path, what='path'):
+        """A caller's path, resolved, when it lies inside the project's read roots (safe_paths.read_roots); None stays
+        None. A network path or one outside the roots is refused (H5)."""
+        from .safe_paths import inside, read_roots
+        return None if not path else inside(path, read_roots(self.project), what)
+
     # ----------------------------------------------------------------------------- crashes
     def crash_latest(self, path=None, max_frames=40):
         from . import fnv_crash
 
         def action():
-            log = fnv_crash.find_latest(self.project, path)
+            log = fnv_crash.find_latest(self.project, self._read_path(path))
             parsed = fnv_crash.parse_file(log)
             return fnv_crash.summarise(parsed, max_frames)
         return self.run('fnv_crash_latest', action)
@@ -634,7 +640,7 @@ class FnvService:
         from . import fnv_crash
 
         def action():
-            log = fnv_crash.find_latest(self.project, path)
+            log = fnv_crash.find_latest(self.project, self._read_path(path))
             parsed = fnv_crash.parse_file(log)
             try:
                 engine = self.engine()
@@ -676,9 +682,10 @@ class FnvService:
     def _save_path(self, name):
         from . import fnv_save
         from pathlib import Path
-        if Path(name).is_absolute():
-            return fnv_save.resolve_path(name, Path(name).parent)
-        return fnv_save.resolve_path(name, self.saves_dir())
+        if Path(name).is_absolute() or name[:1] in '\\/':
+            path = self._read_path(name, 'save')
+            return fnv_save.resolve_path(str(path), path.parent)
+        return self._read_path(fnv_save.resolve_path(name, self.saves_dir()), 'save')
 
     def _namer(self):
         from . import fnv_save

@@ -15,7 +15,8 @@ from mcp import Client  # noqa: E402
 
 from geck_mcp import fnv_link  # noqa: E402
 from geck_mcp.config import FnvSettings  # noqa: E402
-from geck_mcp.fnv_live_tools import FNV_LIVE_TOOLS, MUTATING_ACTIONS  # noqa: E402
+from geck_mcp.fnv_live_tools import (FNV_LIVE_TOOLS, FULL_ONLY_ACTIONS, MUTATING_ACTIONS,  # noqa: E402
+                                     READ_LEVEL_CONTROL, needs_full)
 from geck_mcp.server import make_server  # noqa: E402
 import test_service  # noqa: E402
 
@@ -97,15 +98,32 @@ READ_CASES = {
     'fnv_engine_get': {'function': 'Actor::GetLevel', 'this': 'player'},   # pure getters only (round 4 H1)
 }
 
+# Release plan Task 1.2 (audit B2): calls that put agent-chosen code or files into the game or its mod profile need
+# "full" although their kind is control. (tool, action label) -> minimal valid arguments, like MUTATING_CASES.
+FULL_ONLY_CASES = {
+    ('fnv_plugin_build', 'build'): {'action': 'build', 'name': 'x', 'source': 'int x;'},
+    ('fnv_plugin_build', 'install'): {'action': 'install', 'name': 'x'},
+    ('fnv_install', '*'): {'plugin_path': 'C:/nope/Nope.esp'},
+    ('fnv_profile_set', 'apply'): {'plugins': {'Nope.esp': True}},
+}
+# control calls that stay allowed under read
+READ_LEVEL_CASES = {
+    ('fnv_plugin_build', 'scaffold'): {'action': 'scaffold', 'name': 'x'},
+    ('fnv_profile_set', 'dry_run'): {'plugins': {'Nope.esp': True}, 'dry_run': True},
+    ('fnv_author', 'scaffold'): {'action': 'scaffold', 'kind': 'item', 'name': 'x'},
+}
 
-def expanded():
+
+def expanded(table=MUTATING_ACTIONS):
     out = set()
-    for tool, rule in MUTATING_ACTIONS.items():
+    for tool, rule in table.items():
         out |= {(tool, '*')} if rule == '*' else {(tool, a) for a in rule}
     return out
 
 
-class GateTests(unittest.IsolatedAsyncioTestCase):
+class GateFixture:
+    """The in-process server with engine_control = "read" and no pipe. Mix into IsolatedAsyncioTestCase."""
+
     async def asyncSetUp(self):
         self.fixture = test_service.ServiceTests()
         self.fixture.setUp()
@@ -133,6 +151,8 @@ class GateTests(unittest.IsolatedAsyncioTestCase):
         sc = result.structured_content or {}
         return (sc.get('error') or {}).get('code'), result
 
+
+class GateTests(GateFixture, unittest.IsolatedAsyncioTestCase):
     def test_cases_cover_the_table(self):
         self.assertEqual(set(MUTATING_CASES), expanded())
 
@@ -163,6 +183,61 @@ class GateTests(unittest.IsolatedAsyncioTestCase):
         for tool in MUTATING_ACTIONS:
             self.assertFalse(tools[tool].annotations.read_only_hint, tool)
             self.assertNotEqual(FNV_LIVE_TOOLS[tool][0], 'read', tool)
+
+
+class FullOnlyTests(GateFixture, unittest.IsolatedAsyncioTestCase):
+    """Release plan Task 1.2: one rule for what read allows."""
+
+    def test_full_only_cases_cover_the_table(self):
+        self.assertEqual(set(FULL_ONLY_CASES), expanded(FULL_ONLY_ACTIONS))
+
+    async def test_every_full_only_action_is_refused_when_read(self):
+        wrong = []
+        async with Client(make_server(self.project, self.fixture.service)) as client:
+            for (tool, label), args in sorted(FULL_ONLY_CASES.items()):
+                self.pipe_ops.clear()
+                code, result = await self.call(client, tool, args)
+                if code != 'CONTROL_DISABLED' or self.pipe_ops:
+                    text = ''.join(getattr(c, 'text', '') for c in result.content)[:200]
+                    wrong.append((tool, label, code, len(self.pipe_ops), text))
+        self.assertEqual(wrong, [])
+
+    async def test_refusal_says_what_to_set(self):
+        async with Client(make_server(self.project, self.fixture.service)) as client:
+            _, result = await self.call(client, 'fnv_install', FULL_ONLY_CASES[('fnv_install', '*')])
+        message = result.structured_content['error']['message']
+        self.assertIn('fnv.engine_control = "full"', message)
+        self.assertIn('puts code or files into the game', message)
+
+    async def test_read_level_calls_are_not_refused(self):
+        wrong = []
+        async with Client(make_server(self.project, self.fixture.service)) as client:
+            for (tool, label), args in sorted(READ_LEVEL_CASES.items()):
+                code, _ = await self.call(client, tool, args)
+                if code == 'CONTROL_DISABLED':
+                    wrong.append((tool, label))
+        self.assertEqual(wrong, [])
+
+    def test_every_control_tool_is_classified(self):
+        control = {n for n, (kind, _) in FNV_LIVE_TOOLS.items() if kind == 'control'}
+        tables = set(MUTATING_ACTIONS) | set(FULL_ONLY_ACTIONS) | set(READ_LEVEL_CONTROL)
+        self.assertEqual(sorted(control - tables), [])
+        whole = {n for t in (MUTATING_ACTIONS, FULL_ONLY_ACTIONS) for n, rule in t.items() if rule == '*'}
+        self.assertEqual(sorted(whole & set(READ_LEVEL_CONTROL)), [])
+        self.assertEqual(sorted(n for n, why in READ_LEVEL_CONTROL.items() if not why.strip()), [])
+
+    def test_needs_full(self):
+        self.assertTrue(needs_full('fnv_install', None))
+        self.assertTrue(needs_full('fnv_plugin_build', 'install'))
+        self.assertTrue(needs_full('fnv_plugin_build', None))     # a listed tool with no action: assume the worst
+        self.assertFalse(needs_full('fnv_plugin_build', 'scaffold'))
+        self.assertFalse(needs_full('fnv_launch', None))
+
+    async def test_no_fnv_block_means_read(self):
+        self.project = self.project.model_copy(update={'fnv': None})
+        async with Client(make_server(self.project, self.fixture.service)) as client:
+            code, _ = await self.call(client, 'fnv_install', FULL_ONLY_CASES[('fnv_install', '*')])
+        self.assertEqual(code, 'CONTROL_DISABLED')
 
 
 if __name__ == '__main__':

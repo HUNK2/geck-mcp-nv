@@ -286,12 +286,12 @@ class LiveService:
                     self._engine = fnv_engine.load(*fnv_engine.default_paths(self.project))
         return self._engine
 
-    def run(self, name, action, kind='read'):
+    def run(self, name, action, kind='read', needs_full=False):
         # Every kind: a cancelled call keeps running in its thread (act calls are shielded, reads are abandoned but
         # not stopped, and fnv_wait_for holds the frame gate), so the supervisor waits for it before a reload (R4).
         from . import busy
         with busy.track(name):
-            return self._run(name, action, kind)
+            return self._run(name, action, kind, needs_full)
 
     # Codes that all mean "no game to talk to": the envelope reports one code for them (PLAN-3 S5.1, T4).
     # COMPANION_UNREACHABLE joins them only when no game process exists (a running game with a busy pipe keeps it).
@@ -301,16 +301,19 @@ class LiveService:
     NO_PROCESS_CODES = ('COMPANION_UNREACHABLE', 'NO_GAME_LOADED')
     UNCERTAIN_CODES = ('COMPANION_TIMEOUT', 'COMPANION_DISCONNECTED')
 
-    def _run(self, name, action, kind):
+    # The one refusal for both gates (act kinds and FULL_ONLY_ACTIONS); fnv_conv's CONTROL_DISABLED step says the same.
+    CONTROL_DISABLED_SENTENCE = ('This call needs fnv.engine_control = "full": it changes the running game, or puts '
+                                 'code or files into the game or its mod profile. Set it in the project file.')
+
+    def _run(self, name, action, kind, needs_full=False):
         started = time.monotonic()
         operation_id = str(uuid.uuid4())
         journal = getattr(self, 'journal', None)     # the envelope works even before the journal exists
         recording = journal.recording() if journal is not None else contextlib.nullcontext([])
         made = recording.__enter__()
         try:
-            if kind == 'act' and getattr(self.project.fnv, 'engine_control', 'read') != 'full':
-                raise LiveError('CONTROL_DISABLED', 'Act tools are off for this project: set fnv.engine_control to '
-                                '"full" in the project file to allow changes to the running game')
+            if (kind == 'act' or needs_full) and getattr(self.project.fnv, 'engine_control', 'read') != 'full':
+                raise LiveError('CONTROL_DISABLED', self.CONTROL_DISABLED_SENTENCE)
             data = action()
             changed = kind != 'read' and not (isinstance(data, dict) and data.get('changed') is False)
             return {'ok': True, 'operationId': operation_id, 'operation': name, 'projectId': self.project.project_id,

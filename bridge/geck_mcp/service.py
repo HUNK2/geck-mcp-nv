@@ -152,6 +152,15 @@ def make_transport(project):
     return AutoTransport(project)
 
 
+def _project_zig(project):
+    """The Zig set in the project file (fnv.zig, then GECK_MCP_ZIG), or None. Tools never take a compiler path."""
+    from .fnv_link import LinkError, find_zig
+    try:
+        return find_zig(project)
+    except LinkError:
+        return None
+
+
 class Service:
     def console_readiness(self, expected_plugin_hash):
         from .console import readiness
@@ -168,14 +177,17 @@ class Service:
         return query(Service(self.project, transport=self.transport), kind, intent, target, expected_plugin_hash,
                      request_key, binding, slot)
 
-    def console_setup(self, mode, expected_plugin_hash, request_key, zig=None, build_receipt=None):
+    def console_setup(self, mode, expected_plugin_hash, request_key, build_receipt=None):
         from . import console
         from pathlib import Path
         worker = Service(self.project, transport=self.transport)
         def action():
             if mode == 'preflight': return {**console.preflight(self.project), '_outcome':'unchanged'}
             if mode == 'build':
-                if not zig: raise ValueError('Provide local Zig executable path')
+                zig = _project_zig(self.project)   # the project file's compiler only, never a caller path (B2)
+                if zig is None:
+                    raise BridgeError('ZIG_MISSING', 'Zig 0.14.1 is needed to build the companion: set fnv.zig in '
+                                      'the project file or the GECK_MCP_ZIG environment variable')
                 return {**console.build(self.project, zig, expected_plugin_hash), '_outcome':'built'}
             if mode == 'install':
                 if not build_receipt: raise ValueError('Provide owned build.json path returned by setup build')
@@ -187,7 +199,7 @@ class Service:
                 return {**console.install(self.project, json.loads(path.read_text()), expected_plugin_hash), '_outcome':'installed'}
             raise ValueError('Unsupported console setup mode')
         # install owns its runtime lock internally; outer journal lock has a separate setup namespace.
-        return worker.run('geck_console_setup', dict(mode=mode, hash=expected_plugin_hash, zig=zig, receipt=build_receipt),
+        return worker.run('geck_console_setup', dict(mode=mode, hash=expected_plugin_hash, receipt=build_receipt),
                           action, request_key, modifies=mode == 'install', editor=False, lock_root=self.project.state_dir / 'console/setup-lock')
 
     def console_status(self, operation_id):
@@ -215,10 +227,10 @@ class Service:
         return self._envelope('geck_runtime_readiness', time.monotonic(),
                               lambda: readiness(self.project, profile, expected_plugin_hash, adapter))
 
-    def runtime_preflight(self, profile, zig=None):
+    def runtime_preflight(self, profile):
         from .runtime_companion import preflight
         return self._envelope('geck_runtime_setup_preflight', time.monotonic(),
-                              lambda: preflight(self.project, profile, zig))
+                              lambda: preflight(self.project, profile, _project_zig(self.project)))
 
     def runtime_save_context(self, label):
         from .runtime_companion import set_save_context
@@ -1239,9 +1251,11 @@ class Service:
         from pathlib import Path
 
         def action():
-            src = Path(path).expanduser().resolve(strict=True)
-            if src.suffix.lower() != '.png':
-                raise ValueError('path must be a .png file')
+            from .safe_paths import inside, write_roots
+            # the cutout is written next to the image: only inside the state or project folder (H5)
+            src = inside(path, write_roots(self.project), 'path')
+            if src.suffix.lower() != '.png' or not src.is_file():
+                raise ValueError('path must be an existing .png file')
             return {'cutout': imaging.cutout(src, src.with_name(src.stem + '-cutout.png'),
                                              tolerance=tolerance, chroma_tolerance=chroma_tolerance)}
         return self._envelope('geck_image_cutout', time.monotonic(), action)

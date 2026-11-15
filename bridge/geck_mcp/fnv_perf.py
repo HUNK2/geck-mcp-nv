@@ -23,6 +23,7 @@ from pathlib import Path
 from . import fnv_procmem
 from .fnv_conv import ConvError, verdict
 from .fnv_link import hexs, word
+from .safe_paths import plain_name
 
 kernel32 = fnv_procmem.kernel32
 ntdll = ctypes.WinDLL('ntdll') if fnv_procmem.kernel32 is not None else None     # the server imports off Windows too (N22)
@@ -143,6 +144,8 @@ class ProfileTools:
         return Path(self.live.project.state_dir) / 'fnv' / 'profiles'
 
     def sample(self, seconds=5.0, rate=200, threads='main', name=None, top=25):
+        if name is not None:
+            plain_name(name)        # the saved files are <name>-<stamp>.json/.folded in the profiles folder (H5)
         found = self.live.game.process()
         if not found:
             raise ConvError('NOT_RUNNING', 'Profiling needs the game running.')
@@ -171,13 +174,13 @@ class ProfileTools:
         stamp = time.strftime('%Y%m%d-%H%M%S')
         self.folder.mkdir(parents=True, exist_ok=True)
         base = self.folder / ('%s-%s' % (name or 'profile', stamp))
-        folded = base.with_suffix('.folded')
+        folded = base.parent / (base.name + '.folded')     # with_suffix would cut a name such as my.run
         with folded.open('w', encoding='utf-8') as f:
             for line, count in report.pop('_folded').items():
                 f.write('%s %d\n' % (line, count))
         report.update(seconds=round(took, 2), rate=int(rate), framesRun=frames_run,
                       fps=round(frames_run / took, 1) if frames_run and took else None, folded=str(folded))
-        base.with_suffix('.json').write_text(json.dumps(report, indent=1), encoding='utf-8')
+        (base.parent / (base.name + '.json')).write_text(json.dumps(report, indent=1), encoding='utf-8')
         top_main = (report['threads'][0]['gameFunctions'] or [{}])[0] if report['threads'] else {}
         return verdict('%d samples over %.1f s; on the main thread the game was mostly in %s (%s%%)' % (
             report['samples'], took, top_main.get('function'), top_main.get('percent')),

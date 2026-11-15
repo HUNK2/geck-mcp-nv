@@ -1,7 +1,7 @@
 from pathlib import Path, PureWindowsPath
 import json
 from typing import Literal
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator, model_validator
 
 
 class Record(BaseModel):
@@ -81,6 +81,13 @@ class Project(BaseModel):
             raise ValueError('duplicate configured FormID')
         return self
 
+    # The folder of the project file (set by load; None for a Project built in code). safe_paths reads it.
+    _project_dir: Path | None = PrivateAttr(default=None)
+
+    @property
+    def project_dir(self):
+        return self._project_dir
+
     @property
     def lock_root(self):
         """Everything sharing this path shares one bridge lock and one recovery barrier."""
@@ -136,7 +143,9 @@ class Project(BaseModel):
                     fnv[key] = resolve(fnv[key])
             fnv['crash_dirs'] = [resolve(v) for v in fnv.get('crash_dirs', [])]
             data['fnv'] = fnv
-        return cls.model_validate(data)
+        project = cls.model_validate(data)
+        project._project_dir = path.parent
+        return project
 
 
 def winpath(path):

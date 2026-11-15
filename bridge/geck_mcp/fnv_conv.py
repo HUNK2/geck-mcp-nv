@@ -63,7 +63,8 @@ NEXT_STEPS = {
     'COMPANION_NOT_INSTALLED': 'The engine companion is not installed: quit the game, call fnv_companion_install, '
                                'then fnv_launch.',
     'ZIG_MISSING': 'Zig is not installed: call fnv_setup_check and follow the fix for Zig.',
-    'CONTROL_DISABLED': 'Engine control is not full: set fnv.engine_control to "full" in the project file.',
+    'CONTROL_DISABLED': 'This call needs fnv.engine_control = "full": it changes the running game, or puts code or '
+                        'files into the game or its mod profile. Set it in the project file.',
     'ENGINE_MAP_UNAVAILABLE': 'The engine map is missing: call fnv_setup_check and follow the fix for the engine map.',
     'NOT_CONFIGURED': 'Set fnv.mo2_root and fnv.mo2_profile in the project file; fnv_setup_check lists what else is missing.',
     'REF_NOT_FOUND': 'No such reference: check the spelling, or find it with fnv_record_find or fnv_refs_near.',

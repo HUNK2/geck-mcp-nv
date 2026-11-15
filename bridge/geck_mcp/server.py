@@ -180,11 +180,11 @@ def make_server(project, service=None):
 
     @server.tool(annotations=edit)
     async def geck_console_setup(mode: Literal['preflight', 'build', 'install'], expected_plugin_hash: Hash,
-                                 request_key: Key, zig: str | None = None, build_receipt: str | None = None) -> Result:
+                                 request_key: Key, build_receipt: str | None = None) -> Result:
         """Supported explicit opt-in companion setup. Preflight previews paths/restrictions without install.
-        Build uses user-provided local Zig 0.14.1, no downloads. Install accepts only an owned build receipt,
+        Build uses the local Zig 0.14.1 set in the project file (fnv.zig, else GECK_MCP_ZIG), no downloads. Install accepts only an owned build receipt,
         requires FNV normally closed, preserves backups, refuses modified/foreign DLLs; restart required."""
-        return await invoke(service.console_setup, mode, expected_plugin_hash, request_key, zig, build_receipt)
+        return await invoke(service.console_setup, mode, expected_plugin_hash, request_key, build_receipt)
 
     @server.tool(annotations=observe)
     async def geck_console_readiness(expected_plugin_hash: Hash) -> Result:
@@ -252,10 +252,10 @@ def make_server(project, service=None):
         return await invoke(service.runtime_readiness, profile.model_dump(), expected_plugin_hash, adapter)
 
     @server.tool(annotations=observe)
-    async def geck_runtime_setup_preflight(profile: RuntimeProfile, zig_path: str | None = None) -> Result:
+    async def geck_runtime_setup_preflight(profile: RuntimeProfile) -> Result:
         """Preview optional companion prerequisites, exact paths/backups and restart/verification steps.
         Does not download compilers, build or install DLLs. Setup requires explicit CLI build/install."""
-        return await invoke(service.runtime_preflight, profile.model_dump(), zig_path)
+        return await invoke(service.runtime_preflight, profile.model_dump())
 
     @server.tool(annotations=ui)
     async def geck_runtime_save_context(label: Annotated[str, Field(min_length=1, max_length=100)]) -> Result:

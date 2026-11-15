@@ -22,6 +22,7 @@ from pathlib import Path
 
 from .fnv_conv import ConvError, verdict
 from .fnv_link import hexs, word
+from .safe_paths import check_includes, no_unc
 
 SDK_SOURCE = Path(__file__).resolve().parents[1] / 'native' / 'sdk'
 C_BASIC = {
@@ -54,6 +55,16 @@ def c_type(text, enums=()):
     if t.startswith('enum ') or t in enums:
         return 'int'
     return None
+
+
+def source_path(source):
+    """The .c file a build's source argument names, or None when the argument is C text. A one-line argument that
+    ends in .c is a path: a network path is refused before anything touches it (H5)."""
+    text = source.strip()
+    if len(source) >= 400 or '\n' in text or not text.endswith('.c'):
+        return None
+    path = no_unc(text, 'source')
+    return path if path.is_file() else None
 
 
 class NativeTools:
@@ -194,8 +205,9 @@ class NativeTools:
         name = c_name(name)
         src_dir = self.modules / 'src'
         src_dir.mkdir(parents=True, exist_ok=True)
-        path = Path(source) if len(source) < 400 and source.strip().endswith('.c') and Path(source).is_file() else None
+        path = source_path(source)
         text = path.read_text(encoding='utf-8') if path else source
+        check_includes(text)          # no #include of a file outside the include folders (H5)
         target = src_dir / ('%s.c' % name)
         if not path:
             target.write_text(text, encoding='utf-8')

@@ -8,7 +8,14 @@ carries many actions. This keeps the tool list short. The helpers are in `geck_m
 1. **One tool per domain, one `action` argument.** Read actions never change anything. Act actions change the
    running game, need `fnv.engine_control` set to `full`, and are journaled. Control actions change files or start
    and stop the game. The tool's kind in `FNV_LIVE_TOOLS` is the strongest kind of its actions. Pass the kind of
-   the called action to `invoke(name, fn, kind)`.
+   the called action to `invoke(name, fn, kind)`, and pass `action=` when the tool has one.
+   **What `read` allows (one rule):** anything that puts agent-chosen code or files into the game or its mod profile
+   needs `full`, whatever its kind. Those control actions are listed in `FULL_ONLY_ACTIONS`
+   (`fnv_live_tools.py`); every other control tool has a line in `READ_LEVEL_CONTROL` saying why it may run under
+   `read`, and `tests/test_stab_gate.py` fails for a control tool in neither table. `read` allows looking at the
+   game, starting and stopping the dev game, installing the companion, and writing into the bridge state folder.
+   `full` allows changing the game and running code in it; it is code execution as the Windows user
+   (`fnv_native` compiles and loads C into the game).
 2. **Errors say what to do next.** An error has a code and a plain message. When the code is known, the message
    ends with "Next: ...". An unknown action lists the valid actions.
 3. **Answer first.** A result starts with `verdict` (one short sentence) and `reason`. The evidence follows.

@@ -21,9 +21,11 @@ import time
 import zipfile
 from pathlib import Path
 
+from . import config
 from .fnv_args import capped
 from .fnv_link import hexs, quoted, value_of, word
 from .fnv_live import LiveError
+from .safe_paths import inside, plain_name, read_roots
 
 MODEL_LOADER = 0x011C3B3C
 CLEAR_UNUSED_MODELS = 0x00448620
@@ -311,7 +313,7 @@ class AssetTools:
 
     def watch(self, folder):
         """One check of a folder: reload the models and textures whose file time changed since the last check."""
-        root = Path(folder)
+        root = inside(folder, read_roots(self.live.project), 'path')     # a mod folder of the dev profile (H5)
         if not root.is_dir():
             raise ValueError('folder is a mod folder with meshes and textures')
         times = {}
@@ -1477,6 +1479,21 @@ class PlaceTools:
         raise ValueError('action is at, array, nudge, rotate, scale, snap, check, list or remove')
 
 
+def _new_package_folder(packages, name):
+    """A folder for a new package under packages that does not exist yet: name, else name-<stamp>, name-<stamp>-2..."""
+    packages.mkdir(parents=True, exist_ok=True)
+
+    def taken(path):
+        return path.exists() or path.parent.joinpath(path.name + '.zip').exists()
+    out = config.contained(packages, name)
+    if taken(out):
+        base = '%s-%s' % (name, time.strftime('%Y%m%d-%H%M%S'))
+        out, n = config.contained(packages, base), 2
+        while taken(out):
+            out, n = config.contained(packages, '%s-%d' % (base, n)), n + 1
+    return out
+
+
 class AuthorTools:
     """Turn the session's live work into the plugin's source spec, check a plugin, scaffold, package."""
 
@@ -1610,6 +1627,14 @@ class AuthorTools:
                         'or as EditorIDs in the masters; change them to suit.'}
 
     def package(self, plugin, name=None):
+        if name is not None:
+            name = plain_name(name)
+        else:
+            try:
+                name = plain_name(Path(plugin).stem, 'the plugin name')
+            except ValueError:
+                raise ValueError('The plugin name %r is not a plain folder name; pass name (letters, digits, space, '
+                                 '_ - .) for the package folder' % Path(plugin).stem) from None
         if self.records is None:
             raise LiveError('NO_INDEX', 'Packaging needs the data tools')
         report = self.records.asset_check(plugin)
@@ -1618,9 +1643,7 @@ class AuthorTools:
         target = next((e for e in entries if e['name'].lower() == plugin.lower()), None)
         if not target or not target.get('path'):
             raise LiveError('PLUGIN_NOT_FOUND', '%s is not in the load order' % plugin)
-        out = Path(self.live.project.state_dir) / 'fnv' / 'packages' / (name or Path(plugin).stem)
-        if out.exists():
-            shutil.rmtree(out)
+        out = _new_package_folder(Path(self.live.project.state_dir) / 'fnv' / 'packages', name)
         (out / 'Data').mkdir(parents=True)
         shutil.copy2(target['path'], out / 'Data' / target['name'])
         mod_root = Path(target['path']).parent
@@ -1642,7 +1665,7 @@ class AuthorTools:
                 copied.append(rel)
         (out / 'README.txt').write_text('%s\n\nInstall: copy Data into the game folder or install the archive with a '
                                         'mod manager.\n' % target['name'], encoding='utf-8')
-        archive = out.with_suffix('.zip')
+        archive = out.parent / (out.name + '.zip')   # with_suffix would cut a name such as my.mod
         with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as z:
             for p in out.rglob('*'):
                 if p.is_file():
@@ -1650,7 +1673,8 @@ class AuthorTools:
         return {'folder': str(out), 'archive': str(archive), 'plugin': target['name'], 'looseFiles': copied,
                 'skipped': skipped, 'missing': report.get('missing'), 'ok': not report.get('missingCount'),
                 'note': 'Only files the plugin names, found loose in its own mod folder, are packaged (never files of '
-                        'the game or other mods). The package stays in the bridge state folder.'}
+                        'the game or other mods). The package stays in the bridge state folder; an existing package is '
+                        'never replaced: a new one with the same name gets a dated folder.'}
 
     def run(self, action, **kw):
         if action == 'export':

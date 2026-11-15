@@ -34,6 +34,7 @@ from . import fnv_crash, fnv_link
 from .fnv_inject import DETERMINISTIC_FPS, DETERMINISTIC_SEED, shared_time
 from .fnv_game import GameError, game_processes
 from .fnv_link import LinkError
+from .safe_paths import inside, no_unc, read_roots
 
 
 SCENARIO_KEYS = {'name', 'start', 'plugins', 'plugin', 'steps', 'setup', 'teardown', 'restart',
@@ -313,13 +314,14 @@ class ScenarioRunner:
             source = '<inline>'
         else:
             if text is None:
-                p = Path(path)
+                p = no_unc(path, 'path')
                 if not p.is_file():
                     tests = getattr(self.live.project.fnv, 'tests_dir', None)
                     if tests and (Path(tests) / path).is_file():
                         p = Path(tests) / path
                     else:
                         raise ScenarioError('NOT_FOUND', 'No scenario file %s' % path)
+                p = inside(p, read_roots(self.live.project), 'path')     # H5
                 text = p.read_text(encoding='utf-8')
                 source = str(p)
             else:

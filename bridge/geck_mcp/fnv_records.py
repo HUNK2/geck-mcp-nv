@@ -469,6 +469,13 @@ class RecordsTools:
     def profile_set(self, mods=None, plugins=None, game=None, dry_run=False):
         """mods / plugins: {name: true|false}. Refuses while the game runs. The profile's lists are read and written
         under the profile lock, so another server's edit is never lost (S2.4)."""
+        for what, names in (('mod', mods), ('plugin', plugins)):
+            for name in names or {}:
+                # a newline would add lines to the profile's lists (X10); a slash would leave the mods folder (H5)
+                if not name.strip(' .') or any(c in name for c in '/\\') or any(ord(c) < 32 or ord(c) == 127
+                                                                                for c in name):
+                    raise ValueError('%s name %r: no control characters, no / or \\, not only dots and spaces'
+                                     % (what, name))
         fnv = self.data.project.fnv
         if not fnv or not fnv.mo2_root or not fnv.mo2_profile:
             raise DataError('NO_MO2_PROFILE', 'Set fnv.mo2_root and fnv.mo2_profile in the project file')

@@ -25,6 +25,7 @@ from pathlib import Path
 
 from .fnv_link import word
 from .fnv_live import LiveError
+from .safe_paths import inside, write_roots
 
 SCENE_GRAPH = 0x011DEB7C
 PLAYER = 0x011DEA3C
@@ -795,6 +796,8 @@ class EyesTools:
     @_locked
     def photo(self, action, ref=None, angles=None, size=960, hide_hud=True, label=False, frames=None, every=1,
               baseline=None, name=None, distance=None):
+        if action == 'compare' and baseline:
+            baseline = str(inside(baseline, write_roots(self.live.project), 'baseline'))   # H5
         self.live.in_game()
         self._no_menu()
         if action == 'view':

@@ -17,6 +17,7 @@ from pathlib import Path
 from . import fnv_link
 from .fnv_link import EngineLink, LinkError
 from .fnv_state import atomic_write, read_json, update_json
+from .safe_paths import no_unc
 
 GAME_EXE = 'FalloutNV.exe'
 MENU_START = 1013     # StartMenu: main menu, and the pause menu in game
@@ -295,6 +296,20 @@ class Game:
             found = running[0] if running else None
         self._proc_cache = (time.monotonic(), found)
         return found
+
+    # FILETIME (100 ns since 1601) of the Unix epoch, and how much earlier than launchedAt a process may have started
+    # and still be the one fnv_launch started (launchedAt is taken just before the start).
+    FILETIME_UNIX_EPOCH = 116444736000000000
+    OWN_START_SLACK_SECONDS = 5
+
+    def owns(self, proc):
+        """Did fnv_launch start this (pid, start FILETIME)? The session's pid must match and the process must not have
+        started before launchedAt (less a few seconds): a pid Windows reused for another FalloutNV.exe does not count."""
+        session = self.session()
+        if not proc or session.get('pid') != proc[0] or proc[1] is None or not session.get('launchedAt'):
+            return False
+        started = (proc[1] - self.FILETIME_UNIX_EPOCH) / 10_000_000
+        return started >= float(session['launchedAt']) - self.OWN_START_SLACK_SECONDS
 
     YOUNG_SECONDS = 5
 
@@ -708,6 +723,9 @@ class Game:
         if not proc:
             return {'wasRunning': False}
         pid = proc[0]
+        if not self.owns(proc) and getattr(self.project.fnv, 'engine_control', 'read') != 'full':
+            raise GameError('NOT_OUR_GAME', 'This FalloutNV.exe was not started by fnv_launch, so it may be your own '
+                            'game. Close it yourself, or set fnv.engine_control to "full".', {'pid': pid})
         steps = []
         self.log_quit(pid, 'quit (timeout %s, force %s)' % (timeout, force))
         if not self.ping().get('error'):
@@ -800,12 +818,14 @@ class Game:
 
     # ------------------------------------------------------------ install / logs / saves
     def install_plugin(self, plugin_path, mod_name=None):
+        source = no_unc(plugin_path, 'plugin_path')      # a network path is refused before anything touches it (H5)
+        mod = mod_name or source.stem
+        if '..' in mod or not mod.strip(' .'):
+            raise ValueError('mod_name %r is not a folder name: no "..", and not only dots and spaces' % mod)
         if self.process(fresh=True):
             raise GameError('GAME_RUNNING', 'Quit the game before installing (plugins load at startup)')
-        source = Path(plugin_path)
         if not source.is_file() or source.suffix.lower() not in ('.esp', '.esm'):
             raise GameError('BAD_PLUGIN', 'Not a plugin file: %s' % source)
-        mod = mod_name or source.stem
         if not fnv_link.SAFE_NAME.match(mod):
             raise GameError('BAD_NAME', 'Mod name may use letters, digits, space and _ . \' - only')
         target = self.mo2_root / 'mods' / mod / source.name

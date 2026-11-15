@@ -1,6 +1,7 @@
 """MCP registration of the live fnv_* tools: game control and tests (milestone 4), live inspection
 (milestone 5) and full control (milestone 6). Kinds: read (changes nothing), act (changes the running game,
-journaled, refused unless fnv.engine_control = "full"), control (starts/stops the game or installs files)."""
+journaled, refused unless fnv.engine_control = "full"), control (starts/stops the game or installs files; the
+control calls in FULL_ONLY_ACTIONS put code or files into the game and need "full" too)."""
 import time
 import uuid
 from typing import Annotated, Any, Literal
@@ -26,6 +27,7 @@ from .fnv_coverage import CoverageTools
 from .fnv_inspect import AnimTools, AudioTools, PhysicsTools, SystemsTools
 from .fnv_crawl import CrawlTools
 from .fnv_suite import BisectTools, SelfTest
+from .safe_paths import inside, read_roots
 
 # Tool -> the actions that change the running game (PLAN-3 decision D2, bug T1): anything that writes game memory or
 # code, changes behaviour, or leaves something installed (a hook, a probe, a sampler, a subscription, a held gate)
@@ -76,6 +78,41 @@ def gated_kind(name, action, kind):
     if rule == '*' or action is None or action in rule:
         return 'act'
     return kind
+
+
+# The one rule for what engine_control = "read" allows (release plan Task 1.2, audit B2): anything that puts
+# agent-chosen code or files into the game or its mod profile needs "full", whatever the call's kind. Same shape as
+# MUTATING_ACTIONS ('*' = every call).
+FULL_ONLY_ACTIONS = {
+    'fnv_plugin_build': {'build', 'install'},   # agent C becomes a DLL in the game
+    'fnv_install': '*',                         # a plugin file of the caller's choice into the dev profile
+    'fnv_profile_set': {'apply'},               # which mods and plugins load (dry_run stays a read)
+}
+
+# Every control tool that neither table covers in full, and why it may run under "read".
+READ_LEVEL_CONTROL = {
+    'fnv_launch': 'starts the dev game through the MO2 dev profile; puts nothing new into it',
+    'fnv_quit': 'stops the game; under read only the game fnv_launch started (Game.owns)',
+    'fnv_restart': 'quit (same rule as fnv_quit) and launch again',
+    'fnv_companion_install': "installs the product's own engine companion, not agent code",
+    'fnv_scripts_compile': "compiles the project spec's scripts into the bridge's script cache",
+    'fnv_name_export': 'writes the runtime evidence the bridge recorded into the fnvsym traces folder',
+    'fnv_author': 'export, check, scaffold and package write only into the bridge state folder',
+    'fnv_plugin_build': 'scaffold and log only: a starting source in the state folder, or the plugin log',
+    'fnv_profile_set': 'dry_run only: shows the changes without writing',
+    'fnv_window': 'status only; the actions that write game memory are in MUTATING_ACTIONS',
+    'fnv_warnings': 'reading the captured warnings; capture is in MUTATING_ACTIONS',
+    'fnv_session': 'status only; start and end are in MUTATING_ACTIONS',
+    'fnv_replay': 'list only; record, stop and play are in MUTATING_ACTIONS',
+}
+
+
+def needs_full(name, action):
+    """True when FULL_ONLY_ACTIONS lists the tool's action (or the whole tool); a listed tool with no action counts."""
+    rule = FULL_ONLY_ACTIONS.get(name)
+    if rule is None:
+        return False
+    return rule == '*' or action is None or action in rule
 
 
 FNV_LIVE_TOOLS = {
@@ -364,9 +401,10 @@ def register(server, project, annotations, result_type, maintain=True):
         """Run fn in live.run's envelope on a worker thread. shield: never abandon the call on cancel (default: act
         calls only). attach(): more content items for the reply (an image), built after the call."""
         kind = gated_kind(name, action, kind)      # MUTATING_ACTIONS decides, not the call site (T1)
+        full = needs_full(name, action)            # FULL_ONLY_ACTIONS: code or files into the game (B2)
         shield = kind != 'read' if shield is None else shield
         with anyio.CancelScope(shield=shield):
-            result = await anyio.to_thread.run_sync(partial(live.run, name, fn, kind),
+            result = await anyio.to_thread.run_sync(partial(live.run, name, fn, kind, full),
                                                     abandon_on_cancel=kind == 'read' and not shield)
         content = [TextContent(type='text', text=json.dumps(result, default=str))] + (list(attach()) if attach else [])
         return CallToolResult(content=content, structured_content=json.loads(json.dumps(result, default=str)),
@@ -388,7 +426,7 @@ def register(server, project, annotations, result_type, maintain=True):
     @server.tool(annotations=control)
     async def fnv_launch(start: Start = 'menu',
                          timeout_seconds: Annotated[int, Field(ge=20, le=600)] = 240) -> result_type:
-        """Start Fallout: New Vegas through the MO2 dev profile (never the user's own profile or saves) and wait
+        """Start Fallout: New Vegas through the MO2 profile named in fnv.mo2_profile (and its saves) and wait
         until it is ready: at the main menu, in a save (loaded by the companion, no clicks), or in a cell via
         coc. Refuses when the game already runs. Returns a timeline of the startup."""
         return await invoke('fnv_launch', lambda: live.game.launch(start, timeout_seconds), 'control')
@@ -850,7 +888,8 @@ def register(server, project, annotations, result_type, maintain=True):
         """Enable or disable MO2 mods ({"Mod Name": true}) and plugins ({"Mod.esp": false}) in the dev profile.
         Refuses while the game runs. Backs up modlist.txt, plugins.txt and loadorder.txt first and reports plugins
         whose masters are no longer active. dry_run shows the changes without writing."""
-        return await invoke('fnv_profile_set', lambda: records.profile_set(mods, plugins, live.game, dry_run), 'control')
+        return await invoke('fnv_profile_set', lambda: records.profile_set(mods, plugins, live.game, dry_run),
+                            'control', action='dry_run' if dry_run else 'apply')
 
     @server.tool(annotations=read)
     async def fnv_script_lint(source: Annotated[str, Field(min_length=1, max_length=200000)],
@@ -1510,7 +1549,7 @@ def register(server, project, annotations, result_type, maintain=True):
                 return atlas.action(name, kind, run, statuses, exclusive, include_console_machinery, limit)
             if not path:
                 raise ValueError('import_frida needs path')
-            return atlas.import_frida(path)
+            return atlas.import_frida(str(inside(path, read_roots(live.project), 'path')))     # H5
         return await invoke('fnv_atlas', action_fn, 'read', action=action)
 
     @server.tool(annotations=control)
@@ -2067,7 +2106,7 @@ def register(server, project, annotations, result_type, maintain=True):
         install: as its own MO2 mod in the dev profile (game closed); fnv_restart loads it. log: its log file."""
         return await invoke('fnv_plugin_build', lambda: plugin_tools.run(action, name=name, source=source,
                                                                          hooks=hooks),
-                            'read' if action == 'log' else 'control')
+                            'read' if action == 'log' else 'control', action=action)
 
     @server.tool(annotations=read)
     async def fnv_profile(action: Literal['sample', 'diff'] = 'sample',
