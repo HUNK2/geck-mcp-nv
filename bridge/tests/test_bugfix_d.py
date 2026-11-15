@@ -246,21 +246,6 @@ class D7Refresh(unittest.TestCase):
         self.assertEqual([l for l, _ in lines if l == 'Enable'], ['Enable', 'Enable'])
 
 
-class D9(unittest.TestCase):
-    def test_actor_photo_refuses_before_touching_anything_off_macos(self):
-        from geck_mcp import photo
-        from geck_mcp.transport import BridgeError
-        original = photo.platform_supported
-        photo.platform_supported = lambda: False
-        try:
-            studio = photo.PhotoStudio.__new__(photo.PhotoStudio)       # any use of self would raise AttributeError
-            with self.assertRaises(BridgeError) as cm:
-                studio.photo('Sunny')
-            self.assertEqual(cm.exception.code, 'UNSUPPORTED_PLATFORM')
-        finally:
-            photo.platform_supported = original
-
-
 class D14(unittest.TestCase):
     def test_sweep_validates_steps_and_index(self):
         from geck_mcp.fnv_inspect import SystemsTools

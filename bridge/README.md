@@ -7,18 +7,16 @@ The bridge is the original part of GECK MCP for New Vegas. It has two layers:
    `@EditorID` reference against your own masters, and installs it with backups.
 2. **GECK control.** A small 32-bit helper (`Probe.Mcp.exe`) runs next to GECK and drives it mostly through
    Windows messages; only the photo camera uses real input. The bridge uses it to load plugins, verify cells
-   against the build, set models, save, **compile scripts with GECK's own compiler**, and take actor photos.
+   against the build, set models, save, **compile scripts with GECK's own compiler**, and capture the Render Window.
 
 ## Tested where?
 
 | Launcher (`"launcher"` in the profile) | Platform | Status |
 | --- | --- | --- |
 | `native` | Windows | **Tested** on Windows 11 with the vanilla Steam GECK: status, build, install, plugin load and reload, cell verify, Render Window capture, preview, script compile, crash recovery |
-| `wine` | Linux (Wine/Proton) | **Untested.** The helper must run in the same prefix as GECK |
-| `crossover` | macOS + CrossOver | Tested on Mac via CrossOver (not a supported platform) |
 
-Also untested: GECK Extender, and non-English GECK. The unit tests (plus 6 parser tests) pass on Linux and Windows 11;
-CI runs them on Ubuntu, macOS and Windows.
+Windows only. The CrossOver (macOS) and Wine (Linux) launchers were removed; `native` is the only launcher and the
+default. Also untested: GECK Extender, and non-English GECK. CI runs the tests on Windows.
 
 ## Setup
 
@@ -67,7 +65,7 @@ python3 -m venv .venv
 | Records | `geck_records_find`, `geck_record_read`, `geck_record_set_model`, `geck_preview_open`, `geck_preview_close` |
 | Save & check | `geck_plugin_save`, `geck_plugin_validate` |
 | Recovery | `geck_operation_get`, `geck_recovery_acknowledge` |
-| Pictures | `geck_render_capture` (Windows and macOS), `geck_image_cutout`, `geck_actor_photo` (macOS only for now) |
+| Pictures | `geck_render_capture`, `geck_image_cutout` |
 
 Tools that act on the running GECK take an optional `editor_session`; leave it out to use the GECK that is running
 (see [docs/MCP-QUICKSTART.md](docs/MCP-QUICKSTART.md)). After changing bridge code, restart your MCP client.
@@ -78,7 +76,7 @@ see [runtime profiles, identity, capture, assertions and lifecycle](docs/MCP-QUI
 The same jobs are available from the command line: `build_plugin.py` (`--project` uses the profile's state and build
 folders), `install_plugin.py`, `live_load.py` (`--if-needed`), `cell_verify.py`, `compile_scripts.py` (build, then load in
 GECK, compile every script, save and cache the compiled bytecode), `recover.py` (list or clear recovery barriers),
-`photo_cli.py`, `sprite_flipbook.py` (an animated sprite billboard NIF from PNG frames; `--collision-material organic`
+`sprite_flipbook.py` (an animated sprite billboard NIF from PNG frames; `--collision-material organic`
 sets the sound when it is knocked about) and `tools/creature_skeleton.py` (a creature's own skeleton and animations;
 `--project` finds the game Data folder). Both use PyFFI from the lock file and write the same bytes for the same input.
 
@@ -117,12 +115,12 @@ or a quest lookup error. EditorIDs may also be unavailable in the vanilla game c
 - Control IDs and menu captions are from the English vanilla GECK.
 - `Probe.cs` still contains early experimental operations (`cell.load`, `window.layout.place`, `object.place`) that
   only accept the author's test objects and use real mouse input. The MCP server does not use them.
-- Actor photos use macOS `screencapture`. `geck_render_capture` also works on Windows: PrintWindow at the size GECK
+- `geck_render_capture` uses PrintWindow at the size GECK
   renders (works when other windows cover it). PrintWindow sometimes returns only the grey window background, so a
   blank result is retried with a repaint request (about 12 s), then a DPI-aware screen copy is tried if nothing
   covers the Render Window. Look at the PNG: the tool only checks that it is not one flat colour.
 
-Docs: [docs/MCP-QUICKSTART.md](docs/MCP-QUICKSTART.md) · [docs/PHOTO.md](docs/PHOTO.md) · [docs/KNOWN-ISSUES.md](docs/KNOWN-ISSUES.md)
+Docs: [docs/MCP-QUICKSTART.md](docs/MCP-QUICKSTART.md) · [docs/KNOWN-ISSUES.md](docs/KNOWN-ISSUES.md)
 
 ## 0.4.0 candidate compile recovery
 

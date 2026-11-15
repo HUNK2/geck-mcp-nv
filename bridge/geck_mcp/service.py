@@ -50,11 +50,11 @@ def process_lock(root, wait=None):
 
 
 CAPABILITIES = {
-    'toolCount': 44,
+    'toolCount': 43,
     'fnv': {'toolCount': len(FNV_TOOLS), 'tools': FNV_TOOLS,
             'scope': 'read-only offline engine knowledge (decomp + fnvsym proofs) and crash logs; game build 1.4.0.525'},
     'version': __version__, 'game': 'Fallout New Vegas', 'recordTypes': ['STAT'],
-    'transport': 'stdio', 'editorAdapter': '32-bit Win32 controls; native Windows or configured Wine/CrossOver',
+    'transport': 'stdio', 'editorAdapter': '32-bit Win32 controls; native Windows',
     'helperTransport': 'persistent worker (Probe.Mcp.exe serve) with automatic one-shot fallback',
     'recordIdentity': 'configured plugin + persisted STAT FormID + exact EditorID',
     'editorSession': 'optional editor_session argument (alias session_id); omitted = the running GECK session, '
@@ -106,9 +106,6 @@ CAPABILITIES = {
         'geck_plugin_inspect': {'effect': 'disk read of installed or built plugin'},
         'geck_master_lookup': {'effect': 'search master index and project records'},
         'geck_cell_verify': {'effect': 'compare Cell View with build receipt; optional camera framing'},
-        'geck_actor_photo': {'effect': 'build/install/load the throwaway GeckPhotoStudio.esp, frame an NPC_/CREA, '
-                             'capture PNG + transparent cut-out; resumable (stage loading -> done)',
-                             'never': 'saves or edits the user plugins; discards unsaved edits'},
         'geck_render_capture': {'effect': 'capture of the current Render Window (macOS: CGWindowID; '
                                 'Windows: PrintWindow); no clicks; refuses a blank or black image'},
         'geck_image_cutout': {'effect': 'write a transparent PNG of the subject in an existing capture'},
@@ -628,23 +625,10 @@ class Service:
         state = self.call('status', session=session)
         if session and state['sessionId'] != session:
             raise BridgeError('STALE_SESSION', 'Editor restarted; attach again')
-        # Wine may report C: rather than Z:. Compare through the configured bottle.
-        actual = state['executable']
-        if self.project.launcher == 'native':
-            from pathlib import PureWindowsPath
-            same = (PureWindowsPath(actual).as_posix().lower()
-                    == PureWindowsPath(self.project.game_root / 'GECK.exe').as_posix().lower())
-            if not same:
-                raise BridgeError('WRONG_EDITOR', 'Running editor is outside configured game root', state)
-            actual_path = None
-        elif actual[:3].lower() == 'c:\\':
-            actual_path = self.project.bottle / 'drive_c' / actual[3:].replace('\\', '/')
-        elif actual[:3].lower() == 'z:\\':
-            from pathlib import Path
-            actual_path = Path('/' + actual[3:].replace('\\', '/'))
-        else:
-            raise BridgeError('WRONG_EDITOR', 'Unsupported editor executable path')
-        if actual_path is not None and str(actual_path.resolve()).lower() != str((self.project.game_root / 'GECK.exe').resolve()).lower():
+        from pathlib import PureWindowsPath
+        same = (PureWindowsPath(state['executable']).as_posix().lower()
+                == PureWindowsPath(self.project.game_root / 'GECK.exe').as_posix().lower())
+        if not same:
             raise BridgeError('WRONG_EDITOR', 'Running editor is outside configured game root', state)
         if require_plugin and state['editorTitle'].rstrip('*') != f'Garden of Eden Creation Kit - [{self.project.plugin}]':
             raise BridgeError('WRONG_PLUGIN', 'Load the configured active plugin before editing', state)
@@ -1162,13 +1146,6 @@ class Service:
         return self.run('geck_recovery_acknowledge', dict(operation_id=operation_id, session=session,
                         expected_hash=expected_hash, note=note), action)
 
-    # -- Photo workflow (geck_mcp/photo.py, geck_mcp/imaging.py) -------------------------------
-    def photo_studio(self):
-        if getattr(self, '_photo', None) is None:
-            from .photo import PhotoStudio
-            self._photo = PhotoStudio(self.project, lambda project: Service(project))
-        return self._photo
-
     def _envelope(self, name, started, fn):
         from .imaging import ImagingError
         try:
@@ -1193,16 +1170,8 @@ class Service:
                 'projectId': self.project.project_id, 'outcome': outcome, 'data': data, 'error': error,
                 'elapsedMs': round((time.monotonic() - started) * 1000)}
 
-    def actor_photo(self, subject, rotation=180, pitch=None, fill=0.86, lighting='auto', render_size=None):
-        from .photo import DEFAULT_PITCH
-        started = time.monotonic()
-        return self._envelope('geck_actor_photo', started, lambda: self.photo_studio().photo(
-            subject, rotation=rotation, pitch=DEFAULT_PITCH if pitch is None else pitch, fill=fill,
-            lighting=lighting, render_size=render_size))
-
     def render_capture(self, cutout=False):
         from . import imaging
-        import os
 
         def action_windows():
             from . import wincapture
@@ -1228,23 +1197,7 @@ class Service:
                 out['cutout'] = imaging.cutout(shot['path'], folder / ('render-%s-cutout.png' % stamp))
             return out
 
-        def action():
-            from .photo import MAC_TITLE_BAR_POINTS
-            window = imaging.render_window()
-            folder = self.project.state_dir.parent / 'photos'
-            stamp = time.strftime('%Y%m%d-%H%M%S')
-            raw = imaging.capture_window(window['id'], folder / ('render-%s-raw.png' % stamp))
-            _, Image = imaging._np()
-            image = Image.open(raw)
-            top = int(round(MAC_TITLE_BAR_POINTS * image.width / float(window['bounds']['Width'])))
-            path = folder / ('render-%s.png' % stamp)
-            image.crop((0, top, image.width, image.height)).convert('RGB').save(path)
-            raw.unlink()
-            out = {'photo': str(path), 'size': [image.width, image.height - top], 'window': window['title']}
-            if cutout:
-                out['cutout'] = imaging.cutout(path, folder / ('render-%s-cutout.png' % stamp))
-            return out
-        return self._envelope('geck_render_capture', time.monotonic(), action_windows if os.name == 'nt' else action)
+        return self._envelope('geck_render_capture', time.monotonic(), action_windows)
 
     def image_cutout(self, path, tolerance=30, chroma_tolerance=22):
         from . import imaging

@@ -9,7 +9,6 @@ class BridgeError(RuntimeError):
         self.code, self.evidence, self.uncertain = code, evidence, uncertain
 
 
-from .config import winpath  # noqa: F401  (re-exported for older imports)
 
 
 class Transport:

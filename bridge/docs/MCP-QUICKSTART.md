@@ -1,8 +1,8 @@
 # GECK MCP — local static-record prototype
 
-> Actor photos (macOS only for now): [PHOTO.md](PHOTO.md). Open problems: [KNOWN-ISSUES.md](KNOWN-ISSUES.md).
+> Open problems: [KNOWN-ISSUES.md](KNOWN-ISSUES.md).
 
-This is a local stdio MCP server for the 32-bit Fallout New Vegas GECK. It was developed under CrossOver on macOS and is tested end to end on Windows 11 (`launcher: native`); the Linux (`launcher: wine`) path is untested. It loads configured plugins with exactly FalloutNV.esm as master and edits configured existing STAT model fields. Record creation, cell placement, animation checks, and gameplay checks remain unsupported.
+This is a local stdio MCP server for the 32-bit Fallout New Vegas GECK. It is Windows only and tested end to end on Windows 11 (`launcher: native`, the only launcher). It loads configured plugins with exactly FalloutNV.esm as master and edits configured existing STAT model fields. Record creation, cell placement, animation checks, and gameplay checks remain unsupported.
 
 ## Runtime diagnostics (29 bridge tools)
 
@@ -15,7 +15,6 @@ performs gameplay actions. It never drives the screen, runs gameplay mutations,
 attaches to GECK or assumes xNVSE is available. Installed extender files are not
 runtime capability evidence. Windows vanilla item-count/delta/error capture passed
 on 18 October 2026; valid quest-variable/reference probes have offline coverage only.
-Wine/CrossOver runtime behavior is unverified.
 
 Use a regular project configuration for game/state paths. Runtime probes have their
 own strict version-1 profile, separate from the project's STAT records. Start from
@@ -116,7 +115,7 @@ review those before sharing. Never commit raw player logs, saves or private prof
 
 ## Helper transport
 
-By default the server keeps one persistent helper (`Probe.Mcp.exe serve`) and falls back to one Wine launch per call if the handshake fails. Set `"transport": "oneshot"` in the project JSON or `GECK_MCP_TRANSPORT=oneshot` to force the legacy path. `geck_status` reports the active mode under `bridgeTransport`. See [M1-FAST-BRIDGE.md](M1-FAST-BRIDGE.md).
+By default the server keeps one persistent helper (`Probe.Mcp.exe serve`) and falls back to one helper launch per call if the handshake fails. Set `"transport": "oneshot"` in the project JSON or `GECK_MCP_TRANSPORT=oneshot` to force the legacy path. `geck_status` reports the active mode under `bridgeTransport`.
 
 ## Start the server
 
@@ -173,9 +172,9 @@ Tools that act on the running GECK take an optional `editor_session` (the `sessi
 
 ## Project configuration
 
-Copy a project JSON and set the launcher, plugin, game root, wine/bottle (not needed for `native`), helper and configured STAT identities. Relative paths resolve against the JSON file. Use a shared `state_dir` for all profiles targeting the same bottle so they share recovery barriers as well as the bottle lock. Do not change the project ID or state directory to bypass an unresolved operation.
+Copy a project JSON and set the plugin, game root, helper and configured STAT identities. Relative paths resolve against the JSON file. Use a shared `state_dir` for all profiles targeting the same game folder so they share recovery barriers as well as the bridge lock. Do not change the project ID or state directory to bypass an unresolved operation.
 
-The `projects/example-*.json` files show one profile per launcher (`crossover`, `wine`, `native`). Copy one to `projects/<project_id>.json` and edit the paths.
+Copy `projects/example-windows.json` to `projects/<project_id>.json` and edit the paths.
 
 Dependencies are pinned in `requirements.lock.txt`; the current environment uses Python 3.12 and MCP SDK 2.2.0. On another installation, create a Python 3.12 virtual environment and install that lock file. Update absolute installation paths in the profiles.
 

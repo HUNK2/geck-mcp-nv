@@ -41,13 +41,9 @@ class Project(BaseModel):
     model_config = ConfigDict(extra='forbid', frozen=True)
     schema_version: int = Field(default=1, ge=1, le=1)
     project_id: str = Field(pattern=r'^[a-z0-9][a-z0-9_-]{0,63}$')
-    # How the 32-bit helper is started next to GECK:
-    #   crossover: CrossOver on macOS (tested end to end)
-    #   wine:      plain Wine or Proton on Linux; `bottle` is the WINEPREFIX GECK runs in (UNTESTED)
-    #   native:    Windows; the helper .exe runs directly, no Wine (tested end to end on Windows 11)
-    launcher: Literal['crossover', 'wine', 'native'] = 'crossover'
-    wine: Path | None = None
-    bottle: Path | None = None
+    # Windows only (decision D5): the helper .exe runs directly next to GECK. The key stays so existing project
+    # files keep loading; the CrossOver and Wine launchers were removed.
+    launcher: Literal['native'] = 'native'
     game_root: Path
     plugin: str
     records: list[Record] = Field(default_factory=list, max_length=100)
@@ -55,7 +51,7 @@ class Project(BaseModel):
     state_dir: Path
     helper: Path
     helper_timeout_seconds: int = Field(default=45, ge=5, le=90)
-    # auto: persistent worker when the helper supports `serve`, else one Wine launch per call.
+    # auto: persistent worker when the helper supports `serve`, else one helper launch per call.
     transport: Literal['auto', 'persistent', 'oneshot'] = 'auto'
     # Milestone 2: JSON spec this project builds from (relative to the project file).
     spec: Path | None = None
@@ -71,8 +67,6 @@ class Project(BaseModel):
 
     @model_validator(mode='after')
     def identities(self):
-        if self.launcher != 'native' and (self.wine is None or self.bottle is None):
-            raise ValueError('launcher %s needs "wine" and "bottle"' % self.launcher)
         if not self.records and not self.spec:
             raise ValueError('configure at least one record, or a spec')
         if len({r.editor_id for r in self.records}) != len(self.records):
@@ -91,22 +85,17 @@ class Project(BaseModel):
     @property
     def lock_root(self):
         """Everything sharing this path shares one bridge lock and one recovery barrier."""
-        return self.bottle if self.launcher != 'native' else self.game_root
+        return self.game_root
 
     def editor_path(self, path):
         """A host path as the helper (a Windows program) sees it."""
-        return str(path) if self.launcher == 'native' else winpath(path)
+        return str(path)
 
     def helper_command(self, *args, helper=None):
-        exe = self.editor_path(helper or self.helper)
-        if self.launcher == 'crossover':
-            return [str(self.wine), '--bottle', self.bottle.name, '--no-update', '--cx-app', exe, *map(str, args)]
-        if self.launcher == 'wine':
-            return [str(self.wine), exe, *map(str, args)]
-        return [exe, *map(str, args)]
+        return [self.editor_path(helper or self.helper), *map(str, args)]
 
     def helper_env(self):
-        return {} if self.launcher == 'native' else {'WINEPREFIX': str(self.bottle)}
+        return {}
 
     @property
     def plugin_path(self):
@@ -122,7 +111,7 @@ class Project(BaseModel):
     def load(cls, path):
         path = Path(path).resolve(strict=True)
         data = json.loads(path.read_text(encoding='utf-8-sig'))
-        for key in ('wine', 'bottle', 'game_root', 'state_dir', 'helper'):
+        for key in ('game_root', 'state_dir', 'helper'):
             if data.get(key) is None:
                 continue
             value = Path(data[key]).expanduser()
@@ -146,11 +135,6 @@ class Project(BaseModel):
         project = cls.model_validate(data)
         project._project_dir = path.parent
         return project
-
-
-def winpath(path):
-    """Host path -> Wine path (Wine maps the host root to Z:)."""
-    return 'Z:' + str(path).replace('/', '\\')
 
 
 def contained(root, relative):

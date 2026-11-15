@@ -10,8 +10,8 @@ jobs:
       # One OS failing must not cancel the others: the Windows job is the exit gate's (PLAN-3 S7).
       fail-fast: false
       matrix:
-        # Windows runs the native launcher path; the Wine/CrossOver launcher tests skip there.
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        # Windows only (decision D5).
+        os: [windows-latest]
     runs-on: ${{ matrix.os }}
     # The engine tests drive a fake host over a pipe; a stalled host must fail the job, not hold it for 6 hours.
     timeout-minutes: 45

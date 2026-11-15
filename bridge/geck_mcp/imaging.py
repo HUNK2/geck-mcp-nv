@@ -1,73 +1,13 @@
-"""macOS-side capture of GECK windows and background cut-outs (photo workflow).
-
-The MCP server runs natively on macOS, so it can capture a single GECK window by its
-CGWindowID with `screencapture -l` at full Retina resolution: no clicks, no focus change,
-no UI overlays, and it works while other apps are in front. Needs Screen Recording
-permission for the app hosting the server (Terminal, Codex or Claude).
+"""Background cut-outs of GECK Render Window captures (geck_image_cutout, geck_render_capture cutout=true).
+The capture itself is wincapture.py (Windows).
 """
-import json
 from pathlib import Path
-import shutil
-import subprocess
-
-ROOT = Path(__file__).resolve().parent.parent
-LISTER_SOURCE = ROOT / 'tools' / 'photo' / 'geck_windows.swift'
-LISTER_BINARY = ROOT / 'tools' / 'photo' / 'bin' / 'geck_windows'
 
 
 class ImagingError(RuntimeError):
     def __init__(self, code, message, evidence=None):
         super().__init__(message)
         self.code, self.evidence = code, evidence
-
-
-def _lister_command():
-    """Compiled window lister when possible (fast), else the Swift interpreter."""
-    if LISTER_BINARY.exists() and LISTER_BINARY.stat().st_mtime >= LISTER_SOURCE.stat().st_mtime:
-        return [str(LISTER_BINARY)]
-    swiftc = shutil.which('swiftc')
-    if swiftc:
-        LISTER_BINARY.parent.mkdir(parents=True, exist_ok=True)
-        done = subprocess.run([swiftc, '-O', '-o', str(LISTER_BINARY), str(LISTER_SOURCE)],
-                              capture_output=True, text=True, timeout=120)
-        if done.returncode == 0:
-            return [str(LISTER_BINARY)]
-    swift = shutil.which('swift')
-    if not swift:
-        raise ImagingError('NO_SWIFT', 'Neither swiftc nor swift is available to list windows')
-    return [swift, str(LISTER_SOURCE)]
-
-
-def list_geck_windows():
-    done = subprocess.run(_lister_command(), capture_output=True, text=True, timeout=60)
-    if done.returncode != 0:
-        raise ImagingError('WINDOW_LIST_FAILED', 'Could not list GECK windows', {'stderr': done.stderr[-2000:]})
-    return json.loads(done.stdout)
-
-
-def render_window(cell=None):
-    """The macOS window of GECK's Render Window (optionally the one showing `cell`)."""
-    rows = list_geck_windows()
-    if cell:
-        hits = [w for w in rows if w['title'].startswith(cell + ' [')]
-    else:
-        hits = [w for w in rows if ' camera' in w['title'] or w['title'] == 'Render Window']
-    hits = [w for w in hits if w.get('layer', 0) == 0]
-    if len(hits) != 1:
-        raise ImagingError('RENDER_WINDOW_NOT_UNIQUE', 'Expected one Render Window, found %d' % len(hits),
-                           {'windows': [{'id': w['id'], 'title': w['title']} for w in rows]})
-    return hits[0]
-
-
-def capture_window(window_id, out_path):
-    out_path = Path(out_path)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    done = subprocess.run(['/usr/sbin/screencapture', '-x', '-o', '-l%d' % int(window_id), str(out_path)],
-                          capture_output=True, text=True, timeout=30)
-    if done.returncode != 0 or not out_path.exists() or out_path.stat().st_size < 1000:
-        raise ImagingError('CAPTURE_FAILED', 'screencapture failed (Screen Recording permission?)',
-                           {'stderr': done.stderr[-1000:], 'returncode': done.returncode})
-    return out_path
 
 
 # -- pixel work (Pillow + NumPy) ------------------------------------------------------------
@@ -96,14 +36,6 @@ def load_rgb(path, top_crop=0):
             rgb[~opaque] = fill.astype(np.int16)
         return rgb, image
     return np.asarray(image.convert('RGB')).astype(np.int16), image
-
-
-def title_bar_pixels(capture_height, client_height, capture_width, client_width):
-    """Rows of macOS title bar above the client area in a `screencapture -l` image."""
-    if not client_width or not client_height:
-        return 0
-    scale = capture_width / float(client_width)
-    return max(0, int(round(capture_height - client_height * scale)))
 
 
 def estimate_background(rgb):

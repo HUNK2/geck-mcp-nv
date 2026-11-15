@@ -431,31 +431,11 @@ def make_server(project, service=None):
         """Compare GECK's Cell View references for a cell with the build receipt (count, FormIDs, bases). Optional frame_ref_id loads the cell in the Render Window and selects that reference. Shows hidden GECK windows first. Visual correctness still needs a human (geck_render_capture)."""
         return await invoke(service.cell_verify_ref, cell, session_arg(editor_session, session_id), frame_ref_id)
 
-    # -- Photo workflow -------------------------------------------------------------------
-    @server.tool(annotations=edit)
-    async def geck_actor_photo(subject: Annotated[str, Field(min_length=2, max_length=120)],
-                               pitch: Annotated[int, Field(ge=-600, le=600)] | None = None,
-                               fill: Annotated[float, Field(ge=0.3, le=0.98)] = 0.86,
-                               rotation: Annotated[float, Field(ge=-360, le=360)] = 180,
-                               lighting: Literal['auto', 'keep', 'toggle'] = 'auto',
-                               render_width: Annotated[int, Field(ge=400, le=8000)] | None = None,
-                               render_height: Annotated[int, Field(ge=400, le=8000)] | None = None) -> Result:
-        """Photograph a vanilla NPC or creature (EditorID like GSSunnySmiles, or its name like "Sunny Smiles")
-        on a neutral grey background: builds and loads the throwaway GeckPhotoStudio.esp (never your plugins),
-        frames and auto-fits the subject, captures the Render Window at full Retina resolution and writes a PNG
-        plus a transparent cut-out under photos/. RESUMABLE: if data.stage is "loading" (GECK loading
-        FalloutNV.esm, 1-3 min), call again with the same subject after ~20 s until stage is "done".
-        Refuses if GECK has unsaved edits. pitch = Shift+drag pixels applied to GECK's look-at camera (default
-        -60 = level with the subject; positive looks down from above); rotation turns the subject (180 faces
-        the camera); fill is the target height fraction; lighting auto keeps the brighter of GECK's two
-        Render Window lighting modes."""
-        size = (render_width, render_height) if render_width and render_height else None
-        return await invoke(service.actor_photo, subject, rotation, pitch, fill, lighting, size)
-
+    # -- Pictures -------------------------------------------------------------------------
     @server.tool(annotations=observe)
     async def geck_render_capture(cutout: bool = False) -> Result:
-        """Capture whatever GECK's Render Window shows now into photos/ (macOS: full Retina resolution, title
-        bar removed; Windows: client area via PrintWindow). No clicks or focus change. Fails with CAPTURE_BLANK
+        """Capture whatever GECK's Render Window shows now into photos/ (the client area, via PrintWindow). No
+        clicks or focus change. Fails with CAPTURE_BLANK
         when the image is one flat colour. cutout=true also writes a transparent PNG."""
         return await invoke(service.render_capture, cutout)
 

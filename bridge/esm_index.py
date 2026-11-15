@@ -22,15 +22,10 @@ from geck_mcp.esp import codec  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent
 def default_data():
-    """FNV Data folder: $FNV_DATA, else the usual Steam location for this OS."""
+    """FNV Data folder: $FNV_DATA, else the usual Steam location (Windows only, decision D5)."""
     if os.environ.get('FNV_DATA'):
         return Path(os.environ['FNV_DATA'])
-    if sys.platform == 'win32':
-        return Path(r'C:\Program Files (x86)\Steam\steamapps\common\Fallout New Vegas\Data')
-    if sys.platform == 'darwin':   # CrossOver bottle named "Steam"
-        return Path.home() / ('Library/Application Support/CrossOver/Bottles/Steam/drive_c/'
-                              'Program Files (x86)/Steam/steamapps/common/Fallout New Vegas/Data')
-    return Path.home() / '.local/share/Steam/steamapps/common/Fallout New Vegas/Data'
+    return Path(r'C:\Program Files (x86)\Steam\steamapps\common\Fallout New Vegas\Data')
 
 
 DEFAULT_DATA = default_data()

@@ -24,7 +24,7 @@ import subprocess
 import threading
 import time
 
-from .transport import BridgeError, Transport, interpret, winpath
+from .transport import BridgeError, Transport, interpret
 
 PROTOCOL = 1
 _EOF = object()

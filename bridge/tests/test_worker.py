@@ -19,7 +19,7 @@ def project(root, timeout=5):
     data.mkdir(parents=True, exist_ok=True)
     # model_copy bypasses the 5 s production minimum so timeout tests stay quick.
     return Project.model_validate(dict(
-        project_id='worker-test', wine=root / 'wine', bottle=root / 'Bottle', game_root=root,
+        project_id='worker-test', game_root=root,
         plugin='Fixture.esp', records=[dict(editor_id='FixtureStatic', form_id='01000ADD')],
         state_dir=root / 'state', helper=root / 'helper.exe')).model_copy(
             update={'helper_timeout_seconds': timeout})
@@ -200,13 +200,11 @@ class WorkerTests(unittest.TestCase):
 
 class ServiceBatchTests(unittest.TestCase):
     def test_select_uses_one_batch_step(self):
-        from tests.test_service import FakeTransport, NATIVE, plugin
+        from tests.test_service import FakeTransport, plugin
         from geck_mcp.service import Service
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             p = project(root)
-            if NATIVE:
-                p = p.model_copy(update={'launcher': 'native', 'wine': None, 'bottle': None})
             p.plugin_path.write_bytes(plugin())
 
             class Batching(FakeTransport):

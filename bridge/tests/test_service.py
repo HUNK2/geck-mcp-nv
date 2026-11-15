@@ -14,17 +14,16 @@ from geck_mcp.transport import BridgeError
 from esp_check import file_snapshot
 
 
-# Tests run against the launcher of the host: native on Windows, CrossOver-style (Z:\ paths) elsewhere.
-NATIVE = os.name == 'nt' or os.environ.get('GECK_TEST_NATIVE') == '1'
+# Windows only (decision D5): the native launcher is the only one. NATIVE stays for older imports.
+NATIVE = True
 
 
 def host_launcher(root):
-    return {'launcher': 'native'} if NATIVE else {'wine': root / 'wine', 'bottle': root / 'bottle'}
+    return {'launcher': 'native'}
 
 
 def editor_executable(project):
-    exe = project.game_root / 'GECK.exe'
-    return str(exe) if project.launcher == 'native' else 'Z:' + str(exe).replace('/', '\\')
+    return str(project.game_root / 'GECK.exe')
 
 
 def plugin(model='fixture\\old.nif'):

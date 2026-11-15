@@ -25,7 +25,7 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
             listing = await client.list_tools()
             tools = listing.tools if hasattr(listing, 'tools') else listing
             by_name = {tool.name: tool for tool in tools}
-            self.assertEqual(len([n for n in by_name if n.startswith('geck_')]), 44)
+            self.assertEqual(len([n for n in by_name if n.startswith('geck_')]), 43)
             self.assertEqual(set(n for n in by_name if n.startswith('fnv_')), set(FNV_TOOLS) | set(FNV_LIVE_TOOLS))
             for name in FNV_TOOLS:
                 self.assertTrue(by_name[name].annotations.read_only_hint, name)
@@ -38,9 +38,9 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn('geck_show_windows', by_name)
             self.assertIn('geck_runtime_snapshot', by_name)
             self.assertIn('geck_runtime_compare', by_name)
-            for name in ('geck_actor_photo', 'geck_render_capture', 'geck_image_cutout'):
+            for name in ('geck_render_capture', 'geck_image_cutout'):
                 self.assertIn(name, by_name)
-            self.assertIn('RESUMABLE', by_name['geck_actor_photo'].description)
+            self.assertNotIn('geck_actor_photo', by_name)       # macOS only; removed with the macOS parts (D5)
             self.assertIsNotNone(by_name['geck_status'].output_schema)
             result = await client.call_tool('geck_status', {})
             self.assertFalse(result.is_error)
@@ -93,7 +93,7 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn('STAT', str(result.structured_content))
             listing = await client.list_tools()
             tools = listing.tools if hasattr(listing, 'tools') else listing
-            self.assertEqual(len(tools), 44 + len(FNV_TOOLS) + len(FNV_LIVE_TOOLS))
+            self.assertEqual(len(tools), 43 + len(FNV_TOOLS) + len(FNV_LIVE_TOOLS))
             result = await client.call_tool('geck_console_readiness', {'expected_plugin_hash': '0'*64})
             self.assertFalse(result.is_error, result)
             self.assertFalse(result.structured_content['data']['ready'])
