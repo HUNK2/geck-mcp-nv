@@ -44,8 +44,8 @@ damaged file. Most are tracked as GitHub issues.
 
 ## Not yet checked in the game
 
-- The companion releasing a held frame gate, held input and stopped threads when the bridge disconnects is tested
-  against a fake host only; a live check in the game is still to come.
+- When the bridge disconnects, the companion releases a held frame gate and a running step at once (checked in the
+  game); releasing a thread stopped at a breakpoint is tested against a fake host only.
 
 ## Game control
 
