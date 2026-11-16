@@ -19,6 +19,7 @@ from .config import Project
 from .service import CAPABILITIES, Service
 from . import fnv_guide, fnv_tools
 from .toolsets import ALWAYS, TOOLSETS, toolset_of
+from .action_params import refusal, unused_arguments
 from .runtime import Profile as RuntimeProfile, Mapping as RuntimeMapping
 
 Session = Annotated[str, Field(min_length=3, max_length=100)]
@@ -231,6 +232,14 @@ class BridgeServer(MCPServer):
                 'tools.' % missing)
             return CallToolResult(content=[TextContent(type='text', text=json.dumps(envelope))],
                                   structured_content=envelope, is_error=True)
+        tool = self._tool_manager.get_tool(params.name)
+        if tool is not None:                     # TOOL-MERGE: a parameter the action does not use (T8)
+            action, unused = unused_arguments(params.name, params.arguments, tool.parameters)
+            if unused:
+                envelope = self._envelope(params.name, 'INVALID_ARGUMENT', refusal(params.name, action, unused),
+                                          'Leave out the parameters the action does not use and call again.')
+                return CallToolResult(content=[TextContent(type='text', text=json.dumps(envelope))],
+                                      structured_content=envelope, is_error=True)
         result = await self._call_with_progress(ctx, params)
         result = self._capped(result, params)
         if isinstance(result, CallToolResult) and result.is_error and result.structured_content is None:
