@@ -46,5 +46,5 @@ jobs:
       - run: python tests/ci_run.py --require-engine
         env:
           PYTHONPATH: .
-          GECK_MCP_ZIG: ${{ runner.os == 'Windows' && format('{0}\bridge\state\zig-ci\zig-x86_64-windows-0.14.1\zig.exe', github.workspace) || '' }}
+          FNV_MCP_ZIG: ${{ runner.os == 'Windows' && format('{0}\bridge\state\zig-ci\zig-x86_64-windows-0.14.1\zig.exe', github.workspace) || '' }}
       - run: python -m unittest discover -s . -p test_esp_check.py -v
