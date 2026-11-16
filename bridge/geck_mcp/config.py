@@ -62,6 +62,14 @@ class Project(BaseModel):
     # The `legacy` toolset: the v0.4 geck_runtime_* and geck_console_* tools (decision D4), off by default.
     # `run_mcp.py --legacy` turns it on for one server too.
     legacy_tools: bool = False
+    # Toolsets this server registers (TOOL-MERGE step 1, geck_mcp/toolsets.py): game, editor, naming, legacy.
+    # Unset: every one but legacy. legacy_tools (or --legacy) adds legacy to either.
+    toolsets: list[Literal['game', 'editor', 'naming', 'legacy']] | None = Field(default=None, max_length=4)
+
+    def active_toolsets(self):
+        from .toolsets import DEFAULT_TOOLSETS
+        active = set(self.toolsets if self.toolsets is not None else DEFAULT_TOOLSETS)
+        return active | {'legacy'} if self.legacy_tools else active
 
     @field_validator('plugin')
     @classmethod

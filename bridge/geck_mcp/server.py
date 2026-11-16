@@ -18,6 +18,7 @@ from . import NAME, __version__
 from .config import Project
 from .service import CAPABILITIES, Service
 from . import fnv_guide, fnv_tools
+from .toolsets import ALWAYS, TOOLSETS, toolset_of
 from .runtime import Profile as RuntimeProfile, Mapping as RuntimeMapping
 
 Session = Annotated[str, Field(min_length=3, max_length=100)]
@@ -708,9 +709,10 @@ def make_server(project, service=None):
                 'Report structural and visual evidence separately. Save only within the user-authorized '
                 'whole-plugin scope, then independently validate disk. On uncertainty, inspect operation evidence.')
 
-    if not project.legacy_tools:
-        for name in LEGACY_TOOLS:
-            server.remove_tool(name)
+    active = project.active_toolsets()          # TOOL-MERGE step 1: the toolsets this server registers
+    for tool in list(server._tool_manager.list_tools()):
+        if tool.name not in ALWAYS and toolset_of(tool.name) not in active:
+            server.remove_tool(tool.name)
     return server
 
 
@@ -718,6 +720,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument('--project', required=True)
     parser.add_argument('--legacy', action='store_true', help='also register the legacy toolset (decision D4)')
+    parser.add_argument('--toolsets', type=toolset_list, default=None,
+                        help='comma-separated toolsets to register (%s); overrides the project key' % ', '.join(TOOLSETS))
     args = parser.parse_args(argv)
     try:
         project = Project.load(args.project)
@@ -725,12 +729,23 @@ def main(argv=None):
         sys.exit(project_error(args.project, e))
     if args.legacy:
         project = project.model_copy(update={'legacy_tools': True})
+    if args.toolsets is not None:
+        project = project.model_copy(update={'toolsets': args.toolsets})
     service = Service(project)
     try:
         make_server(project, service).run(transport='stdio')
     finally:
         # Close the persistent helper so no Wine worker outlives the MCP server.
         service.close()
+
+
+def toolset_list(text):
+    """--toolsets game,naming -> ['game', 'naming']; an unknown name is an argument error."""
+    names = [n.strip() for n in text.split(',') if n.strip()]
+    bad = [n for n in names if n not in TOOLSETS]
+    if bad or not names:
+        raise argparse.ArgumentTypeError('unknown toolset %s; choose from %s' % (', '.join(bad) or "''", ', '.join(TOOLSETS)))
+    return names
 
 
 def project_error(path, error):

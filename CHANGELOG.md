@@ -22,6 +22,9 @@ The first version of the fork. The entries below this one are geck-mcp-nv's own 
 - **Windows only.** The CrossOver and Wine launchers, the photo studio and `geck_actor_photo` are removed.
 - **Legacy toolset:** the `geck_runtime_*` and `geck_console_*` tools (15) are off by default (`legacy_tools` or
   `--legacy`); the `fnv_*` tools do these jobs.
+- **Toolsets:** the project key `toolsets` (or `--toolsets game,naming`) picks which tool families the server
+  registers: `game`, `editor`, `naming` and `legacy`; the default is every one but `legacy`. `fnv_guide find`
+  still names a hidden tool and the toolset that turns it on.
 - **Removed:** the second server under `windows/`, the sprite tools and the PyFFI extra, tracked binaries, the
   upstream working notes, and three examples that needed game files the repository cannot ship.
 - **Name and version:** the server announces itself as `fnv-mcp` 0.5.0b1 (the Python package stays `geck_mcp`).

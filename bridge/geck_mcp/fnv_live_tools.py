@@ -1715,7 +1715,8 @@ def register(server, project, annotations, result_type, maintain=True):
         def answer():
             from .fnv_guide import GuideTools
             research = getattr(project.fnv, 'research_dir', None) if project.fnv else None
-            return GuideTools(str(research) if research else None).run(action, words, limit, offset, brief)
+            return GuideTools(str(research) if research else None,
+                              toolsets=project.active_toolsets()).run(action, words, limit, offset, brief)
         return await invoke('fnv_guide', answer)
 
     @server.tool(annotations=read)

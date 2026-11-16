@@ -41,19 +41,27 @@ def load_guides(folder=GUIDES_DIR):
     return guides
 
 
-def tool_table():
-    """{name: {kind, description}} for every offline and live fnv_* tool, and the tools of the legacy toolset
-    (registered only when it is on), so find still names them and says how to turn them on."""
+def tool_table(toolsets=None):
+    """{name: {kind, toolset, description}} for every offline and live fnv_* tool and the legacy tools, and the
+    geck_* tools when the editor toolset is off. A tool whose toolset is not in `toolsets` (default: every one but
+    legacy) is not registered, so its description says how to turn it on (TOOL-MERGE step 1)."""
     from .fnv_live_tools import FNV_LIVE_TOOLS
     from .fnv_tools import FNV_TOOLS
-    from .server import LEGACY_NOTE, LEGACY_TOOLS
+    from .server import LEGACY_TOOLS
     from .service import CAPABILITIES
+    from .toolsets import ALWAYS, DEFAULT_TOOLSETS, hidden_note, toolset_of
+    active = set(DEFAULT_TOOLSETS if toolsets is None else toolsets)
     table = {n: {'kind': 'read', 'description': d} for n, d in FNV_TOOLS.items()}
     table.update({n: {'kind': k, 'description': d} for n, (k, d) in FNV_LIVE_TOOLS.items()})
     effects = CAPABILITIES.get('tools') or {}
-    for name in LEGACY_TOOLS:
+    geck = [n for n in effects if n.startswith('geck_') and n not in LEGACY_TOOLS] if 'editor' not in active else []
+    for name in [*LEGACY_TOOLS, *geck]:
         effect = (effects.get(name) or {}).get('effect') or name.replace('_', ' ')
-        table[name] = {'kind': 'control', 'toolset': 'legacy', 'description': '%s. %s' % (effect, LEGACY_NOTE)}
+        table[name] = {'kind': 'control', 'description': effect}
+    for name, row in table.items():
+        row['toolset'] = toolset_of(name)
+        if row['toolset'] not in active and name not in ALWAYS:
+            row['description'] = '%s. %s' % (row['description'], hidden_note(row['toolset']))
     return table
 
 
@@ -69,9 +77,10 @@ def score_guide(query, guide):
 
 
 class GuideTools:
-    def __init__(self, research_dir=None, guides_dir=GUIDES_DIR):
+    def __init__(self, research_dir=None, guides_dir=GUIDES_DIR, toolsets=None):
         self.research_dir = research_dir or os.environ.get('FNV_RESEARCH_DIR')
         self.guides_dir = guides_dir
+        self.toolsets = toolsets          # the server's active toolsets (None: the default ones)
 
     # ------------------------------------------------------------ list, topic, find
     def list(self):
@@ -106,12 +115,12 @@ class GuideTools:
             raise ValueError('find needs words, for example "script does not run" or "crash log"')
         query = stems(words)
         rows = []
-        for name, t in tool_table().items():
+        for name, t in tool_table(self.toolsets).items():
             name_words, description = set(stems(name.replace('_', ' '))), set(stems(t['description']))
             score = sum(3 * (q in name_words) + 1 * (q in description) for q in set(query))
             if score:
-                rows.append({'kind': 'tool', 'name': name, 'toolKind': t['kind'], 'score': score,
-                             'description': t['description']})
+                rows.append({'kind': 'tool', 'name': name, 'toolKind': t['kind'], 'toolset': t['toolset'],
+                             'score': score, 'description': t['description']})
         for g in load_guides(self.guides_dir).values():
             score = score_guide(query, g)
             if score >= 1:

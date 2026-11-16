@@ -145,6 +145,7 @@ Paths in the project file may be relative to the project file. `fnv_*` keys go i
 | `state_dir` | (required) | Where the tools keep their state, logs, builds and journals |
 | `launcher` | `native` | The only launcher (Windows) |
 | `legacy_tools` | `false` | Registers the legacy `geck_runtime_*` and `geck_console_*` tools (or `run_mcp.py --legacy`) |
+| `toolsets` | all but `legacy` | Which tool families the server registers: `game` (fnv_*), `editor` (geck_*), `naming` (fnv_name_*, fnv_probe, fnv_atlas), `legacy`. For example `["game"]` for a game session. `run_mcp.py --toolsets game,naming` overrides it; `fnv_guide` is always on and its find names hidden tools. Reconnect the server after a change |
 | `plugin` | none | GECK: the `.esp` the `geck_*` tools work on |
 | `helper` | none | GECK: the 32-bit helper `build_helper.py` builds |
 | `records` | `[]` | GECK: the STAT records the record tools may edit |
