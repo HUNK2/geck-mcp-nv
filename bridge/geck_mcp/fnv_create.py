@@ -629,7 +629,7 @@ class AssetTools:
                                  'field': tag})
         return {'path': want, 'users': rows, 'count': len(rows), 'unreadable': unreadable[:20] or None,
                 'how': 'every record of the load order plugins with a model, icon or texture field naming the file '
-                       '(form ids as in each plugin, as fnv_record_find shows them); each plugin is read once and '
+                       '(form ids as in each plugin, as fnv_record action=find shows them); each plugin is read once and '
                        'kept until its file changes'}
 
     def queue(self, wait_idle=False, timeout=30):

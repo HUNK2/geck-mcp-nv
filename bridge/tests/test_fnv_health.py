@@ -98,7 +98,7 @@ class HealthTests(HealthTestCase):
         open_session(self.live, real_fps=120)
         out = HealthTools(self.live).check()
         self.assertEqual(self.kinds(out), ['frame_time'])
-        self.assertIn('fnv_frame_profile', out['items'][0]['next'])
+        self.assertIn('fnv_profile action=frame', out['items'][0]['next'])
 
     def test_live_objects_growing_past_the_limit_are_reported(self):
         open_session(self.live, real_fps=None, refs=0)

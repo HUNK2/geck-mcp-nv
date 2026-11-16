@@ -46,7 +46,7 @@ tool name below exists; they do not play the game.
 ## What the answers mean
 
 - A compile error from `fnv_compile_ingame` about an EditorID the game does not know: the running game keeps few
-  EditorIDs. Use the form id. `fnv_record_find` finds it.
+  EditorIDs. Use the form id. `fnv_record action=find` finds it.
 - Instances exist but the trace shows no statements: the script is not being called. Look at the quest running
   flag, the start-game-enabled flag and the delay.
 - Statements run but a branch never does: the condition is false. Read the values with `fnv_script_instances of=` and compare with

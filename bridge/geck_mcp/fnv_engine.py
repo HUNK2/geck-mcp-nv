@@ -188,7 +188,7 @@ class EngineMap:
                                      'address or by the class name shown' % (ref, len(short), key.split('::')[-1]),
                                      {'candidates': [self.summary(a) for a in sorted(short)[:25]]})
         if not hits:
-            raise EngineMapError('NOT_FOUND', 'No function named %r; try fnv_func_find' % ref)
+            raise EngineMapError('NOT_FOUND', 'No function named %r; try fnv_func' % ref)
         if len(hits) > 1:
             ranked = sorted(hits, key=lambda a: (STATUS_RANK.get(self.functions[a]['status'], 9),
                                                  self.functions[a]['name'].lower() != key, a))

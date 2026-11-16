@@ -8,8 +8,8 @@ it is built on and keeps the full history of; see "Built on geck-mcp-nv" below.
 
 ## What it is
 
-One MCP server with <!-- counts -->**148 `fnv_*` tools** for the game and its engine and **28 `geck_*` tools** for the
-GECK (176 in all; the legacy toolset adds 15 more)<!-- /counts -->. The counts are checked against the server's own
+One MCP server with <!-- counts -->**137 `fnv_*` tools** for the game and its engine and **27 `geck_*` tools** for the
+GECK (164 in all; the legacy toolset adds 15 more)<!-- /counts -->. The counts are checked against the server's own
 tool list by the tests.
 
 - **Engine knowledge**: function and class lookup from the decompilation, a symbol database with source lines and

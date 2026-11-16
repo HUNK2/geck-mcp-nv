@@ -540,7 +540,7 @@ class LiveService:
             found = self.editor_id(ref)
             if not found:
                 raise LiveError('REF_NOT_FOUND', 'No form named %r in the EditorID index. Next: pass its form id '
-                                '(fnv_record_find finds it by name), or a Plugin.esp:LOCALID.' % ref, {'spec': ref})
+                                '(fnv_record action=find finds it by name), or a Plugin.esp:LOCALID.' % ref, {'spec': ref})
             expr = self.form_expr(found['formId'])
         else:
             raise ValueError('Not a reference: %r (use player, crosshair, a form id or an EditorID)' % ref)

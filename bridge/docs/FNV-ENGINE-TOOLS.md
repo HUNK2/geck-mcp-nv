@@ -6,17 +6,17 @@ on the running game (control, tests, live inspection, full control) are in [FNV-
 
 | Tool | What it answers |
 | --- | --- |
-| `fnv_func_find` | Which engine functions match these words, this address, or this text in their code? |
-| `fnv_func_code` | The decompiled C++ of one function; calls to unnamed functions are annotated with proven names |
-| `fnv_func_find mode=callers` / `fnv_func_find mode=callees` | Who calls it, what it calls (direct calls read from the exe; several levels) |
+| `fnv_func` | Which engine functions match these words, this address, or this text in their code? |
+| `fnv_func action=code` | The decompiled C++ of one function; calls to unnamed functions are annotated with proven names |
+| `fnv_func action=callers` / `fnv_func action=callees` | Who calls it, what it calls (direct calls read from the exe; several levels) |
 | `fnv_symbolize` | Address → function + offset, a setting/static object, or DLL + offset (with the symbol database: also the source line) |
 | `fnv_symbols` | The compiler's symbol database: source line of a code address, named parameters and locals, exact type layouts |
 | `fnv_name_status` | Is this name proven, and by what evidence? |
-| `fnv_class_layout` / `fnv_class_vtable` / `fnv_class_tree` | Fields with offsets and types (with the symbol database: the compiler's size and members too); each vtable slot's function; base and derived classes (RTTI) |
+| `fnv_class` / `fnv_class action=vtable` / `fnv_class action=tree` | Fields with offsets and types (with the symbol database: the compiler's size and members too); each vtable slot's function; base and derived classes (RTTI) |
 | `fnv_command_info` | A console/script command: parameters, return type, handlers and what they call |
 | `fnv_script_explain` | The commands in a script line or script: handlers (execute, condition eval, parser), the named engine functions they reach, the settings they read and the start of their code |
 | `fnv_global_find` / `fnv_setting_info` | Settings and static objects: address, default value, which functions use them |
-| `fnv_string_xrefs` | Functions whose code contains a string |
+| `fnv_func action=strings` | Functions whose code contains a string |
 | `fnv_crash latest` / `fnv_crash` | The newest crash log, parsed, and explained in engine terms |
 | `fnv_save_inspect` / `fnv_save_diff` | A `.fos` save decoded with the game's save format (header, plugins, location, globals, changed forms, quests), and two saves compared |
 
@@ -73,11 +73,11 @@ Environment variables `FNV_ENGINE_MAP`, `FNV_DECOMP` and `FNV_CRASH_DIRS` work t
 
 1. `fnv_setting_info("fCombatPlayerLimbDamageMult")` → the setting lives at `0x011CFA40` (default 0.5)
    and exactly one engine function reads it: `0x009B6620`, in the hit-data code.
-2. `fnv_func_code("0x009B6620")` → the decompiled body: it picks the body part that was hit (from
+2. `fnv_func action=code("0x009B6620")` → the decompiled body: it picks the body part that was hit (from
    the contact point, or a ray cast from the attacker's eyes), computes that part's damage with
    `FUN_00647a30(target, part, base)` and scales it by the setting. Its member and global names in
    the decomp are machine-made (status `unnamed`), so read the logic, not the names.
-3. `fnv_func_find mode=callers("0x009B6620", depth=2)` → `InitHitData` and `InitFromObjects`, called from
+3. `fnv_func action=callers("0x009B6620", depth=2)` → `InitHitData` and `InitFromObjects`, called from
    `ImpactProjectile::ProcessHits`.
 
 ## Symbol database
@@ -114,12 +114,12 @@ Where the database helps other tools:
   `sourceLine` (that line of the decomp, trimmed) and `lineOffset` (where in the function that line starts)
   when the address is in a function that has lines.
 - `fnv_crash` carries `source` and `sourceLine` into each game frame.
-- `fnv_hang_doctor` adds `source` to each game frame. For the first 6 game frames of each sample it also
+- `fnv_threads action=hang` adds `source` to each game frame. For the first 6 game frames of each sample it also
   reads the named parameters and locals from the game at frame pointer + offset (up to 12 per frame;
   numbers as numbers, pointers as hex, floats as floats; values larger than 8 bytes are skipped). A top
   frame that has not run its prologue yet shows `frameNotReady: true` instead. Functions the compiler
   did not give a frame pointer to can show wrong values, so treat them as hints.
-- `fnv_class_layout` adds `compilerLayout` (`size`, `members` count, `variants`, `conflicts`) when the
+- `fnv_class` adds `compilerLayout` (`size`, `members` count, `variants`, `conflicts`) when the
   database knows the class. Pass `compiler: true` to get the compiler's full member list as well.
 
 ## Crash doctor

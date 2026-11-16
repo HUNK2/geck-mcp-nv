@@ -257,10 +257,10 @@ class HealthTools:
         if base and now and 1000.0 / now > FRAME_TIME_RATIO * (1000.0 / base):
             items.append({'kind': 'frame_time', 'what': 'Frame time %.1f ms, %.1f ms at the session start'
                                                         % (1000.0 / now, 1000.0 / base),
-                          'next': 'Call fnv_frame_profile.'})
+                          'next': 'Call fnv_profile action=frame.'})
 
     def _objects(self, state, items):
         now, base = _refs(self.live), state['baseline'].get('refs')
         if now is not None and base is not None and now - base > REF_GROWTH:
             items.append({'kind': 'objects', 'what': 'NiRefObject count up by %d since the session start' % (now - base),
-                          'next': 'Call fnv_heap.'})
+                          'next': 'Call fnv_memory action=address_space.'})

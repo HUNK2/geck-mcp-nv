@@ -25,13 +25,13 @@ tool descriptions in this repository. The tests check that every tool name below
    textures and sounds that a plugin names but no archive has.
 6. **Does a plugin patch the crashing code?** When the crash is inside engine code, call `fnv_patch_map`. It lists
    code and pointers other plugins changed, by module. A crash site inside a patched range points at that module.
-7. **Understand the crash site.** `fnv_symbolize` turns an address into a function and offset. `fnv_func_code` shows
-   its decomp source, `fnv_func_find mode=callers` shows who calls it, `fnv_class_layout` shows the fields of the object it
+7. **Understand the crash site.** `fnv_symbolize` turns an address into a function and offset. `fnv_func action=code` shows
+   its decomp source, `fnv_func action=callers` shows who calls it, `fnv_class` shows the fields of the object it
    used. For a null pointer, find which caller passed it.
 8. **Reproduce it on demand.** Write a short YAML scenario that does what you did and run it with `fnv_test`.
    With `relaunch_on_crash` (the default) the run reports the crash doctor's diagnosis and starts the game again.
    Use a named test save (`fnv_test_save`) so the start state is the same each time.
-9. **A hang is not a crash.** When the game does not answer and writes no crash log, call `fnv_hang_doctor`. It
+9. **A hang is not a crash.** When the game does not answer and writes no crash log, call `fnv_threads action=hang`. It
    samples the call stacks from outside the process and names the functions it is stuck in. When the main thread
    waits (in a load, on a lock), it also samples the threads that use the most CPU, and any thread the crash hold
    parked at a fault, with the file paths found on that thread's stack.
@@ -46,7 +46,7 @@ tool descriptions in this repository. The tests check that every tool name below
 - A crash site in a DLL (JIP, a plugin, the companion): suspect that plugin or a version mismatch. Check
   `fnv_loadorder` and `fnv_setup_check`.
 - The same signature each time, in the same place: it is deterministic. Remove plugins or changes one at a time.
-- A different signature each time, in memory code: suspect memory use. Call `fnv_heap` while you play to watch the
+- A different signature each time, in memory code: suspect memory use. Call `fnv_memory action=address_space` while you play to watch the
   2 GB address space and the pools.
 
 ## Known traps
@@ -75,7 +75,7 @@ minidump to look at later.
 A fault on a loader thread during a load (a corrupt mesh, seen 2026-11-11) leaves the main thread waiting for it, and
 the companion answers only on the main thread. `fnv_debug status` then reads the held fault from outside: the
 registers of the fault from its context file, the stack above them with function names and source lines, and the
-file paths on that stack (`meshes\...nif`). `fnv_asset where` on that path names the mod folder, `fnv_record_find`
+file paths on that stack (`meshes\...nif`). `fnv_asset where` on that path names the mod folder, `fnv_record action=find`
 with the plugin lists its records. `fnv_game quit` with force ends the game afterwards.
 
 ## Find the culprit plugin or object

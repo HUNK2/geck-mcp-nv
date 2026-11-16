@@ -20,7 +20,7 @@ cells, and Easy Pete's dialogue with voice and lip files).
    per script, the lines no test reached.
 6. **Meshes and textures before shipping.** `fnv_asset` action `nif` / `dds` on each new file.
 7. **Follow up.** A missing file: `fnv_asset where` and `fnv_asset file_log`. A warning: `fnv_warnings read`. A
-   failing condition: `fnv_dialogue_tree` and `fnv_condition_eval`. A crash or regression after a load-order
+   failing condition: `fnv_dialogue action=tree` and `fnv_condition_eval`. A crash or regression after a load-order
    change: `fnv_bisect` with the failing `fnv_test steps` steps.
 
 ## What the answers mean

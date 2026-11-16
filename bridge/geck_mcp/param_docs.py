@@ -173,14 +173,38 @@ PARAM_DOCS: dict[str, dict[str, str]] = {'fnv_anim': {'action': 'What to do: sta
                         '1.',
               'timeout_seconds': 'Time limit for the scenario run, in seconds. Default 240.',
               'relaunch_on_crash': 'When true (default), the game is relaunched if it crashes during the run.'},
- 'fnv_func_find': {'query': 'Words of a function name, an address, code text or a regular expression; for callers '
-                           'and callees the function, by name or address.',
-                   'mode': 'auto, name, code, regex or address search; callers or callees walk the call graph.',
-                   'status': 'For the search modes: keep only these proof statuses (proven, class_proven, probable, '
-                             'decomp, unnamed).',
-                   'limit': 'Maximum number of functions returned.',
-                   'offset': 'For the search modes: how many results to skip, for paging.',
-                   'depth': 'For callers and callees: how many call levels to walk, 1 to 4.'},
+ 'fnv_func': {'action': 'find (default) searches functions; code shows one function\'s decomp source; callers and '
+                       'callees walk the call graph; strings finds functions whose code contains the query text.',
+              'mode': 'For action=find: auto, name, code, regex or address search.',
+              'status': 'For action=find: keep only these proof statuses (proven, class_proven, probable, decomp, '
+                        'unnamed).',
+              'limit': 'For find, callers, callees and strings: maximum number of functions returned.',
+              'offset': 'For find and strings: how many results to skip, for paging.',
+              'depth': 'For callers and callees: how many call levels to walk, 1 to 4.',
+              'max_lines': 'For action=code: maximum number of source lines returned. Default 400.'},
+ 'fnv_class': {'class_name': 'The engine class name, such as Actor, TESObjectREFR or BaseProcess.',
+               'action': 'layout (default) gives the fields; tree the base and derived classes; vtable the virtual '
+                         'table slots.',
+               'include_virtuals': 'For action=layout: also list the virtual functions the headers declare.',
+               'compiler': "For action=layout: add the compiler's full member list from the symbol database.",
+               'limit': 'For tree: maximum classes (default 200); for vtable: maximum slots (default 80).',
+               'offset': 'For action=vtable: the first slot returned, for paging.'},
+ 'fnv_record': {'action': 'show (default) decodes one record; find searches records; users lists what references '
+                          'a record.',
+                'query': 'For action=find: EditorID or name substring, form id, or Plugin.esp:LOCALID.',
+                'record_type': 'For action=find: keep only this record type, such as WEAP, NPC_ or QUST.',
+                'plugin': 'For action=find: keep only records of this plugin.',
+                'types': 'For action=users: keep only users of these record types.',
+                'all_versions': 'For action=show: also decode every override, not only the winning version.',
+                'max_bytes': 'For action=show: bytes shown of each undecoded subrecord.',
+                'limit': 'For find (1 to 200, default 25) and users (default 100): maximum results.',
+                'offset': 'For find and users: how many results to skip, for paging.'},
+ 'fnv_dialogue': {'action': 'now (default) reads the conversation on screen; tree evaluates every response a speaker '
+                            'could give for a topic.',
+                  'scope': 'For action=tree: speaker (default) keeps responses written for this speaker or available '
+                           'now; available keeps only those; all lists every response.',
+                  'include_text': 'For action=tree: include the response text.',
+                  'limit': 'For action=tree: maximum responses returned. Default 60.'},
  'fnv_menu': {'action': "state (default) reads the menus; tiles reads one menu's live tile tree.",
               'path': 'For action=tiles: keep only tiles whose path contains this text.',
               'depth': 'For action=tiles: how deep to read the tile tree. Default 8.',
@@ -395,8 +419,10 @@ PARAM_DOCS: dict[str, dict[str, str]] = {'fnv_anim': {'action': 'What to do: sta
                        'one-byte trap.',
                'int3_budget': 'For int3 probes: number of calls after which a probe removes itself.',
                'notes': 'For action=harvest: free-text note stored with the harvest.'},
- 'fnv_profile': {'action': 'sample records where frame time goes; diff compares two saved profiles.',
-                 'seconds': 'For action=sample: how long to sample, in seconds.',
+ 'fnv_profile': {'action': 'sample records where frame time goes; diff compares two saved profiles; frame times '
+                           'each subsystem of the main loop with timing hooks.',
+                 'seconds': 'For sample (default 5, up to 120) and frame (0.5 to 30, default 3): how long to measure, '
+                            'in seconds.',
                  'rate': 'For action=sample: samples per second.',
                  'threads': 'For action=sample: sample only the main thread or all threads.',
                  'name': 'For action=sample: name prefix for the saved profile files (default profile). Must be a '

@@ -116,7 +116,7 @@ class TitleTests(unittest.IsolatedAsyncioTestCase):
         titles = {tool.name: tool.title for tool in tools}
         self.assertEqual([name for name, title in titles.items() if not title], [])
         self.assertEqual(len(set(titles.values())), len(titles))
-        self.assertEqual(titles['fnv_class_vtable'], 'FNV: class vtable')
+        self.assertEqual(titles['fnv_dialogue_choose'], 'FNV: dialogue choose')
         self.assertEqual(titles['geck_plugin_save'], 'GECK: plugin save')
 
 

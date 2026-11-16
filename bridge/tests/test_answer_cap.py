@@ -1,6 +1,6 @@
 """Release plan Task 6.3 (audit M2): one cap on answer size. An answer above 40,000 characters is cut at a row
-boundary, gets truncated: true and a sentence naming the paging argument. fnv_class_vtable pages its slots and
-fnv_func_find (callers and callees too) has a lower default limit."""
+boundary, gets truncated: true and a sentence naming the paging argument. fnv_class action=vtable pages its slots and
+fnv_func (find, callers and callees) has a lower default limit."""
 import inspect
 import json
 import sys
@@ -94,8 +94,8 @@ class DefaultTests(unittest.TestCase):
     def test_lower_defaults(self):
         from geck_mcp import fnv_tools
         source = inspect.getsource(fnv_tools.register)
-        self.assertIn("status: list[Status] | None = None, limit: Limit = 25,", source)    # fnv_func_find, all modes
-        self.assertIn('limit: Limit = 80, offset: Offset = 0', source)
+        self.assertIn("status: list[Status] | None = None, limit: Limit = 25,", source)    # fnv_func, find/callers/callees/strings
+        self.assertIn('80 if limit is None else limit, offset', source)                   # fnv_class action=vtable
 
 
 class PlayerCharacterVtableTests(unittest.IsolatedAsyncioTestCase):
@@ -105,12 +105,12 @@ class PlayerCharacterVtableTests(unittest.IsolatedAsyncioTestCase):
         if not (BRIDGE / 'state' / 'engine_map.json').is_file():
             self.skipTest('needs the engine map in bridge/state')
         async with Client(server_module.make_server(p)) as client:
-            result = await client.call_tool('fnv_class_vtable', {'class_name': 'PlayerCharacter'})
+            result = await client.call_tool('fnv_class', {'class_name': 'PlayerCharacter', 'action': 'vtable'})
             data = result.structured_content['data']
             self.assertLessEqual(size(result), CAP)
             self.assertGreater(data['total'], len(data['slots']))
             self.assertIn('offset=%d' % len(data['slots']), data['more'])
-            rest = await client.call_tool('fnv_class_vtable', {'class_name': 'PlayerCharacter',
+            rest = await client.call_tool('fnv_class', {'class_name': 'PlayerCharacter', 'action': 'vtable',
                                                                 'offset': len(data['slots'])})
             self.assertEqual(rest.structured_content['data']['slots'][0]['slot'], len(data['slots']))
 

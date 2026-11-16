@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from . import fnv_engine, fnv_symdb
 from .fnv_engine import EngineMapError, hx, parse_address
 
-SEARCH_SECONDS = 20     # fnv_func_find code and regex searches stop after this (release audit L4)
+SEARCH_SECONDS = 20     # fnv_func code and regex searches stop after this (release audit L4)
 
 Status = Literal['proven', 'class_proven', 'probable', 'decomp', 'rejected', 'unnamed']
 FunctionRef = Annotated[str, Field(min_length=1, max_length=300,
@@ -20,19 +20,15 @@ FunctionRef = Annotated[str, Field(min_length=1, max_length=300,
                                                'Cmd_IsLimbGone_Eval, FUN_005a3db0)')]
 
 FNV_TOOLS = {
-    'fnv_func_find': 'offline read: functions by name words, address, or text/regex in their decomp code; direct callers or callees (call graph from the exe), several levels',
-    'fnv_func_code': 'offline read: decomp source of one function, placeholder calls annotated with proven names',
+    'fnv_func': 'offline read: engine functions found by name words, address, or text/regex in their decomp code (find); the decomp source of one, placeholder calls annotated with proven names (code); direct callers or callees from the exe call graph, several levels (callers, callees); functions whose decomp code contains a string (strings)',
     'fnv_symbolize': 'offline read: addresses -> exe function + offset, static object, or module + offset',
     'fnv_symbols': 'offline read: compiler symbol database: source line per code address, named locals, exact type layouts',
     'fnv_name_status': 'offline read: is a name proven, by which evidence (fnvsym verified.csv)',
-    'fnv_class_layout': 'offline read: fields with offsets, types and checks from the decomp headers',
-    'fnv_class_vtable': 'offline read: vtable slots with implementing functions (exe RTTI) and header declarations',
-    'fnv_class_tree': 'offline read: base and derived classes from the game RTTI',
+    'fnv_class': 'offline read: an engine class: fields with offsets, types and checks from the decomp headers (layout); base and derived classes from the game RTTI (tree); vtable slots with implementing functions and header declarations (vtable)',
     'fnv_command_info': 'offline read: console/script command parameters, handlers and what they call',
     'fnv_script_explain': 'offline read: what the commands in a script line really do in the engine (handler, calls, settings, code)',
     'fnv_global_find': 'offline read: settings and static objects with addresses (proven initializers)',
     'fnv_setting_info': 'offline read: one game/INI setting, its address and the functions that use it',
-    'fnv_string_xrefs': 'offline read: functions whose decomp code contains a string',
     'fnv_save_inspect': 'offline read: a .fos save decoded with the game save code: header, plugins, location, globals, changed forms',
     'fnv_save_diff': 'offline read: two saves compared: changed forms, quest stages, positions, globals',
 }
@@ -97,7 +93,7 @@ class FnvService:
                                             offset=offset, timeout=SEARCH_SECONDS)
             return {'mode': 'regex' if mode == 'regex' else 'code', 'query': query, 'total': total,
                     'offset': offset, 'results': results, 'identity': e.identity()}
-        return self.run('fnv_func_find', action)
+        return self.run('fnv_func', action)
 
     def func_code(self, function, max_lines=400):
         def action():
@@ -113,7 +109,7 @@ class FnvService:
             out.update(e.code(address, max_lines))
             out['identity'] = e.identity()
             return out
-        return self.run('fnv_func_code', action)
+        return self.run('fnv_func', action)
 
     def func_graph(self, function, direction, depth=1, limit=100):
         def action():
@@ -220,7 +216,7 @@ class FnvService:
                     out['compilerLayout']['bases'] = built['bases']
             out['identity'] = e.identity()
             return out
-        return self.run('fnv_class_layout', action)
+        return self.run('fnv_class', action)
 
     # ----------------------------------------------------------------------------- symbol database
     def symdb(self):
@@ -452,7 +448,7 @@ class FnvService:
                 out['more'] = 'Slots %d to %d of %d shown; call again with offset=%d for the next ones.' % (
                     offset, offset + limit - 1, len(slots), offset + limit)
             return out
-        return self.run('fnv_class_vtable', action)
+        return self.run('fnv_class', action)
 
     def class_tree(self, class_name, limit=200):
         def action():
@@ -465,7 +461,7 @@ class FnvService:
                     'vtables': [{'address': t['address'], 'thisOffset': '0x%X' % t['thisOffset']}
                                 for t in info.get('vtables', [])],
                     'note': "From the game's RTTI (base order as MSVC records it).", 'identity': e.identity()}
-        return self.run('fnv_class_tree', action)
+        return self.run('fnv_class', action)
 
     def command_info(self, name):
         def action():
@@ -623,7 +619,7 @@ class FnvService:
             return {'query': text, 'total': total, 'results': results,
                     'note': 'Searches the decomp source text, so strings the decomp spells as data symbols are missed.',
                     'identity': e.identity()}
-        return self.run('fnv_string_xrefs', action)
+        return self.run('fnv_func', action)
 
     def _read_path(self, path, what='path'):
         """A caller's path, resolved, when it lies inside the project's read roots (safe_paths.read_roots); None stays
@@ -772,28 +768,33 @@ def register(server, project, observe, result_type):
     Depth = Annotated[int, Field(ge=1, le=4)]
 
     @server.tool(annotations=observe)
-    async def fnv_func_find(query: Annotated[str, Field(min_length=1, max_length=300)],
-                            mode: Literal['auto', 'name', 'code', 'regex', 'address', 'callers', 'callees'] = 'auto',
-                            status: list[Status] | None = None, limit: Limit = 25,
-                            offset: Offset = 0, depth: Depth = 1) -> result_type:
-        """Find Fallout: New Vegas 1.4.0.525 engine functions. mode=name matches all words of the query in the
-        function's names (CamelCase aware: "limb damage" finds ApplyLimbDamage); mode=code searches the decomp
+    async def fnv_func(query: Annotated[str, Field(min_length=1, max_length=300, description=(
+            'find: name words, an address, code text or a regex. code, callers, callees: a function address '
+            '(0x00573090) or name (TESObjectREFR::GetDismembered, Cmd_IsLimbGone_Eval, FUN_005a3db0). strings: the '
+            'text to look for'))],
+                       action: Literal['find', 'code', 'callers', 'callees', 'strings'] = 'find',
+                       mode: Literal['auto', 'name', 'code', 'regex', 'address'] = 'auto',
+                       status: list[Status] | None = None, limit: Limit = 25,
+                       offset: Offset = 0, depth: Depth = 1,
+                       max_lines: Annotated[int, Field(ge=10, le=3000)] = 400) -> result_type:
+        """Fallout: New Vegas 1.4.0.525 engine functions. find (default): mode=name matches all words of the query in
+        the function's names (CamelCase aware: "limb damage" finds ApplyLimbDamage); mode=code searches the decomp
         source text of each function (case-insensitive), regex likewise with a regular expression; address
-        symbolizes; auto picks address, then name, then code. Proven names rank first. Each result gives
-        address, name, status (proven / class_proven / probable / decomp / unnamed) and file:line. mode=callers:
-        the functions that call the function named in query directly (call graph read from the game exe), up to
-        `depth` levels; calls through vtables or function pointers are not visible. mode=callees: the functions it
-        calls directly (and Windows/DLL imports it calls), up to `depth` levels."""
-        if mode in ('callers', 'callees'):
-            return await invoke(service.func_graph, query, mode, depth, limit)
+        symbolizes; auto picks address, then name, then code. Proven names rank first. Each result gives address,
+        name, status (proven / class_proven / probable / decomp / unnamed) and file:line. code: the decompiled C++
+        of one function from the decomp checkout, with its signature, proof status and call counts; calls to
+        placeholder functions (FUN_xxxxxxxx) are annotated with their proven names. callers: the functions that call
+        it directly (call graph read from the game exe), up to `depth` levels; calls through vtables or function
+        pointers are not visible. callees: the functions it calls directly (and Windows/DLL imports it calls), up to
+        `depth` levels. strings: functions whose decompiled code contains the query text ("Pip-Boy", an INI key, an
+        error text)."""
+        if action == 'code':
+            return await invoke(service.func_code, query, max_lines)
+        if action in ('callers', 'callees'):
+            return await invoke(service.func_graph, query, action, depth, limit)
+        if action == 'strings':
+            return await invoke(service.string_xrefs, query, limit, offset)
         return await invoke(service.func_find, query, mode, status, limit, offset)
-
-    @server.tool(annotations=observe)
-    async def fnv_func_code(function: FunctionRef,
-                            max_lines: Annotated[int, Field(ge=10, le=3000)] = 400) -> result_type:
-        """Decompiled C++ of one engine function from the decomp checkout, with its signature, proof status and
-        call counts. Calls to placeholder functions (FUN_xxxxxxxx) are annotated with their proven names."""
-        return await invoke(service.func_code, function, max_lines)
 
     @server.tool(annotations=observe)
     async def fnv_symbolize(addresses: Annotated[list[str], Field(min_length=1, max_length=200)],
@@ -810,12 +811,22 @@ def register(server, project, observe, result_type):
         return await invoke(service.name_status, name_or_address)
 
     @server.tool(annotations=observe)
-    async def fnv_class_layout(class_name: Annotated[str, Field(min_length=1, max_length=200)],
-                               include_virtuals: bool = False, compiler: bool = False) -> result_type:
-        """Fields of an engine class (Actor, TESObjectREFR, BaseProcess, ...) with offsets, types and whether
-        the decomp build checks each offset; class size and base classes. When the symbol database knows the
-        class, compilerLayout gives the compiler's own size, member count, number of different definitions and
-        other sizes seen; compiler=true adds the compiler's full member list (see fnv_symbols action=type)."""
+    async def fnv_class(class_name: Annotated[str, Field(min_length=1, max_length=200)],
+                        action: Literal['layout', 'tree', 'vtable'] = 'layout',
+                        include_virtuals: bool = False, compiler: bool = False,
+                        limit: Limit | None = None, offset: Offset = 0) -> result_type:
+        """An engine class (Actor, TESObjectREFR, BaseProcess, ...). layout (default): fields with offsets, types and
+        whether the decomp build checks each offset; class size and base classes. When the symbol database knows the
+        class, compilerLayout gives the compiler's own size, member count, number of different definitions and other
+        sizes seen; compiler=true adds the compiler's full member list (see fnv_symbols action=type). tree: base
+        classes and derived classes from the game's RTTI (limit default 200). vtable: each slot's implementing
+        function (name, proof status) read from the game's RTTI, with the declaration from the decomp headers where
+        one exists; paged, `limit` slots (default 80) from slot `offset`; `total` and `more` say how to get the
+        rest."""
+        if action == 'tree':
+            return await invoke(service.class_tree, class_name, 200 if limit is None else limit)
+        if action == 'vtable':
+            return await invoke(service.class_vtable, class_name, 80 if limit is None else limit, offset)
         return await invoke(service.class_layout, class_name, include_virtuals, compiler)
 
     @server.tool(annotations=observe)
@@ -840,20 +851,6 @@ def register(server, project, observe, result_type):
         methods with vtable slots, number of different definitions and conflicting sizes (enums: enumerators).
         The main answer is in `verdict`; evidence follows; `identity` says which build the answer is from."""
         return await invoke(service.symbols, action, function, address, file, line, name, limit, offset)
-
-    @server.tool(annotations=observe)
-    async def fnv_class_vtable(class_name: Annotated[str, Field(min_length=1, max_length=200)],
-                               limit: Limit = 80, offset: Offset = 0) -> result_type:
-        """Virtual table of an engine class: each slot's implementing function (name, proof status) read from
-        the game's RTTI, with the declaration from the decomp headers where one exists. Paged: `limit` slots from
-        slot `offset`; `total` and `more` say how to get the rest."""
-        return await invoke(service.class_vtable, class_name, limit, offset)
-
-    @server.tool(annotations=observe)
-    async def fnv_class_tree(class_name: Annotated[str, Field(min_length=1, max_length=200)],
-                             limit: Limit = 200) -> result_type:
-        """Base classes and derived classes of an engine class, from the game's RTTI."""
-        return await invoke(service.class_tree, class_name, limit)
 
     @server.tool(annotations=observe)
     async def fnv_command_info(name: Annotated[str, Field(min_length=1, max_length=100)]) -> result_type:
@@ -884,12 +881,6 @@ def register(server, project, observe, result_type):
         """A game or INI setting (fCombatDistance, bAlwaysActive:General): its address and the engine
         functions that use it."""
         return await invoke(service.setting_info, name)
-
-    @server.tool(annotations=observe)
-    async def fnv_string_xrefs(text: Annotated[str, Field(min_length=2, max_length=200)],
-                               limit: Limit = 25, offset: Offset = 0) -> result_type:
-        """Engine functions whose decompiled code contains a string ("Pip-Boy", an INI key, an error text)."""
-        return await invoke(service.string_xrefs, text, limit, offset)
 
     SaveName = Annotated[str, Field(min_length=1, max_length=1000,
                                     description='Save file: full path, file name in the dev profile saves folder, '

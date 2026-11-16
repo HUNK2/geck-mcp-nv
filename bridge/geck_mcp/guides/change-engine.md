@@ -32,7 +32,7 @@ Use this when a script cannot do it and the change belongs in engine code. Statu
 ## Known traps
 
 - Generated structs come from the decomp's best definition of a class; some are placeholders (TESForm). Check offsets
-  against `fnv_class_layout` or `fnv_mem_read` before trusting one.
+  against `fnv_class` or `fnv_mem_read` before trusting one.
 - Callers that inlined a swapped function keep the old body (rare: most game logic is /Od).
 
 ## Checks that prove the fix

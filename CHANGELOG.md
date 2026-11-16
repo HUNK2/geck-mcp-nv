@@ -4,7 +4,7 @@
 
 The first version of the fork. The entries below this one are geck-mcp-nv's own history, by 2Shay.
 
-- **The fnv_* tools** (148): engine knowledge from the fnv_decomp decompilation (functions, classes, settings,
+- **The fnv_* tools** (137): engine knowledge from the fnv_decomp decompilation (functions, classes, settings,
   commands, a symbol database with source lines and named locals), a crash doctor, game control and scenario
   tests, live inspection, full control of the running game through the engine companion (time control, a
   debugger, hooks, C modules, decomp functions recompiled and swapped in, xNVSE plugin export), profiling,
@@ -31,8 +31,12 @@ The first version of the fork. The entries below this one are geck-mcp-nv's own 
   steps), `fnv_time` (calendar plus the clock and frame gate), `fnv_snapshot` (capture, diff), `fnv_menu` (state,
   tiles), `fnv_trace` (`stack` and several `when` conditions record call stacks), `fnv_undo all=true`,
   `fnv_ui_do close_all`, `fnv_place at export=false` (a test placement fnv_author export leaves out),
-  `fnv_func_find mode=callers|callees`, `fnv_script_instances of=` for script variables. A merged tool refuses a
-  parameter its chosen action does not use (`INVALID_ARGUMENT`).
+  `fnv_script_instances of=` for script variables. Groups that were easy to confuse became one tool too:
+  `fnv_func` (find, code, callers, callees, strings), `fnv_class` (layout, tree, vtable), `fnv_record` (show,
+  find, users), `fnv_quest` (state, targets), `fnv_dialogue` (now, tree), `fnv_threads` (list, hang),
+  `fnv_memory` (address_space, pools, alloc_trace, refcount), `fnv_profile` (sample, diff, frame) and
+  `geck_preview` (open, close). 193 tools became 164. A merged tool refuses a parameter its chosen action does
+  not use (`INVALID_ARGUMENT`).
 - **Removed:** the second server under `windows/`, the sprite tools and the PyFFI extra, tracked binaries, the
   upstream working notes, and three examples that needed game files the repository cannot ship.
 - **Name and version:** the server announces itself as `fnv-mcp` 0.5.0b1 (the Python package stays `geck_mcp`).
@@ -51,7 +55,7 @@ The first version of the fork. The entries below this one are geck-mcp-nv's own 
   type instead of `anyOf [X, null]` with `default: null` (a client that sends null still works), and descriptions
   without docstring indentation; the listing is about 18% smaller.
 - **Hardening:** `fnv_run_script` refuses a quit anywhere in the script; the bridge checks that the companion
-  pipe belongs to the game (`PIPE_NOT_GAME`); decompression is capped at 256 MiB; `fnv_func_find` regex searches
+  pipe belongs to the game (`PIPE_NOT_GAME`); decompression is capped at 256 MiB; `fnv_func` regex searches
   refuse nested repeats and stop after 20 seconds; Windows tools are run from the system folder; a cached engine
   build is reused only when its digests match.
 - **Documents:** the scenario file format, an uninstall section in the setup guide, `SECURITY.md`,

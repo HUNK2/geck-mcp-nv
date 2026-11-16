@@ -1,6 +1,6 @@
 """Load-order analysis over plugin data (fnv-mcp phase 2, offline):
 
-  fnv_record_users  what references a record: placed refs, scripts, leveled lists, containers, conditions,
+  fnv_record action=users  what references a record: placed refs, scripts, leveled lists, containers, conditions,
                     packages, dialogue, form lists, any field holding its form id
   fnv_conflicts     records more than one plugin edits, the winner, and which fields each override changes
   fnv_asset_check   meshes, textures and sounds a plugin names that exist in no archive or loose folder
@@ -222,7 +222,7 @@ class RecordsTools:
             built.append({'plugin': e['name'], 'references': len(rows), 'seconds': round(time.monotonic() - started, 1)})
         return built
 
-    # ------------------------------------------------------------------ fnv_record_users
+    # ------------------------------------------------------------------ fnv_record action=users
     def record_users(self, ref, types=None, limit=100, offset=0):
         entries, built = self.data._active()
         owner, local = self.data._resolve(entries, ref)

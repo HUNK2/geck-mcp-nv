@@ -1,6 +1,6 @@
 """Dialogue, AI packages and live-versus-plugin form tools (the last P1 tools of the fnv-mcp plan).
 
-  fnv_dialogue_tree    every response an NPC could give for a topic, each with its conditions evaluated
+  fnv_dialogue action=tree    every response an NPC could give for a topic, each with its conditions evaluated
   fnv_dialogue_choose  start a conversation and pick responses, for testing dialogue end to end (act)
   fnv_ai_packages      every package on an actor's list with schedule and conditions: which runs and why
   fnv_form_live_diff   a form in memory now versus its winning plugin record
@@ -266,7 +266,7 @@ class SocialTools:
                 out.append({'label': label, 'form': names.get(value) if value else None})
         return out
 
-    # ------------------------------------------------------------------ fnv_dialogue_tree
+    # ------------------------------------------------------------------ fnv_dialogue action=tree
     def dialogue_tree(self, speaker, topic='GREETING', include_text=True, limit=80, scope='speaker'):
         """Responses for a topic. scope: speaker (responses written for this speaker: their speaker conditions
         pass, plus any the engine allows now), available (only those the engine allows now), all."""
@@ -660,7 +660,7 @@ class SocialTools:
                 'note': ('changed: values that differ between the winning plugin record and memory now (scripts, '
                          'console commands or the engine changed them). Form flags also carry runtime bits.'),
                 'uses': ['component layouts from the decomp (TESFullName, TESValueForm, TESWeightForm, TESHealthForm, '
-                         'TESAttackDamageForm, TESScriptableForm, TESGlobal, TESQuest)', 'fnv_record_show']}
+                         'TESAttackDamageForm, TESScriptableForm, TESGlobal, TESQuest)', 'fnv_record']}
 
 
 def _chunks(seq, size):

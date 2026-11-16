@@ -1,6 +1,6 @@
 """The record index is used from the MCP server's worker threads: a query on a thread other than the one that
 opened the index must work (it failed with "SQLite objects created in a thread can only be used in that same
-thread" when fnv_record_find calls landed on different workers)."""
+thread" when fnv_record action=find calls landed on different workers)."""
 import tempfile
 import threading
 import unittest

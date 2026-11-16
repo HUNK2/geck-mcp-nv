@@ -2,13 +2,13 @@
 
   fnv_globals       every global variable (TESDataHandler's list), filtered; set one (journaled)
   fnv_dialogue      the conversation now: speaker, spoken topic and line, the choices on screen and their state
-  fnv_heap          memory: the 2 GB address space, the game's pools, form/actor counts, growth over time
+  fnv_memory action=address_space          memory: the 2 GB address space, the game's pools, form/actor counts, growth over time
   fnv_world_edit    move, rotate, scale, enable/disable, delete or duplicate a ref; force weather; image space
   fnv_scene_graph   a ref's 3D node tree: nodes, transforms, geometry, shaders and texture paths, controllers
   fnv_menu tiles      a menu's live tile tree with trait values named by the game's own trait table
   fnv_vats_odds     the VATS hit chance per target and limb, recomputed with CombatFormulas::GetVATSChanceToHit
                     term by term, plus the perk layers and the number the menu shows
-  fnv_frame_profile time per frame by subsystem, from timing hooks on the main loop's children
+  fnv_profile action=frame time per frame by subsystem, from timing hooks on the main loop's children
 
 Addresses and layouts come from the decomp (research notes in the fnv-mcp project); each result lists them in
 `uses`. Unproven functions are called only where the research traced their arguments from the call sites.
@@ -63,7 +63,7 @@ VATS_SETTINGS = {
     'fVATSMaxChance': 0x011CE10C, 'fVATSScreenPercentFactor': 0x011CFAB0, 'fVATSStealthMult': 0x011CEE54,
     'fVATSDestructibleMult': 0x011CE6FC, 'fVATSGrenadeTargetArea': 0x011CEB20, 'fVATSMeleeMaxDistance': 0x011CF678,
 }
-# fnv_frame_profile: the main loop and its children (research-vats-frame.md 2.2-2.4), main thread, once a frame
+# fnv_profile action=frame: the main loop and its children (research-vats-frame.md 2.2-2.4), main thread, once a frame
 FRAME_HOOKS = [
     (0x0086E650, 'frame', 'whole frame (MainLoop)'),
     (0x0086F940, 'player', 'player and world update, grid cell crossing'),
@@ -235,7 +235,7 @@ class WorldTools:
         menu, info_now, mgr = self.live.u32s([DIALOG_MENU, DIALOG_INFO, TOPIC_MANAGER])
         if not menu:
             return {'inConversation': False, 'note': 'No dialogue menu is open (DialogMenu singleton 0x011D9510 is '
-                                                     'null). fnv_dialogue_tree shows what an NPC could say.'}
+                                                     'null). fnv_dialogue action=tree shows what an NPC could say.'}
         raw = self.live.reads([(menu, 0x13C)])[0] or b''
         state, goodbye = struct.unpack_from('<II', raw, 0x28) if len(raw) >= 0x30 else (None, None)
         speaker = struct.unpack_from('<I', raw, 0x80)[0] if len(raw) >= 0x84 else 0
@@ -279,14 +279,14 @@ class WorldTools:
             'conditions pass; say-once infos already said (+0x22) are skipped',
             'low Intelligence players get the "dumb" variant of topics with dumb responses',
             'topics with no responses and duplicates are dropped; speech challenges roll on choosing',
-            'fnv_dialogue_tree evaluates every info of a topic for this speaker and shows which condition failed']
+            'fnv_dialogue action=tree evaluates every info of a topic for this speaker and shows which condition failed']
         out['uses'] = ['DialogMenu 0x011D9510 (state +0x28, goodbye +0x2C, tiles +0x30, speaker +0x80, label +0x84)',
                        'current TESTopicInfo 0x011D9518', 'MenuTopicManager 0x011DDDE4: topic-list stack +4, node 0 = '
                        'spoken topic, nodes 1.. = choices (MenuTopic: prompt +0, quest +0x14, info +0x18, read +0x25, '
                        'topic +0x28), built by BuildMenuTopics 0x0083ED50']
         return out
 
-    # ================================================================== fnv_heap
+    # ================================================================== fnv_memory action=address_space
     def heap(self, seconds=0.0):
         self.live.ready()
         first = self._heap_sample()
@@ -891,7 +891,7 @@ class WorldTools:
                            'to-hit %; cone radius = tan(spread x fVATSSpreadMult) x distance; stealth and melee '
                            'branches are not shown'}
 
-    # ================================================================== fnv_frame_profile
+    # ================================================================== fnv_profile action=frame
     def frame_profile(self, seconds=3.0, keep=False):
         self.live.in_game()
         installed, refused = [], []

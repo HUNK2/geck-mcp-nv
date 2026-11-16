@@ -26,14 +26,14 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
             tools = listing.tools if hasattr(listing, 'tools') else listing
             by_name = {tool.name: tool for tool in tools}
             # the legacy toolset (15 geck_runtime_*/geck_console_* tools, decision D4) is off by default
-            self.assertEqual(len([n for n in by_name if n.startswith('geck_')]), 43 - len(LEGACY_TOOLS))
+            self.assertEqual(len([n for n in by_name if n.startswith('geck_')]), 42 - len(LEGACY_TOOLS))
             self.assertEqual(set(n for n in by_name if n.startswith('fnv_')), set(FNV_TOOLS) | set(FNV_LIVE_TOOLS))
             for name in FNV_TOOLS:
                 self.assertTrue(by_name[name].annotations.read_only_hint, name)
             for name, (kind, _) in FNV_LIVE_TOOLS.items():
                 self.assertEqual(by_name[name].annotations.read_only_hint, kind == 'read', name)
                 self.assertEqual(by_name[name].annotations.destructive_hint, kind == 'act', name)
-            result = await client.call_tool('fnv_func_find', {'query': 'anything'})
+            result = await client.call_tool('fnv_func', {'query': 'anything'})
             self.assertTrue(result.is_error)
             self.assertEqual(result.structured_content['error']['code'], 'ENGINE_MAP_UNAVAILABLE')
             self.assertIn('geck_show_windows', by_name)
@@ -94,7 +94,7 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn('STAT', str(result.structured_content))
             listing = await client.list_tools()
             tools = listing.tools if hasattr(listing, 'tools') else listing
-            self.assertEqual(len(tools), 43 + len(FNV_TOOLS) + len(FNV_LIVE_TOOLS))
+            self.assertEqual(len(tools), 42 + len(FNV_TOOLS) + len(FNV_LIVE_TOOLS))
             result = await client.call_tool('geck_console_readiness', {'expected_plugin_hash': '0'*64})
             self.assertFalse(result.is_error, result)
             self.assertFalse(result.structured_content['data']['ready'])

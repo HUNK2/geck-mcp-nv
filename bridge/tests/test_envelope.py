@@ -31,7 +31,7 @@ class NotRunningTests(unittest.TestCase):
             ('fnv_mem_read', LinkError('COMPANION_UNREACHABLE', 'Engine companion pipe x is not available')),
             ('fnv_place', LiveError('NOT_RUNNING', 'The game is not running')),
             ('fnv_time', ConvError('NOT_RUNNING', 'Time control needs the game running.')),
-            ('fnv_hang_doctor', HookError('GAME_NOT_RUNNING', 'FalloutNV.exe is not running')),
+            ('fnv_threads', HookError('GAME_NOT_RUNNING', 'FalloutNV.exe is not running')),
             ('fnv_ref', LiveError('NO_GAME_LOADED', 'No game is loaded (phase main_menu)')),
         ]
         for name, error in paths:
@@ -49,7 +49,7 @@ class NotRunningTests(unittest.TestCase):
 
     def test_recovery_is_the_codes_next_step(self):
         r = self.live.run('fnv_ref', raising(LiveError('REF_NOT_FOUND', 'No such reference')))
-        self.assertIn('fnv_record_find', r['error']['recovery'])
+        self.assertIn('fnv_record action=find', r['error']['recovery'])
 
 
 class OutcomeTests(unittest.TestCase):

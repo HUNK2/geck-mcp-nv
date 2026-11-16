@@ -126,7 +126,7 @@ play with.
 | Tool family | Needs |
 | --- | --- |
 | `fnv_guide`, `fnv_setup_check`, `fnv_crash latest`, `fnv_crash` (without engine names), `fnv_save_inspect`, `fnv_save_diff` | nothing beyond the project file |
-| Engine knowledge: `fnv_func_*`, `fnv_class_*`, `fnv_symbolize`, `fnv_global_find`, `fnv_setting_info`, `fnv_string_xrefs`, `fnv_command_info`, `fnv_script_explain` | the engine map |
+| Engine knowledge: `fnv_func_*`, `fnv_class_*`, `fnv_symbolize`, `fnv_global_find`, `fnv_setting_info`, `fnv_func action=strings`, `fnv_command_info`, `fnv_script_explain` | the engine map |
 | `fnv_symbols`, source lines and named locals in other tools | the symbol database (optional) |
 | `fnv_name_*` (the naming tools, an optional extra) | the fnvsym proof folder (`FNVSYM_ROOT`) |
 | Live tools: `fnv_status`, `fnv_player`, `fnv_ref`, `fnv_photo`, tests, profiling, debugging... | a running game with the engine companion |

@@ -6,7 +6,7 @@ Hook-based (installed through the engine companion's "hook" op on proven decomp 
   fnv_damage_log      applied damage with the hit's parts     Actor::DamageHealthAndFatigue
   fnv_crash context   which scripts were running at a fault   Script::Run (+ the companion's exception handler)
 Outside the process (work while the game is stuck and without the companion):
-  fnv_hang_doctor     thread stacks sampled and named with the engine map
+  fnv_threads action=hang     thread stacks sampled and named with the engine map
   fnv_patch_map       which engine code other plugins changed, against your unpacked FalloutNV.exe
 
 Watch hooks only observe: they record and pass every call on unchanged. They are listed by fnv_hooks and
@@ -772,7 +772,7 @@ class DeepTools:
             out['value'] = int.from_bytes(data, 'little', signed=not unsigned)
         return out
 
-    # ------------------------------------------------------------------ fnv_hang_doctor
+    # ------------------------------------------------------------------ fnv_threads action=hang
     def hang_doctor(self, samples=5, interval_ms=250, all_threads=False):
         found = self.live.game.process()
         if not found:

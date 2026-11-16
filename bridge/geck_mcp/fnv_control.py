@@ -70,7 +70,7 @@ class ControlTools:
         record = engine.summary(address)
         if record.get('status') not in ('proven', 'class_proven', 'class proven') and not allow_unproven:
             raise HookError('UNPROVEN_FUNCTION', '%s is %s, not proven: pass allow_unproven=true to hook it anyway '
-                            '(fnv_func_find shows the status)' % (record.get('name') or function, record.get('status')),
+                            '(fnv_func shows the status)' % (record.get('name') or function, record.get('status')),
                             {'function': record})
         fn = engine.functions.get(address, {})
         sig = parse_signature(fn.get('signature') or '')

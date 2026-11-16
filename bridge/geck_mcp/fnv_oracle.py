@@ -291,7 +291,7 @@ class OracleTools:
         import sqlite3
         path = self.live.project.state_dir / 'fnv' / 'records.sqlite'
         missing = ConvError('RECORDS_INDEX_MISSING', 'The record index has no FalloutNV.esm records yet: run '
-                            'fnv_record_find once (any query) to build it, then call again.')
+                            'fnv_record action=find once (any query) to build it, then call again.')
         if not path.is_file():
             raise missing
         db = sqlite3.connect(str(path), timeout=30)

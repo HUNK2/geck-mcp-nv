@@ -3,8 +3,8 @@ compile and script hot-swap.
 
 Offline (no game needed):
   fnv_loadorder     the MO2 dev profile's plugins in order, with the real file behind MO2's virtual folder
-  fnv_record_find   records in the whole load order by EditorID, form id, type or name
-  fnv_record_show   one record decoded, with every plugin that edits it and what each changed
+  fnv_record action=find   records in the whole load order by EditorID, form id, type or name
+  fnv_record   one record decoded, with every plugin that edits it and what each changed
   fnv_script_lint   script source checked against the game's command tables (vanilla, xNVSE, JIP LN)
 Live (engine companion):
   fnv_compile_ingame  compile script source with the running game's compiler: errors, variables, bytecode
@@ -336,7 +336,7 @@ class DataTools:
                 return '%02X%06X' % (e['index'], local)
         return None
 
-    # ------------------------------------------------------------------ fnv_record_find
+    # ------------------------------------------------------------------ fnv_record action=find
     def record_find(self, query=None, record_type=None, plugin=None, limit=25, offset=0):
         limit = max(1, min(int(limit), 1000))           # P7: -1 was unlimited, a huge number overflowed SQLite
         offset = max(0, min(int(offset), 2 ** 31 - 1))
@@ -386,7 +386,7 @@ class DataTools:
         return {'results': out, 'count': len(out), 'indexBuilt': built,
                 'note': 'Searches EditorIDs and names in every active plugin of the load order.'}
 
-    # ------------------------------------------------------------------ fnv_record_show
+    # ------------------------------------------------------------------ fnv_record
     def _resolve(self, entries, ref):
         ref = ref.strip()
         local = re.match(r'^(.+\.es[mp]):(?:0x)?([0-9A-Fa-f]{1,6})$', ref, re.I)

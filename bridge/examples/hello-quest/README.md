@@ -37,7 +37,7 @@ steps 2 to 5 again.
 - The running game keeps no quest EditorIDs, so `Quest.variable` references cannot be compiled in game. The
   quest script avoids them (it reads its own variables and calls `GetStage`/`SetStage`).
 - A launch straight into the room from the main menu takes 2 to 3.5 minutes; a launch into other cells takes
-  10 to 15 s, and `coc HelloQuestRoom` inside a running game is immediate. `fnv_hang_doctor`, sampled during
+  10 to 15 s, and `coc HelloQuestRoom` inside a running game is immediate. `fnv_threads action=hang`, sampled during
   the wait, shows the main thread in the audio update (`Main::OnIdle_UpdateAudio` → `Owner::AddSound` →
   `BSWin32GameSound::CopyFrom`) creating DirectSound buffers through the Windows audio service, again and
   again. Moving the player's spawn to a coc marker and lifting the tokens above the floor did not change

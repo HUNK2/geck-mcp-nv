@@ -42,7 +42,7 @@ MUTATING_CASES = {
     ('fnv_script_profile', '*'): {'action': 'read'},   # read installs the hook too
     ('fnv_script_trace', '*'): {'action': 'read', 'script': 'MyScript'},   # read installs the hook too
     ('fnv_damage_log', '*'): {'action': 'read'},   # read installs the hook too
-    ('fnv_frame_profile', '*'): {},
+    ('fnv_profile', 'frame'): {'action': 'frame'},
     ('fnv_crash', 'capture_on'): {'action': 'capture_on'},
     ('fnv_crash', 'capture_off'): {'action': 'capture_off'},
     ('fnv_memory', 'alloc_trace'): {'action': 'alloc_trace'},

@@ -31,7 +31,7 @@ Tools that did the same job became one tool with actions. The old names no longe
 | `fnv_crash_context` latest / enable / disable / status | `fnv_crash` context / capture_on / capture_off / capture_status |
 | `fnv_tracepoint` | `fnv_trace stack=true` (or several `when` conditions) |
 | `fnv_vars` | `fnv_script_instances of=<quest or ref>` |
-| `fnv_func_callers`, `fnv_func_callees` | `fnv_func_find mode=callers`, `mode=callees` |
+| `fnv_func_callers`, `fnv_func_callees` | `fnv_func action=callers`, `action=callees` |
 | `fnv_time_control` | `fnv_time` with the same actions (`calendar` is the old `fnv_time`) |
 | `fnv_diff` | `fnv_snapshot diff` |
 | `fnv_revert_all` | `fnv_undo all=true` |
@@ -40,6 +40,15 @@ Tools that did the same job became one tool with actions. The old names no longe
 | `fnv_menu_control` press / close / close_all | `fnv_ui_do` message / close / close_all |
 | `fnv_spawn` | `fnv_place at export=false` (with `count`, `distance`, `direction`) |
 | `fnv_test_run`, `fnv_test_run_all`, `fnv_do` | `fnv_test` (run, the default), `fnv_test run_all`, `fnv_test steps` |
+| `fnv_func_find`, `fnv_func_code`, `fnv_string_xrefs` | `fnv_func` (find, the default), `action=code`, `action=strings` |
+| `fnv_class_layout`, `fnv_class_tree`, `fnv_class_vtable` | `fnv_class` (layout, the default), `action=tree`, `action=vtable` |
+| `fnv_record_show`, `fnv_record_find`, `fnv_record_users` | `fnv_record` (show, the default), `action=find`, `action=users` |
+| `fnv_quest_targets` | `fnv_quest action=targets` (`fnv_quest` alone is `state`) |
+| `fnv_dialogue_tree` | `fnv_dialogue action=tree` (`fnv_dialogue` alone is `now`) |
+| `fnv_hang_doctor` | `fnv_threads action=hang` (`fnv_threads` alone is `list`) |
+| `fnv_heap` | `fnv_memory action=address_space` (`fnv_memory` alone is `pools`) |
+| `fnv_frame_profile` | `fnv_profile action=frame` (`fnv_profile` alone is `sample`) |
+| `geck_preview_open`, `geck_preview_close` | `geck_preview action=open`, `action=close` |
 
 A merged tool refuses a parameter its chosen action does not use (`INVALID_ARGUMENT`), so a call with a leftover
 argument from another action is not silently half-done.
@@ -161,7 +170,7 @@ missing. In short:
    now refuse too (they used to run as read or control):
    - `fnv_hooks remove`; `fnv_trace`, `fnv_trace stack=true`, `fnv_script_profile`, `fnv_script_trace`, `fnv_damage_log`
      start and stop, and read for the three that install their hook on the first read (`fnv_script_profile`,
-     `fnv_script_trace`, `fnv_damage_log`); `fnv_frame_profile`; `fnv_crash` capture_on and capture_off;
+     `fnv_script_trace`, `fnv_damage_log`); `fnv_profile action=frame`; `fnv_crash` capture_on and capture_off;
      `fnv_memory` alloc_trace and refcount;
      `fnv_events` subscribe and unsubscribe; `fnv_watch frames=`; `fnv_systems` formula, sweep and barter;
      `fnv_perk_entries` start, stop and evaluate; `fnv_leveled_roll seed=`. These tools are now annotated as act
@@ -215,21 +224,21 @@ Every answer is an envelope: `ok`, `outcome`, `data`, `error`. For an `fnv_*` ca
 | `fnv_script_trace` | read | The statements of one script as they run: kind (set, if, command name), block names, branches taken, failures, time; with the source, line numbers and the lines that did not run. Hook on `ScriptRunner::EvaluateLine` filtered to the script |
 | `fnv_damage_log` | read | Applied damage (`Actor::DamageHealthAndFatigue`) with the hit behind it: attacker, target, weapon, body part, health/limb/fatigue/armor damage, base damage, multiplier, critical/sneak/fatal flags |
 | `fnv_crash context` | read | The newest crash-context files, named with the engine map; `enable` adds the script hooks so they name the running script. `fnv_crash` attaches the matching file |
-| `fnv_hang_doctor` | read | The main thread's (or every thread's) stack sampled from outside the process and named: where a hang is stuck. Works when the companion does not answer |
+| `fnv_threads action=hang` | read | The main thread's (or every thread's) stack sampled from outside the process and named: where a hang is stuck. Works when the companion does not answer |
 | `fnv_patch_map` | read | Engine code, imports and vtable slots other modules changed, by owner, with jump chains and functions patched by several owners |
 | `fnv_hooks` | read | The watch hooks installed; remove one or all |
 | `fnv_loadorder` | read | The dev profile's plugins in order: index, the real file behind MO2's virtual folder, masters, problems |
-| `fnv_record_find` | read | Records in every active plugin by EditorID, name, form id or `Plugin.esp:LOCALID`; defining and winning plugin, override count |
-| `fnv_record_users` | read | Everything that references a record: placed refs, scripts (SCRO), leveled lists, containers, conditions (typed by the game's condition-function table), packages, form lists, any form field; whether the winning version still does |
+| `fnv_record action=find` | read | Records in every active plugin by EditorID, name, form id or `Plugin.esp:LOCALID`; defining and winning plugin, override count |
+| `fnv_record action=users` | read | Everything that references a record: placed refs, scripts (SCRO), leveled lists, containers, conditions (typed by the game's condition-function table), packages, form lists, any form field; whether the winning version still does |
 | `fnv_conflicts` | read | Records several active plugins edit, worst first: plugins in load order, winner, subrecords each override changes, earlier changes the winner loses |
 | `fnv_asset_check` | read | Meshes, textures, icons and sounds a plugin names that no enabled mod, the Data folder or any BSA has; textures inside its loose meshes too |
 | `fnv_profile_set` | control | Enable or disable MO2 mods and plugins in the dev profile (game closed), with a backup of the three profile files |
-| `fnv_record_show` | read | One record decoded (strings, form references with EditorIDs, script header and source, common DATA layouts), every version in load order, and what each override changed |
+| `fnv_record` | read | One record decoded (strings, form references with EditorIDs, script header and source, common DATA layouts), every version in load order, and what each override changed |
 | `fnv_script_lint` | read | Script source checked offline: structure, block types, variables, unknown commands, argument counts, EditorIDs of the wrong type or in no plugin |
 | `fnv_compile_ingame` | read | Compile with the running game's compiler: its errors with line numbers, or the variables, references, statements and bytecode |
 | `fnv_script_hot_swap` | act | Replace a running script's code with a new compile; instances keep their variables; undoable |
 | `fnv_scripts_compile` | control | Compile the project spec's scripts with the running game into geck-mcp-nv's compiled-script cache, so `geck_plugin_build` emits compiled scripts without GECK |
-| `fnv_dialogue_tree` | read | The responses a speaker could give for a topic (GREETING by default): prompt, quest and priority, flags, response text, every condition with its value, the engine's verdict, and the response it would pick now |
+| `fnv_dialogue action=tree` | read | The responses a speaker could give for a topic (GREETING by default): prompt, quest and priority, flags, response text, every condition with its value, the engine's verdict, and the response it would pick now |
 | `fnv_dialogue_choose` | act | Talk to an NPC and pick responses by index, prompt text or info id; each step's options, the pick and the answer |
 | `fnv_ai_packages` | read | An actor's packages in order: type, flags, schedule against the game clock, location, conditions with values; which one runs, which are eligible or shadowed, and why the others are not |
 | `fnv_form_live_diff` | read | A form in memory versus its winning plugin record (name, value, weight, health, damage, script, global value, quest data): what changed at runtime |
@@ -241,7 +250,7 @@ Every answer is an envelope: `ok`, `outcome`, `data`, `error`. For an `fnv_*` ca
 | `fnv_move` | act | Teleport the player or a ref to a ref, a cell (coc, or JIP `MoveToCell` with a position) or a position; waits for the cell to load; undoable |
 | `fnv_place at export=false` | act | Place a base form near a ref (`PlaceAtMe`) and return the new refs; undo disables and deletes them |
 | `fnv_condition_eval` | read | Every condition list of a record (INFO, PACK, PERK and its entry tabs, SPEL/ENCH/ALCH/INGR effects, QUST quest, stage log entries and objective targets, RCPE, IDLE, MESG buttons, CPTH) evaluated against chosen refs, with what fails |
-| `fnv_quest_targets` | read | Each objective's targets: ref, cell, position, target conditions, the door a marker points at, the player's target cache, and every reason a marker is not shown |
+| `fnv_quest action=targets` | read | Each objective's targets: ref, cell, position, target conditions, the door a marker points at, the player's target cache, and every reason a marker is not shown |
 | `fnv_script_instances` | read | Running quest scripts and the object scripts of every loaded cell (the lists `TES::RunScripts` walks), variables, instance counts per script, and whether scripts run at all |
 | `fnv_menu` | read | Interface mode, active menu, menu stack, visible menus by name, loading screen, and an open message box with title, text and buttons |
 | `fnv_ui_do` | act | Press a message box button by index or label through the engine's click handler (`GetButtonPressed` sees it), close the open menu, close all menus |
@@ -261,12 +270,12 @@ Every answer is an envelope: `ok`, `outcome`, `data`, `error`. For an `fnv_*` ca
 | `fnv_engine_get` | read | Call a proven getter (Get/Is/Has/Can/...) whose machine code and callees write no memory but their own stack (fnv_oracle.Purity on the clean exe), always guarded, with typed arguments; pointer results described |
 | `fnv_globals` | read | Global variables from the data handler's list, filtered; set values (journaled) |
 | `fnv_dialogue` | read | The conversation on screen: speaker, state, spoken topic and info, the line and name as shown, the choices in order with topic, info, quest and heard flag |
-| `fnv_heap` | read | The game's address space (2 GB unless large address aware, largest free block), memory pools by use, form and process-level actor counts; growth over N seconds |
+| `fnv_memory action=address_space` | read | The game's address space (2 GB unless large address aware, largest free block), memory pools by use, form and process-level actor counts; growth over N seconds |
 | `fnv_world_edit` | act | Move, rotate, scale, enable, disable, delete or duplicate a ref with the functions the console commands use; force or release weather; trigger or stop an image-space modifier; undoable |
 | `fnv_scene_graph` | read | A loaded ref's node tree: classes (MSVC RTTI or Gamebryo NiRTTI), names, hidden flag, transforms, geometry counts, skinning, shader and texture paths, controllers and sequences, extra data |
 | `fnv_menu tiles` | read | A menu's live tile tree with trait values named by the game's trait table |
 | `fnv_vats_odds` | read | VATS hit chance per target and limb from CombatFormulas::GetVATSChanceToHit and the ep 8 perk layer, the percent the menu shows, and the gun formula term by term |
-| `fnv_frame_profile` | read | Time per frame by subsystem from timing hooks on the main loop's children, removed afterwards |
+| `fnv_profile action=frame` | read | Time per frame by subsystem from timing hooks on the main loop's children, removed afterwards |
 | `fnv_window` | control (act for release_mouse, capture_mouse, unpause) | Free the user's mouse while the game runs (DirectInput non-exclusive background mode on the game window), capture it again, close the pause menu; persist writes `bBackground Mouse=1` to the dev profile's Fallout.ini (checked: launch starts with it, live toggles return S_OK) |
 | `fnv_probe` | act | Count calls of thousands of unnamed functions at once. The probe kind is chosen offline per function against the clean exe (entry jump when the prologue is whole instructions, ≤ the function, ≤3 relocs and nothing branches into the moved bytes; otherwise the rel32 of direct calls and the vtable slots that hold it; otherwise none): `plan` classifies a selection, `install` arms with other threads suspended (none mid-instruction), `read` returns counts and decoded samples (this/edx/caller/stack/vtables, result int or st0 float) with a per-caller table, `remove` disarms and restores the bytes. Journaled; a function that crashed the game while probed is quarantined |
 | `fnv_atlas` | act | Dose and response over the probe set: run a scripted game action 0/1/2/4 times, read the counters before and after each segment, least-squares fit the counts to the dose to classify each function `per_unit` (runs n× per action), `with_action` (once per action) or `background`; functions that scale with `console_noop` are marked `driver`. Stored in `state/atlas.sqlite`; `import_frida` loads an existing `fnvsym-trace/1` run |
@@ -322,7 +331,7 @@ read after the game quits.
 **`fnv_guide`.** Guides are Markdown files in `geck_mcp/guides/` (`crash`, `script`), also served as the MCP
 resource `fnv://guide/{name}`. `engine` searches the Markdown files of `fnv.research_dir` (or the environment
 variable `FNV_RESEARCH_DIR`) by heading section, and the facts in `fnv_facts.py`; with no folder set it searches
-the shipped guides instead and points to `fnv_func_find` for the decomp. A test fails when a guide names
+the shipped guides instead and points to `fnv_func` for the decomp. A test fails when a guide names
 an `fnv_*` or `geck_*` tool that does not exist.
 
 ## Game time: fnv_time and fnv_wait_for (Plan 2, W1)
@@ -735,7 +744,7 @@ screenshot. With `trace_script` the report has `scriptTrace`: statements run, an
 
 ## Data and authoring
 
-`fnv_record_find` and `fnv_record_show` index every active plugin into `state/fnv/records.sqlite` (record
+`fnv_record action=find` and `fnv_record` index every active plugin into `state/fnv/records.sqlite` (record
 headers and the first subrecords; a file is re-indexed when its size or time changes; the 245 MB
 FalloutNV.esm plus the DLC took a few seconds). Records are found by the plugin that defines them and
 their local id, so a record's versions across the load order, and what each override changed, come from
@@ -765,7 +774,7 @@ command's eval handler from the running game's own command table (`CommandInfo.e
 one; groups are ANDed). So each condition shows its own value, not only pass or fail. Handler calls are
 batched, 250 per frame: Trudy's GREETING (5579 responses of every quest) takes about 10 s.
 
-`fnv_dialogue_tree` asks the engine for each response's verdict with `TESTopicInfo::CheckCondition`
+`fnv_dialogue action=tree` asks the engine for each response's verdict with `TESTopicInfo::CheckCondition`
 (0x0061E600, proven; with the speaker and the player), which also applies say-once, quest conditions and the
 dummy-node rules; a response where the engine and the per-condition check disagree gets a note. `wouldSay`
 is the first available response of the highest-priority quest in list order (random responses are chosen
@@ -788,7 +797,7 @@ that is not on the list came from elsewhere (a script package, a quest, combat, 
 
 `fnv_form_live_diff` reads the form's components at the offsets the decomp's class layouts give for its
 runtime class (`TESFullName`, `TESValueForm`, `TESWeightForm`, `TESHealthForm`, `TESAttackDamageForm`,
-`TESScriptableForm`), plus `TESGlobal` and `TESQuest` data, and compares them with `fnv_record_show`'s
+`TESScriptableForm`), plus `TESGlobal` and `TESQuest` data, and compares them with `fnv_record`'s
 decoding of the winning record.
 
 ## Engine code: fnv_native, fnv_code, fnv_plugin_build (Plan 2, W5)
@@ -958,13 +967,13 @@ has its root node's child pointing at its strip data. With the crash hold on (`f
 `coc HelloCrashRoom` faulted on a loader thread in `NiAVObject::AttachParent` (from `NiNode::SetChildAt`,
 `ReadChildListFromStream`, `NiStream::Load`, `QueuedModel::Run`); the game stayed alive, held. `fnv_debug status`
 named the fault and `hellocrash\crate.nif` on the faulting thread's stack; `fnv_asset where` gave the HelloCrash mod
-folder and `fnv_record_find plugin=HelloCrash.esp` the STAT HelloCrashCrate that uses it. Fixed on the way:
+folder and `fnv_record action=find plugin=HelloCrash.esp` the STAT HelloCrashCrate that uses it. Fixed on the way:
 - A fault on a loader thread during a load leaves the main thread waiting for it, and the companion answers only
   on the main thread: every call timed out. `fnv_debug status` and `stack` now fall back to reading the held
   fault from outside: the registers of the fault from the companion's context file (the first fault of that thread;
   a crash logger faulted again later), the stack above them named with the engine map, and file paths found on that
   stack.
-- `fnv_hang_doctor` samples, besides the main thread, the threads that use the most CPU and the threads held at a
+- `fnv_threads action=hang` samples, besides the main thread, the threads that use the most CPU and the threads held at a
   fault, and reads a stack that sits near the top of its region in smaller pieces.
 - Seen on the way: a mesh whose root claims 268 million children does not crash; the load job never finishes and the
   game hangs in `TES::LoadInterior`.
@@ -1122,7 +1131,7 @@ without a person clicking. Where the game has a function or a data structure for
   the target ref), RCPE +0x34, IDLE +0x30, MESG buttons (+0x30, conditions +0x08), CPTH +0x18. Each
   condition runs with the game's own condition function from the command table, combined like
   `TESConditionItem::ContainsTrait`.
-- **fnv_quest_targets** follows how the game builds markers: the quest must run and be the player's active
+- **fnv_quest action=targets** follows how the game builds markers: the quest must run and be the player's active
   quest (`PlayerCharacter` +0x6B8), the objective must be displayed and not completed and in the player's
   list (+0x6BC), the target ref must exist and its conditions pass (subject: the target ref). Targets in
   another cell point at the first door of the path the game built (target +0x20). It also says whether the
@@ -1208,7 +1217,7 @@ memory and world edits) and checked in the running game on the dev profile:
 - **fnv_globals**: TimeScale 30 set to 60 (`GetGlobalValue` agreed) and undone.
 - **fnv_dialogue**: a conversation with a spawned Sunny Smiles: GREETING, the line on screen, quest
   VFreeformGoodsprings and her choices in order.
-- **fnv_heap**: 1856 of 2048 MB of address space used after loading the test save, largest free block 14 MB; 133552
+- **fnv_memory action=address_space**: 1856 of 2048 MB of address space used after loading the test save, largest free block 14 MB; 133552
   forms; 18 high-process actors. Windows reserves the region above 2 GB for a non-large-address-aware 32-bit process,
   so the walker stops at the limit the loaded image's header gives.
 - **fnv_world_edit**: transform (position, Z angle, scale 2.0), duplicate, disable on a gecko, then undo of all three;
@@ -1220,7 +1229,7 @@ memory and world edits) and checked in the running game on the dev profile:
 - **fnv_vats_odds**: 9mm pistol on a gecko at 210 units: head 0.4907 from the engine, and the recomputed terms give
   49.07% too; the torso term is 147% and caps at 95. The menu number uses single precision (Direct3D's x87 control
   word), so 0.95 shows as 95. Not yet compared with an open VATS menu: injected input did not open VATS here.
-- **fnv_frame_profile**: 60 fps, 16.4 ms frames, render 13.7 ms (vsync wait included); with iNumHWThreads 12 the AI
+- **fnv_profile action=frame**: 60 fps, 16.4 ms frames, render 13.7 ms (vsync wait included); with iNumHWThreads 12 the AI
   and process-list children run off the main thread and are listed as not called.
 - Offline: record users of GSSunnySmiles (her ACHR, 159 dialogue conditions, a package, a quest) and Caps001 (the
   first index of the whole load order takes about 10 s); conflicts in the vanilla DLC set (76 with lost changes);
@@ -1291,7 +1300,7 @@ Milestone 7 (2026-11-07), live in the Prospector Saloon and over MCP:
   and 5.43 limb damage (base 13.04, multiplier 1.0); his dynamite hit a settler for 39.12 (base 42.12).
 - `fnv_patch_map`: 424 patched places (JIP LN 166, xNVSE 86, Crash Logger 17, our watch hooks), 26 engine
   functions patched by more than one module (for example `Expression::Eval`: JIP LN and xNVSE).
-- `fnv_hang_doctor`: main thread sampled 3 times, in `Renderer::PresentFrame` (vsync) each time.
+- `fnv_threads action=hang`: main thread sampled 3 times, in `Renderer::PresentFrame` (vsync) each time.
 - `forced-crash.yaml`: the report now carries the companion's context (main thread, read of 0x1C, the op).
 - Every quit leaves a Crash Logger log on the test machine, with the companion off too: a plugin faults in
   its exit cleanup (`ExitProcess` in the call trace). The crash doctor marks such logs `duringShutdown`.
@@ -1299,9 +1308,9 @@ Milestone 7 (2026-11-07), live in the Prospector Saloon and over MCP:
 Milestone 8 (2026-11-07):
 
 - `fnv_loadorder`: 11 plugins (FalloutNV.esm, 5 DLC masters, 4 packs, GunRunnersArsenal, HelloWasteland.esp).
-- `fnv_record_find Trudy`: `GSTrudy` (NPC_), `TrudyRef`, her note, topics, packages and script, across the
+- `fnv_record action=find Trudy`: `GSTrudy` (NPC_), `TrudyRef`, her note, topics, packages and script, across the
   load order, 3.2 s including the first index build.
-- `fnv_record_show Weap10mmPistol`: defined in FalloutNV.esm, winner GunRunnersArsenal.esm, which changes
+- `fnv_record Weap10mmPistol`: defined in FalloutNV.esm, winner GunRunnersArsenal.esm, which changes
   `DNAM`; `DATA` value 750, health 80, weight 3, damage 22, clip 12; ammo list resolved to `AmmoList10mm`.
 - `fnv_script_trace GoodspringsRadioScript` mapped each statement to its source line from the plugin's
   `SCTX` and listed the lines that did not run.
@@ -1313,10 +1322,10 @@ Milestone 9 (2026-11-07): Hello Quest built with `geck_plugin_build`, its script
 `fnv_scripts_compile`, rebuilt, installed and proven by `hello-quest.yaml` (16 steps passed, twice: after the
 first build and after a spec change that invalidated the cached script). Open: launching from the main menu
 straight into that room takes 2-3.5 minutes (the main thread is in DirectSound buffer creation, per
-`fnv_hang_doctor`); other cells take 10-15 s.
+`fnv_threads action=hang`); other cells take 10-15 s.
 
 Dialogue, AI packages and live diffs (2026-11-07, a fresh game started in the Prospector Saloon):
-- `fnv_dialogue_tree TrudyRef`: 5579 GREETING responses checked in about 10 s; 10 kept for Trudy (her 7
+- `fnv_dialogue action=tree TrudyRef`: 5579 GREETING responses checked in about 10 s; 10 kept for Trudy (her 7
   Goodsprings lines plus 3 shared ones), the engine and the per-condition check agreeing on every one;
   `wouldSay` her say-once greeting ("Well, you've been causing quite a stir...", `GetDeadCount JoeCobb < 1`).
 - `fnv_dialogue_choose`: Trudy's menu listed 7 options with their info ids; "Does Goodsprings get many
@@ -1337,7 +1346,7 @@ Dialogue, AI packages and live diffs (2026-11-07, a fresh game started in the Pr
   (`ShowMessage 0011E661`) "No (Recommended)" and "Yes" were pressed by label and `GetButtonPressed`'s byte
   became 0 and 1 (hardcore stayed off: the result belonged to the console). `fnv_trace TESQuest::RunScript`
   decoded every quest and named the caller. `fnv_watch` sampled at 250 ms with frame numbers.
-  `fnv_script_instances`: 229 running quest scripts, 25 loaded cells, 68 scripted refs. `fnv_quest_targets`:
+  `fnv_script_instances`: 229 running quest scripts, 25 loaded cells, 68 scripted refs. `fnv_quest action=targets`:
   VMQ01 listed every reason its markers are hidden; the active Old World Blues quest's target was shown and in
   the game's cache. `fnv_condition_eval`: the Cowboy perk's skill requirement failed (15 against 45), the
   Super Stimpak's effects split on `IsHardcore` / `HasPerk`. `fnv_leveled_roll Ammo5mm75`: nothing in 23% of

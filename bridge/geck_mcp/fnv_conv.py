@@ -56,7 +56,7 @@ NEXT_STEPS = {
     'GAME_STARTING': 'The game is still starting: wait, then call fnv_status.',
     'NO_GAME_LOADED': 'No save or cell is loaded: call fnv_game restart with start=continue, a save or a cell '
                       '(fnv_game launch when the game is closed).',
-    'COMPANION_TIMEOUT': 'The engine companion did not answer: call fnv_status; if the game hangs call fnv_hang_doctor.',
+    'COMPANION_TIMEOUT': 'The engine companion did not answer: call fnv_status; if the game hangs call fnv_threads action=hang.',
     'COMPANION_DISCONNECTED': 'The engine companion is gone: call fnv_status, then fnv_game launch if the game is not running.',
     'COMPANION_UNREACHABLE': 'The engine companion does not answer: call fnv_status; if it is not installed, quit the game, '
                              'call fnv_companion_install, then fnv_game launch.',
@@ -67,7 +67,7 @@ NEXT_STEPS = {
                         'files into the game or its mod profile. Set it in the project file.',
     'ENGINE_MAP_UNAVAILABLE': 'The engine map is missing: call fnv_setup_check and follow the fix for the engine map.',
     'NOT_CONFIGURED': 'Set fnv.mo2_root and fnv.mo2_profile in the project file; fnv_setup_check lists what else is missing.',
-    'REF_NOT_FOUND': 'No such reference: check the spelling, or find it with fnv_record_find or fnv_refs_near.',
+    'REF_NOT_FOUND': 'No such reference: check the spelling, or find it with fnv_record action=find or fnv_refs_near.',
     'UNKNOWN_ACTION': 'Call the tool again with one of the valid actions.',
 }
 

@@ -138,7 +138,7 @@ class GuideToolTests(unittest.TestCase):
         self.assertTrue(out['total'] >= 1, out)
         self.assertEqual(out['rows'][0]['source'], 'guide')
         self.assertIn('shipped guides', out['reason'])
-        self.assertIn('fnv_func_find', out['next'])
+        self.assertIn('fnv_func', out['next'])
         with mock.patch.dict(os.environ, {'FNV_RESEARCH_DIR': str(self.research)}):
             self.assertEqual(GuideTools(None).run('engine', 'barter price')['total'], 1)
 

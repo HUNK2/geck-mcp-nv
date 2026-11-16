@@ -1,7 +1,7 @@
 """Read a running 32-bit FalloutNV.exe from outside (64-bit Python, WOW64): memory, modules, threads.
 
 Used by the tools that must work while the game is stuck or without the engine companion:
-fnv_hang_doctor (thread stacks) and fnv_patch_map (code bytes). Nothing here writes to the game;
+fnv_threads action=hang (thread stacks) and fnv_patch_map (code bytes). Nothing here writes to the game;
 threads are suspended only for the moment their context is read.
 """
 import ctypes

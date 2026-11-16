@@ -14,7 +14,7 @@ Use this when the frame rate drops, a cell stutters or a script makes the game s
 2. **Who is it?** `selfFunctions` shows where the thread really was, with `calledFrom`. A plugin DLL appears as
    `name.dll!offset`. `inclusive` shows every function on the stack. Use `threads=all` when the main thread is
    waiting on another thread.
-3. **Scripts?** `fnv_script_profile` gives time per script; `fnv_frame_profile` per frame phase.
+3. **Scripts?** `fnv_script_profile` gives time per script; `fnv_profile action=frame` per frame phase.
 4. **Memory churn?** `fnv_memory` action `alloc_trace` counts allocations per call site; `pools` gives committed
    memory and the live NiRefObject count.
 5. **Fix it**: a plugin setting, a script, a module (`fnv_native unload`), or an engine function (`fnv_code`).

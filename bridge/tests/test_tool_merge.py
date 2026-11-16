@@ -17,10 +17,18 @@ from geck_mcp.server import make_server  # noqa: E402
 TIER_1 = {
     'fnv_crash_latest': 'fnv_crash', 'fnv_crash_explain': 'fnv_crash', 'fnv_crash_history': 'fnv_crash',
     'fnv_crash_context': 'fnv_crash', 'fnv_tracepoint': 'fnv_trace', 'fnv_vars': 'fnv_script_instances',
-    'fnv_func_callers': 'fnv_func_find', 'fnv_func_callees': 'fnv_func_find', 'fnv_time_control': 'fnv_time',
+    'fnv_func_callers': 'fnv_func', 'fnv_func_callees': 'fnv_func', 'fnv_time_control': 'fnv_time',
     'fnv_diff': 'fnv_snapshot', 'fnv_revert_all': 'fnv_undo', 'fnv_launch': 'fnv_game', 'fnv_quit': 'fnv_game',
     'fnv_restart': 'fnv_game', 'fnv_ui_tiles': 'fnv_menu', 'fnv_menu_control': 'fnv_ui_do', 'fnv_spawn': 'fnv_place',
     'fnv_test_run': 'fnv_test', 'fnv_test_run_all': 'fnv_test', 'fnv_do': 'fnv_test',
+}
+TIER_2A = {
+    'fnv_func_find': 'fnv_func', 'fnv_func_code': 'fnv_func', 'fnv_string_xrefs': 'fnv_func',
+    'fnv_class_layout': 'fnv_class', 'fnv_class_vtable': 'fnv_class', 'fnv_class_tree': 'fnv_class',
+    'fnv_record_find': 'fnv_record', 'fnv_record_show': 'fnv_record', 'fnv_record_users': 'fnv_record',
+    'fnv_quest_targets': 'fnv_quest', 'fnv_dialogue_tree': 'fnv_dialogue', 'fnv_hang_doctor': 'fnv_threads',
+    'fnv_heap': 'fnv_memory', 'fnv_frame_profile': 'fnv_profile',
+    'geck_preview_open': 'geck_preview', 'geck_preview_close': 'geck_preview',
 }
 
 
@@ -31,8 +39,9 @@ class MergeTests(GateFixture, unittest.IsolatedAsyncioTestCase):
 
     async def test_old_names_gone_new_ones_there(self):
         names = await self.names()
-        self.assertEqual(sorted(set(TIER_1) & names), [])
-        self.assertEqual(sorted(set(TIER_1.values()) - names), [])
+        merged = {**TIER_1, **TIER_2A}
+        self.assertEqual(sorted(set(merged) & names), [])
+        self.assertEqual(sorted(set(merged.values()) - names), [])
 
     async def test_refusals(self):
         cases = [
@@ -45,7 +54,19 @@ class MergeTests(GateFixture, unittest.IsolatedAsyncioTestCase):
             ('fnv_game', {'action': 'quit', 'timeout_seconds': 300}, '5 to 120'),
             ('fnv_game', {'action': 'launch', 'timeout_seconds': 10}, '20 to 600'),
             ('fnv_menu', {'action': 'state', 'menu': 'inventory'}, 'menu'),
-            ('fnv_func_find', {'query': 'x', 'mode': 'callers', 'offset': 5}, 'offset'),
+            ('fnv_func', {'query': 'x', 'action': 'callers', 'offset': 5}, 'offset'),
+            ('fnv_func', {'query': 'x', 'action': 'code', 'mode': 'regex'}, 'mode'),
+            ('fnv_class', {'class_name': 'Actor', 'action': 'tree', 'compiler': True}, 'compiler'),
+            ('fnv_record', {'action': 'find', 'record': 'x'}, 'record'),
+            ('fnv_record', {'action': 'find', 'limit': 300}, '1 to 200'),
+            ('fnv_record', {'action': 'users'}, 'needs record'),
+            ('fnv_dialogue', {'action': 'now', 'speaker': 'player'}, 'speaker'),
+            ('fnv_dialogue', {'action': 'tree'}, 'needs speaker'),
+            ('fnv_threads', {'action': 'list', 'samples': 3}, 'samples'),
+            ('fnv_memory', {'action': 'pools', 'pointer': '0x1'}, 'pointer'),
+            ('fnv_memory', {'action': 'alloc_trace', 'seconds': 90}, 'above 0 up to 60'),
+            ('fnv_profile', {'action': 'frame', 'seconds': 60}, '0.5 to 30'),
+            ('fnv_profile', {'action': 'frame', 'rate': 50}, 'rate'),
             ('fnv_crash', {'action': 'context', 'limit': 50}, '1 to 20'),
             ('fnv_crash', {'action': 'history', 'path': 'x.log'}, 'path'),
             ('fnv_time', {'action': 'pause', 'set_hour': 3}, 'set_hour'),

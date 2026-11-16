@@ -193,8 +193,8 @@ class GuideTools:
         reason, nxt = None, None
         if not folder:
             reason = ('No research folder is set: the shipped guides and the recorded facts were searched. The decomp '
-                      'itself is searched with fnv_func_find.')
-            nxt = ('For how the engine does it, call fnv_func_find with the same words (mode="code" searches the '
+                      'itself is searched with fnv_func.')
+            nxt = ('For how the engine does it, call fnv_func with the same words (mode="code" searches the '
                    'decomp source). To search notes of your own too, set fnv.research_dir in the project file, or '
                    'the environment variable FNV_RESEARCH_DIR.')
         elif not Path(folder).is_dir():
@@ -202,7 +202,7 @@ class GuideTools:
         head = '%d %s sections and %d recorded facts match %r' % (
             len(notes), 'research' if folder else 'guide', len(facts), words)
         if not notes and not facts and not nxt:
-            nxt = 'Try other words, or read the decomp with fnv_func_find.'
+            nxt = 'Try other words, or read the decomp with fnv_func.'
         out = verdict(head, reason, **page(notes, limit, offset, brief=brief, brief_fields=['file', 'line', 'heading']))
         out['facts'] = facts[:10]
         out['researchDir'] = str(folder) if folder else None

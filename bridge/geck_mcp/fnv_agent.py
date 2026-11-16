@@ -214,7 +214,7 @@ class AgentTools:
         record = engine.summary(address)
         if record.get('status') not in ('proven', 'class_proven', 'class proven') and not allow_unproven:
             raise HookError('UNPROVEN_FUNCTION', '%s is %s, not proven: pass allow_unproven=true to trace it anyway '
-                            '(fnv_func_find shows the status)' % (record.get('name') or function, record.get('status')),
+                            '(fnv_func shows the status)' % (record.get('name') or function, record.get('status')),
                             {'function': record})
         fn = engine.functions.get(address, {})
         sig = parse_signature(fn.get('signature') or '')
@@ -996,7 +996,7 @@ class AgentTools:
                         '(perk tab 0 = perk owner, quest targets = the target ref, the rest = subject).',
                 'uses': ['decomp layouts of each record\'s condition lists', 'command table condition handlers']}
 
-    # ================================================================== fnv_quest_targets
+    # ================================================================== fnv_quest action=targets
     def quest_targets(self, quest):
         self.live.in_game()
         q = self.live.resolve(quest)

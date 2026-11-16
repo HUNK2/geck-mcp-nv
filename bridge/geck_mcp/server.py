@@ -87,7 +87,7 @@ Result = Annotated[CallToolResult, Envelope]
 
 
 def display_title(name):
-    """fnv_class_vtable -> 'FNV: class vtable', geck_plugin_save -> 'GECK: plugin save'."""
+    """fnv_dialogue_choose -> 'FNV: dialogue choose', geck_plugin_save -> 'GECK: plugin save'."""
     family, _, rest = name.partition('_')
     prefix = {'fnv': 'FNV', 'geck': 'GECK'}.get(family)
     return '%s: %s' % (prefix, rest.replace('_', ' ')) if prefix and rest else name.replace('_', ' ')
@@ -354,8 +354,8 @@ def make_server(project, service=None):
                        'the game crashed: fnv_crash, then fnv_guide topic "crash"; '
                        'a script does not run or is wrong: fnv_script_errors, then fnv_guide topic "script"; '
                        'engine warnings (missing files, wrong form types): fnv_warnings; '
-                       'what is this object or record: fnv_ref, fnv_record_show; '
-                       'how does the engine do X: fnv_guide engine, then fnv_func_find; '
+                       'what is this object or record: fnv_ref, fnv_record; '
+                       'how does the engine do X: fnv_guide engine, then fnv_func; '
                        'test a change: fnv_test; '
                        'the game is slow: fnv_profile (fnv_guide topic "slow"); '
                        'run C in the game or change an engine function: fnv_native, fnv_code (topic "change-engine"); '
@@ -598,16 +598,11 @@ def make_server(project, service=None):
                             expected_plugin_hash, session_arg(editor_session, session_id), request_key)
 
     @server.tool(annotations=ui)
-    async def geck_preview_open(editor_id: EditorID, editor_session: EditorSession = None,
-                                session_id: LegacySession = None) -> Result:
-        """Open or reuse the identified record preview. Window presence is not visual verification."""
-        return await invoke(service.preview, editor_id, session_arg(editor_session, session_id), True)
-
-    @server.tool(annotations=ui)
-    async def geck_preview_close(editor_id: EditorID, editor_session: EditorSession = None,
-                                 session_id: LegacySession = None) -> Result:
-        """Close the identified preview, preserving unrelated windows."""
-        return await invoke(service.preview, editor_id, session_arg(editor_session, session_id), False)
+    async def geck_preview(action: Literal['open', 'close'], editor_id: EditorID, editor_session: EditorSession = None,
+                           session_id: LegacySession = None) -> Result:
+        """The identified record's preview window. open: open or reuse it; window presence is not visual
+        verification. close: close it, preserving unrelated windows."""
+        return await invoke(service.preview, editor_id, session_arg(editor_session, session_id), action == 'open')
 
     @server.tool(annotations=observe)
     async def geck_plugin_validate(expected_models: Models) -> Result:

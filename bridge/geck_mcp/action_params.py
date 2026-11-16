@@ -49,10 +49,39 @@ ACTION_PARAMS = {
         'stop': {'function', 'limit', 'include_calls', 'allow_unproven'},
         'list': set(),
     }},
-    'fnv_func_find': {'by': 'mode', 'common': {'query', 'limit'}, 'actions': {
-        **{mode: {'status', 'offset'} for mode in ('auto', 'name', 'code', 'regex', 'address')},
-        'callers': {'depth'},
-        'callees': {'depth'},
+    'fnv_func': {'common': {'query'}, 'actions': {
+        'find': {'mode', 'status', 'limit', 'offset'},
+        'code': {'max_lines'},
+        'callers': {'depth', 'limit'},
+        'callees': {'depth', 'limit'},
+        'strings': {'limit', 'offset'},
+    }},
+    'fnv_class': {'common': {'class_name'}, 'actions': {
+        'layout': {'include_virtuals', 'compiler'},
+        'tree': {'limit'},
+        'vtable': {'limit', 'offset'},
+    }},
+    'fnv_record': {'actions': {
+        'show': {'record', 'all_versions', 'max_bytes'},
+        'find': {'query', 'record_type', 'plugin', 'limit', 'offset'},
+        'users': {'record', 'types', 'limit', 'offset'},
+    }},
+    'fnv_quest': {'common': {'quest'}, 'actions': {'state': set(), 'targets': set()}},
+    'fnv_dialogue': {'actions': {
+        'now': set(),
+        'tree': {'speaker', 'topic', 'scope', 'include_text', 'limit'},
+    }},
+    'fnv_threads': {'actions': {'list': set(), 'hang': {'samples', 'interval_ms', 'all_threads'}}},
+    'fnv_memory': {'actions': {
+        'address_space': {'seconds'},
+        'pools': set(),
+        'alloc_trace': {'seconds', 'top'},
+        'refcount': {'seconds', 'top', 'pointer'},
+    }},
+    'fnv_profile': {'actions': {
+        'sample': {'seconds', 'rate', 'threads', 'name', 'top'},
+        'diff': {'before', 'after', 'top'},
+        'frame': {'seconds'},
     }},
     'fnv_time': {'actions': {
         'calendar': {'set_hour', 'advance_hours', 'timescale', 'mode', 'evaluate_packages', 'allow_unproven'},

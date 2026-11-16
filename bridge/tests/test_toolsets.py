@@ -26,7 +26,7 @@ import test_service  # noqa: E402
 class ToolsetOfTests(unittest.TestCase):
     def test_families(self):
         self.assertEqual(toolset_of('fnv_ref'), 'game')
-        self.assertEqual(toolset_of('fnv_func_find'), 'game')
+        self.assertEqual(toolset_of('fnv_func'), 'game')
         self.assertEqual(toolset_of('geck_plugin_save'), 'editor')
         self.assertEqual(toolset_of('fnv_name_dossier'), 'naming')
         self.assertEqual(toolset_of('fnv_probe'), 'naming')

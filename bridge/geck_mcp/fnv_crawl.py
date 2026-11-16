@@ -4,7 +4,7 @@ cells plugin      every cell the plugin adds or edits: go there, let it settle, 
                   warnings (the live capture), files not found (the file log), references with no 3D, load doors that
                   lead nowhere, the frame rate, and a photo; one row per cell, worst first.
 dialogue npc      every response written for the NPC (INFO records whose conditions name it): its topic and quest,
-                  whether the engine would allow it now (TESTopicInfo::CheckCondition through fnv_dialogue_tree) and
+                  whether the engine would allow it now (TESTopicInfo::CheckCondition through fnv_dialogue action=tree) and
                   which condition fails, and the voice and lip files the engine will ask for with whether they exist,
                   loose or in an archive. The file name rule was read from the game's own archives:
                   sound\\voice\\<plugin>\\<voice type>\\<quest>_<topic>_00<info's own 6 hex digits>_<response
@@ -428,7 +428,7 @@ class CrawlTools:
                or r.get('error')]
         return verdict('%s: %d stages driven, %d with problems' % (q['formId'], len(rows), len(bad)),
                        'Each stage set with SetStage (its result script runs), %d frames to settle, then the stage, '
-                       'the objectives the player sees, their targets (fnv_quest_targets) and script errors.'
+                       'the objectives the player sees, their targets (fnv_quest action=targets) and script errors.'
                        % int(settle_frames), quest=q['formId'], stages=rows)
 
     # ================================================================ items
