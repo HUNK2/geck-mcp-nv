@@ -1,6 +1,6 @@
 """Local stdio MCP entry point. No editor or file modifications on startup."""
 import argparse
-import copy
+import inspect
 import json
 import sys
 import time
@@ -91,6 +91,40 @@ def display_title(name):
     return '%s: %s' % (prefix, rest.replace('_', ' ')) if prefix and rest else name.replace('_', ' ')
 
 
+_SCHEMA_LISTS = ('anyOf', 'oneOf', 'allOf', 'prefixItems')
+_SCHEMA_MAPS = ('properties', '$defs', 'definitions', 'patternProperties')
+
+
+def slim_schema(node):
+    """A copy of a JSON schema as the tool list emits it (TOOL-MERGE step 0): no `title` keywords, and an optional
+    parameter (`anyOf [X, null]` with `default: null`) emitted as plain X. Calls are still checked by the tool's
+    pydantic model, so a client that sends null for an optional parameter keeps working."""
+    if not isinstance(node, dict):
+        return node
+    out = {}
+    for key, value in node.items():
+        if key == 'title' and isinstance(value, str):
+            continue
+        if key in _SCHEMA_MAPS and isinstance(value, dict):
+            value = {name: slim_schema(child) for name, child in value.items()}
+        elif key in _SCHEMA_LISTS and isinstance(value, list):
+            value = [slim_schema(child) for child in value]
+        elif key in ('items', 'additionalProperties', 'not') and isinstance(value, dict):
+            value = slim_schema(value)
+        out[key] = value
+    options = out.get('anyOf')
+    if 'default' in out and out['default'] is None and isinstance(options, list) and \
+            any(isinstance(s, dict) and s.get('type') == 'null' for s in options):
+        del out['default']
+        kept = [s for s in options if not (isinstance(s, dict) and s.get('type') == 'null')]
+        del out['anyOf']
+        if len(kept) == 1 and isinstance(kept[0], dict) and not set(kept[0]) & set(out):
+            out = {**kept[0], **out}
+        else:
+            out['anyOf'] = kept
+    return out
+
+
 class BridgeServer(MCPServer):
     """The SDK server, with one change: an error the SDK writes itself (arguments that fail the input schema, an
     unknown tool) gets the same structured result as the tools' own errors, so every result matches the declared
@@ -102,15 +136,20 @@ class BridgeServer(MCPServer):
         self._missing = list(missing)     # GECK settings the project file leaves out (Task 4.3)
 
     async def list_tools(self):
-        """Every tool with a display title (release audit L6); one set at registration is kept."""
+        """Every tool with a display title (release audit L6); one set at registration is kept. Schemas and
+        descriptions are emitted slim (TOOL-MERGE step 0): slim_schema, and no docstring indentation."""
         from .param_docs import PARAM_DOCS
         tools = await super().list_tools()
         for tool in tools:
             if not tool.title:
                 tool.title = display_title(tool.name)
+            if tool.description:
+                tool.description = inspect.cleandoc(tool.description)
+            # slim_schema returns a copy: the tool manager's own schema stays as it is
+            tool.input_schema = slim_schema(tool.input_schema)
+            if tool.output_schema:
+                tool.output_schema = slim_schema(tool.output_schema)
             docs = PARAM_DOCS.get(tool.name)
-            if docs:
-                tool.input_schema = copy.deepcopy(tool.input_schema)   # the tool manager's own schema stays as it is
             props = (tool.input_schema or {}).get('properties') if docs else None
             for param, text in (docs or {}).items():   # parameter descriptions (release audit M1)
                 schema = (props or {}).get(param)

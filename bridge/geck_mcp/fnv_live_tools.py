@@ -430,7 +430,7 @@ def register(server, project, annotations, result_type, maintain=True):
                               is_error=not result.get('ok', True))
 
     Ref = Annotated[str, Field(min_length=1, max_length=200, description=(
-        'player | crosshair | form id (0x00000014, 000A3E7C) | Plugin.esp:LOCALID | EditorID'))]
+        'player, crosshair, form id (0x14), Plugin.esp:LOCALID or EditorID'))]
     Start = Annotated[str, Field(pattern=r'^(menu|continue|save:[A-Za-z0-9_. \-]{1,120}|coc:[A-Za-z0-9_]{1,120})$',
                                  description='menu | continue (newest dev save) | save:<name> | coc:<cell EditorID>')]
 
