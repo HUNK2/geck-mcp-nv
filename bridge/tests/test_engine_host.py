@@ -27,6 +27,15 @@ class ZigPathTests(unittest.TestCase):
         self.root = Path(self.tmp.name)
         self.zig = self.root / 'zig.exe'
         self.zig.write_bytes(b'')
+        # FNV_MCP_ZIG wins over the old name these tests set; a machine (or CI) that has it set must not leak in.
+        env = mock.patch.dict(os.environ)
+        env.start()
+        self.addCleanup(env.stop)
+        os.environ.pop('FNV_MCP_ZIG', None)
+
+    def test_new_env_name_wins(self):
+        with mock.patch.dict(os.environ, {'FNV_MCP_ZIG': str(self.zig), 'GECK_MCP_ZIG': str(self.root / 'old.exe')}):
+            self.assertEqual(engine_host.zig_path(self.root), str(self.zig))
 
     def test_zig_path_prefers_env(self):
         write_project(self.root, 'a.windows.json', str(self.root / 'other.exe'))
