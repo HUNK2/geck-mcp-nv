@@ -1,4 +1,4 @@
-"""N21: fnv_launch sent the coc / save load in the main menu's first frames and the game then took ~190 s to load.
+"""N21: fnv_launch (now fnv_game launch) sent the coc / save load in the main menu's first frames and the game then took ~190 s to load.
 Measured 2026-11-13: the load fills the engine's audio cache (Owner::AddSound 0x00ADCD80 -> BSWin32GameSound::CopyFrom,
 a DirectSound buffer copy), and in that state each copy took ~1 s (cache grew one sound a second with
 iAudioCacheSize raised to 16 MB; at the 2 MB default it churned for ~3 min). With bEnableAudioCache:Audio = 0 the same

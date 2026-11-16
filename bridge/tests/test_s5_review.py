@@ -27,7 +27,7 @@ class NoGameLoadedTests(unittest.TestCase):
         with FakeLive() as fake:
             r = fake.live.run('fnv_ref', raising(LiveError('NO_GAME_LOADED', 'No game is loaded (phase main_menu)')))
             self.assertEqual(r['error']['code'], 'NO_GAME_LOADED')
-            self.assertIn('fnv_restart', r['error']['recovery'])
+            self.assertIn('fnv_game restart', r['error']['recovery'])
             fake.live._game.process = lambda fresh=False: None
             r = fake.live.run('fnv_ref', raising(LiveError('NO_GAME_LOADED', 'x')))
             self.assertEqual(r['error']['code'], 'GAME_NOT_RUNNING')
@@ -43,8 +43,8 @@ class ConsoleAliasTests(unittest.TestCase):
     def test_i3_load_and_restart_point_at_tools_that_work_with_a_game_running(self):
         from geck_mcp.fnv_live import LiveService
         for word in ('load', 'loadgame', 'con_loadgame', 'restartgame'):
-            self.assertIn('fnv_restart', LiveService.CONSOLE_INSTEAD[word], word)
-            self.assertNotIn('fnv_launch', LiveService.CONSOLE_INSTEAD[word], word)
+            self.assertIn('fnv_game restart', LiveService.CONSOLE_INSTEAD[word], word)
+            self.assertNotIn('fnv_game launch', LiveService.CONSOLE_INSTEAD[word], word)
 
     def test_m10_run_script_single_line_quit_refused(self):
         with FakeLive() as fake:

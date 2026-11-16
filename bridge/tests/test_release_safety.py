@@ -129,7 +129,7 @@ def filetime(unix):
 
 
 class QuitOwnershipTests(GateFixture, unittest.IsolatedAsyncioTestCase):
-    """B2 (Task 1.4): under read, fnv_quit and fnv_restart stop only the game fnv_launch started."""
+    """B2 (Task 1.4): under read, fnv_game quit and restart stop only the game fnv_game launch started."""
     PID = 4242
 
     async def asyncSetUp(self):
@@ -155,22 +155,22 @@ class QuitOwnershipTests(GateFixture, unittest.IsolatedAsyncioTestCase):
         (folder / 'session.json').write_text(json.dumps({'pid': pid, 'launchedAt': self.launched, 'ready': True}),
                                              encoding='utf-8')
 
-    async def quit(self, tool='fnv_quit', args=None):
+    async def quit(self, tool='fnv_game', args=None):
         async with Client(make_server(self.project, self.fixture.service)) as client:
-            return await self.call(client, tool, args or {'force': True, 'timeout_seconds': 5})
+            return await self.call(client, tool, args or {'action': 'quit', 'force': True, 'timeout_seconds': 5})
 
     async def test_quit_refuses_a_game_it_did_not_launch(self):
         self.session(None)
         self.running(self.launched + 2)
         code, result = await self.quit()
         self.assertEqual(code, 'NOT_OUR_GAME')
-        self.assertIn('not started by fnv_launch', result.structured_content['error']['message'])
+        self.assertIn('not started by fnv_game launch', result.structured_content['error']['message'])
         self.assertEqual(self.steps, [])
 
     async def test_restart_refuses_a_game_it_did_not_launch(self):
         self.session(1)
         self.running(self.launched + 2)
-        code, _ = await self.quit('fnv_restart', {'start': 'menu', 'timeout_seconds': 20})
+        code, _ = await self.quit('fnv_game', {'action': 'restart', 'start': 'menu', 'timeout_seconds': 20})
         self.assertEqual(code, 'NOT_OUR_GAME')
         self.assertEqual(self.steps, [])
 
@@ -239,14 +239,14 @@ class PathArgumentTests(GateFixture, unittest.IsolatedAsyncioTestCase):
             ('fnv_profile_set', {'plugins': {'a\nb.esp': True}}),
             ('fnv_profile_set', {'mods': {'..\\..\\x': True}}),
             ('fnv_profile_set', {'mods': {'a/b': False}}),
-            ('fnv_crash_latest', {'path': UNC + '.log'}),
-            ('fnv_crash_latest', {'path': str(self.outside)}),
-            ('fnv_crash_explain', {'path': UNC + '.log'}),
-            ('fnv_crash_explain', {'path': str(self.outside)}),
+            ('fnv_crash', {'action': 'latest', 'path': UNC + '.log'}),
+            ('fnv_crash', {'action': 'latest', 'path': str(self.outside)}),
+            ('fnv_crash', {'path': UNC + '.log'}),
+            ('fnv_crash', {'path': str(self.outside)}),
             ('fnv_save_inspect', {'save': UNC + '.fos'}),
             ('fnv_save_inspect', {'save': str(self.outside_dir / 'x.fos')}),
-            ('fnv_test_run', {'path': UNC + '.yaml'}),
-            ('fnv_test_run', {'path': str(self.outside)}),
+            ('fnv_test', {'path': UNC + '.yaml'}),
+            ('fnv_test', {'path': str(self.outside)}),
             ('fnv_atlas', {'action': 'import_frida', 'path': UNC + '.json'}),
             ('fnv_asset', {'action': 'watch', 'path': UNC}),
             ('fnv_asset', {'action': 'watch', 'path': str(self.outside_dir)}),
@@ -282,7 +282,7 @@ class PathArgumentTests(GateFixture, unittest.IsolatedAsyncioTestCase):
         async with Client(make_server(self.project, self.fixture.service)) as client:
             log = self.state / 'CrashLogger.log'
             log.write_text('nothing\n', encoding='utf-8')
-            code, _ = await self.call(client, 'fnv_crash_latest', {'path': str(log).replace('\\', '/')})
+            code, _ = await self.call(client, 'fnv_crash', {'action': 'latest', 'path': str(log).replace('\\', '/')})
             self.assertNotEqual(code, 'INVALID_ARGUMENT')
             code, _ = await self.call(client, 'fnv_profile_set', {'plugins': {'Cool World.esp': True},
                                                                   'dry_run': True})

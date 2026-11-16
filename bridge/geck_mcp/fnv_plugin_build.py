@@ -9,7 +9,7 @@ unpacked game image, which never leaves the machine) into fnvmcp_plan.h.
     build name [source] hooks=[...]
                            zig cc: runtime + module + plan into state/fnv/plugins/<name>/<name>.dll
     install name           as the MO2 mod "fnvmcp plugin <name>" in the dev profile, enabled (game closed); then
-                           fnv_restart loads it
+                           fnv_game restart loads it
     log name               the plugin's log file (written next to its DLL; MO2 puts new files in overwrite)
 """
 import os
@@ -160,14 +160,14 @@ class PluginTools:
         if result.returncode:
             raise ConvError('BUILD_FAILED', 'zig cc failed:\n%s' % result.stderr[-6000:],
                             {'stderr': result.stderr[-6000:]})
-        return verdict('Built the xNVSE plugin %s' % out.name, 'Next: install (with the game closed), then fnv_restart.',
+        return verdict('Built the xNVSE plugin %s' % out.name, 'Next: install (with the game closed), then fnv_game restart.',
                        dll=str(out), hooks=plans, warnings=result.stderr.strip()[-2000:] or None, note=SHARING_NOTE)
 
     def install(self, name):
         from .fnv_link import enable_mod
         game = self.live.game
         if game.process(fresh=True):
-            raise ConvError('GAME_RUNNING', 'Quit the game first (fnv_quit): a loaded plugin DLL cannot be replaced.')
+            raise ConvError('GAME_RUNNING', 'Quit the game first (fnv_game quit): a loaded plugin DLL cannot be replaced.')
         ident = c_name(name)
         dll = self._folder(name) / ('%s.dll' % ident)
         if not dll.is_file():
@@ -179,7 +179,7 @@ class PluginTools:
         enabled = enable_mod(fnv.mo2_root, fnv.mo2_profile, mod_name(ident))
         self.live.journal.add({'kind': 'plugin_install', 'plugin': ident, 'target': str(target), 'undo': None})
         return verdict('Installed %s as the MO2 mod "%s"' % (dll.name, mod_name(ident)),
-                       'It loads at the next start: fnv_restart (or fnv_launch).', target=str(target),
+                       'It loads at the next start: fnv_game restart (or fnv_game launch).', target=str(target),
                        enabledNow=enabled, note=SHARING_NOTE)
 
     def log(self, name):

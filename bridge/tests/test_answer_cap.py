@@ -1,6 +1,6 @@
 """Release plan Task 6.3 (audit M2): one cap on answer size. An answer above 40,000 characters is cut at a row
 boundary, gets truncated: true and a sentence naming the paging argument. fnv_class_vtable pages its slots and
-fnv_func_callers / fnv_func_callees have a lower default limit."""
+fnv_func_find (callers and callees too) has a lower default limit."""
 import inspect
 import json
 import sys
@@ -94,8 +94,7 @@ class DefaultTests(unittest.TestCase):
     def test_lower_defaults(self):
         from geck_mcp import fnv_tools
         source = inspect.getsource(fnv_tools.register)
-        self.assertIn('async def fnv_func_callers(function: FunctionRef, depth: Depth = 1, limit: Limit = 50)', source)
-        self.assertIn('async def fnv_func_callees(function: FunctionRef, depth: Depth = 1, limit: Limit = 50)', source)
+        self.assertIn("status: list[Status] | None = None, limit: Limit = 25,", source)    # fnv_func_find, all modes
         self.assertIn('limit: Limit = 80, offset: Offset = 0', source)
 
 

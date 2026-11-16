@@ -66,7 +66,7 @@ PARAM_DOCS: dict[str, dict[str, str]] = {'fnv_anim': {'action': 'What to do: sta
                            'played.'},
  'fnv_bisect': {'level': 'What to turn off to find the culprit: mods (MO2 mods), plugins, or records of one plugin '
                          '(needs plugin).',
-                'steps': 'The failing scenario to run each round, in the same format as fnv_do steps.',
+                'steps': 'The failing scenario to run each round, in the same format as fnv_test steps.',
                 'keep': 'Mods, plugins or record form ids that are never turned off. The companion, xNVSE data, JIP '
                         'and base game files are always kept.',
                 'max_rounds': 'Maximum number of halving rounds before stopping. Default 10.',
@@ -155,19 +155,37 @@ PARAM_DOCS: dict[str, dict[str, str]] = {'fnv_anim': {'action': 'What to do: sta
                'mode': 'For action=step: instruction, into, over, out or line, choosing how far to advance before '
                        'stopping again.',
                'file': 'For action=dump: file name for the minidump, written in the bridge state folder.'},
- 'fnv_do': {'steps': 'The scenario steps to run in order, in the same form as a YAML scenario file (run, script, '
-                     'wait, expect, set, input, move, step, call, and so on).',
-            'name': "Name of this scenario, used in the report. Default 'inline'.",
-            'plugins': 'Plugins the scenario needs; the run stops with PLUGIN_NOT_LOADED if one is not loaded in the '
-                       'dev profile (install it with fnv_install first).',
-            'setup': 'Steps run before the main steps, in the same step format.',
-            'teardown': 'Steps run after the main steps, in the same step format.',
-            'deterministic': 'When true, fixes the frame step at 60 fps and seeds the random generator so runs are '
-                             'repeatable. Default false.',
-            'repeat': 'Run the whole scenario this many times and report the steps that differ between runs. Default '
-                      '1.',
-            'timeout_seconds': 'Time limit for the scenario run, in seconds. Default 240.',
-            'relaunch_on_crash': 'When true (default), the game is relaunched if it crashes during the run.'},
+ 'fnv_test': {'action': 'run (default) runs one scenario file or inline yaml, run_all every scenario in a '
+                       'folder, steps the steps given inline.',
+              'path': 'For action=run: the scenario YAML file to run.',
+              'yaml': 'For action=run: the scenario as YAML text, instead of a file.',
+              'folder': "For action=run_all: the folder of scenarios. Default: the project's fnv.tests_dir.",
+              'steps': 'The scenario steps to run in order, in the same form as a YAML scenario file (run, script, '
+                       'wait, expect, set, input, move, step, call, and so on).',
+              'name': "Name of this scenario, used in the report. Default 'inline'.",
+              'plugins': 'Plugins the scenario needs; the run stops with PLUGIN_NOT_LOADED if one is not loaded in the '
+                         'dev profile (install it with fnv_install first).',
+              'setup': 'Steps run before the main steps, in the same step format.',
+              'teardown': 'Steps run after the main steps, in the same step format.',
+              'deterministic': 'When true, fixes the frame step at 60 fps and seeds the random generator so runs are '
+                               'repeatable. Default false.',
+              'repeat': 'Run the whole scenario this many times and report the steps that differ between runs. Default '
+                        '1.',
+              'timeout_seconds': 'Time limit for the scenario run, in seconds. Default 240.',
+              'relaunch_on_crash': 'When true (default), the game is relaunched if it crashes during the run.'},
+ 'fnv_func_find': {'query': 'Words of a function name, an address, code text or a regular expression; for callers '
+                           'and callees the function, by name or address.',
+                   'mode': 'auto, name, code, regex or address search; callers or callees walk the call graph.',
+                   'status': 'For the search modes: keep only these proof statuses (proven, class_proven, probable, '
+                             'decomp, unnamed).',
+                   'limit': 'Maximum number of functions returned.',
+                   'offset': 'For the search modes: how many results to skip, for paging.',
+                   'depth': 'For callers and callees: how many call levels to walk, 1 to 4.'},
+ 'fnv_menu': {'action': "state (default) reads the menus; tiles reads one menu's live tile tree.",
+              'path': 'For action=tiles: keep only tiles whose path contains this text.',
+              'depth': 'For action=tiles: how deep to read the tile tree. Default 8.',
+              'max_tiles': 'For action=tiles: maximum number of tiles returned. Default 400.',
+              'traits': 'For action=tiles: keep only these trait names, such as _x or _visible.'},
  'fnv_engine_call': {'function': 'The engine function to call: a decomp name or an address.',
                      'this': 'The object for a thiscall: a reference spec or a 0xADDRESS. Leave empty for functions '
                              'without a this pointer.',
@@ -345,7 +363,11 @@ PARAM_DOCS: dict[str, dict[str, str]] = {'fnv_anim': {'action': 'What to do: sta
                'radius': 'For action=array shape=circle: circle radius in game units.',
                'snap': 'If true, drop the placed object onto the surface below it.',
                'local': "For action=nudge: if true, the offset is in the object's own axes instead of world axes.",
-               'align': 'For action=snap: if true, also tilt the object to the slope of the surface at its heading.'},
+               'align': 'For action=snap: if true, also tilt the object to the slope of the surface at its heading.',
+               'export': 'For action=at: false makes a test placement (PlaceAtMe near a ref) that fnv_author export '
+                         'leaves out. Default true.',
+               'distance': 'For action=at with export=false: how far from the near ref to place, in game units.',
+               'direction': 'For action=at with export=false: 0 front, 1 back, 2 left, 3 right of the near ref.'},
  'fnv_play': {'action': 'goto walks to a ref or position, look_at turns the view, activate presses activate on a '
                         'ref, talk, loot, equip, use, drop work on a ref, stop releases held inputs.',
               'direct': 'For action=activate: if true, activate without requiring the ref to be under the crosshair.',
@@ -463,7 +485,15 @@ PARAM_DOCS: dict[str, dict[str, str]] = {'fnv_anim': {'action': 'What to do: sta
               'evaluate_packages': 'For mode=globals: if true (default), nearby actors re-evaluate their AI packages '
                                    'after the time change.',
               'allow_unproven': 'If true, allow an engine function that is not yet proven. Needed for '
-                                'mode=engine_wait. Default false.'},
+                                'mode=engine_wait. Default false.',
+              'action': 'calendar (default) reads or sets the calendar; pause, resume, force_resume, hold, release, '
+                        'step, fixed and speed drive the game clock and the frame gate; status reads them.',
+              'frames': 'For action=step: how many frames to advance, 1 to 10000.',
+              'fps': 'For action=step: the fixed frame rate to step at. For action=fixed: the fixed frame rate, 0 '
+                     'turns the fixed step off.',
+              'x': 'For action=speed: the time multiplier, 0.05 to 10.',
+              'timeout_seconds': 'For action=hold: seconds without calls after which the gate opens by itself. '
+                                 'Default 120.'},
  'fnv_trace': {'action': 'start installs an observe-only hook (default), read returns calls since the last read, '
                          'stop removes the hook, list shows running traces.',
                'filter': 'Keep only calls where this, caller or paramN matches, such as {on: this, ref: MyNPC} or '
@@ -472,19 +502,15 @@ PARAM_DOCS: dict[str, dict[str, str]] = {'fnv_anim': {'action': 'What to do: sta
                'include_calls': 'If true (default), a read lists the individual calls along with the counts; if '
                                 'false, counts only.',
                'allow_unproven': 'If true, allow tracing any function of the engine map, not only proven ones. A '
-                                 'wrong address can still crash the game. Default false.'},
- 'fnv_tracepoint': {'function': 'The engine function to record calls of, by name or address.',
-                    'action': 'start installs the tracepoint (default), read returns recorded hits, stop removes it, '
-                              'list shows running ones.',
-                    'when': 'Conditions that must all hold for a call to be recorded, each like {on: '
-                            'this|caller|param0..7, ref|value}. Null records every call.',
-                    'limit': 'Maximum number of recorded calls returned by a read.',
-                    'stack': 'If true (default), record the call stack of each hit, so commonStacks can group them.',
-                    'allow_unproven': 'If true, allow a function that is not yet proven. Default false.'},
+                                 'wrong address can still crash the game. Default false.',
+               'when': 'For action=start: conditions that must all hold for a call to be recorded, each like {on: '
+                       'this|caller|param0..7, ref|value}. Null records every call.',
+               'stack': 'For action=start: if true, record the call stack of each hit, so a read groups the hits in '
+                        'commonStacks. Default false.'},
  'fnv_ui_do': {'action': 'click a tile, press a button by label, wait hours, sleep, fast_travel to a marker, message '
                          '(press a message box button), close or back the top menu, or type text into the text entry '
                          'menu.',
-               'target': 'For action=click: the tile path or name to click (fnv_ui_tiles lists them).',
+               'target': 'For action=click: the tile path or name to click (fnv_menu tiles lists them).',
                'label': 'For action=button: the text on the button, such as Take All or Done. For action=type: the '
                         'text to enter.',
                'menu': 'For click, button and close: the menu to act on, by name or number, instead of the one at '

@@ -8,9 +8,9 @@ engine's own functions. Kinds as everywhere: read (changes nothing), act (journa
   fnv_watch          read     values sampled over time: expressions, memory fields by class layout, actor values
   fnv_screenshot     read     the frame: the engine's own back-buffer capture (SaveScreenshot), else the window
   fnv_test_save      act      named test saves kept apart from other saves (save, load, list, delete)
-  fnv_crash_history  read     crash logs grouped by signature across runs: is it the same crash again?
+  fnv_crash history  read     crash logs grouped by signature across runs: is it the same crash again?
   fnv_move           act      teleport the player or a ref to a ref, a cell or a position; undoable
-  fnv_spawn          act      place a form near a ref and return the new refs; undoable
+  fnv_place at export=false          act      place a form near a ref and return the new refs; undoable
 """
 import json
 import math
@@ -660,7 +660,7 @@ class AgentTools:
             return {'loaded': full, **ready}
         raise ValueError('action is save, load, list or delete')
 
-    # ================================================================== fnv_crash_history
+    # ================================================================== fnv_crash history
     def crash_history(self, limit=40, include_shutdown=True):
         logs = []
         for d in fnv_crash.candidate_dirs(self.live.project):
@@ -722,7 +722,7 @@ class AgentTools:
         return {'logs': len(seen_moments), 'groups': out, 'distinct': len(out),
                 'shutdownOnly': sum(1 for g in out if g['duringShutdown']), 'unreadable': errors[:10],
                 'note': 'signature = exception code + crash site function (or module+offset) + the next game frames. '
-                        'new=true: not seen by an earlier fnv_crash_history call. duringShutdown groups are crashes '
+                        'new=true: not seen by an earlier fnv_crash history call. duringShutdown groups are crashes '
                         'in exit cleanup (they happen on quit), usually not your mod.'}
 
     # ================================================================== fnv_move
@@ -805,7 +805,7 @@ class AgentTools:
         return ['MoveToCell %s %s %s %s' % (before['cell'], p['x'], p['y'], p['z']),
                 'SetAngle Z %s' % (before.get('heading') or 0)]
 
-    # ================================================================== fnv_spawn
+    # ================================================================== fnv_place at export=false
     def spawn(self, form, near='player', count=1, distance=0, direction=0):
         self.live.in_game()
         if not 1 <= int(count) <= 20:
@@ -851,7 +851,7 @@ class AgentTools:
             refs.append(row)
             self.live.journal.confirm(m['journalId'], {'position': row['position']})
         return {'base': base.get('formId'), 'near': anchor['formId'], 'refs': refs, 'count': len(refs),
-                'note': 'fnv_undo or fnv_revert_all disables and deletes the spawned refs.'}
+                'note': 'fnv_undo or fnv_undo all=true disables and deletes the spawned refs.'}
 
     def _spawn_base(self, form):
         """The base form to spawn. A placed reference (form types 58-65) maps to its base through the ref's base
@@ -1212,7 +1212,7 @@ class AgentTools:
         return out
 
 
-    # ================================================================== fnv_menu / fnv_menu_control
+    # ================================================================== fnv_menu / fnv_ui_do
     INTERFACE_MANAGER = 0x011D8A80   # InterfaceManager* (read by InterfaceManager::Instance 0x004B7210, proven)
     MENU_VISIBLE = 0x011F308F        # visibility byte per menu id (IsMenuVisible 0x007027B0, probable)
     MESSAGE_MENU = 0x011DA4F0        # MessageMenu* (MessageMenu::Close 0x007A8DF0, proven, reads it)

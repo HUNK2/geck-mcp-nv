@@ -86,7 +86,7 @@ class Injector:
     def require_game(self):
         proc = self.live.game.process()
         if not proc:
-            raise ConvError('NOT_RUNNING', 'Input needs the game running. Next: call fnv_launch with a save or a cell.')
+            raise ConvError('NOT_RUNNING', 'Input needs the game running. Next: call fnv_game launch with a save or a cell.')
         if proc[0] != self.pid:
             self.pid, self.configured = proc[0], False
         return proc[0]

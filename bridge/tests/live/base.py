@@ -3,7 +3,7 @@
 Skipped unless FNV_LIVE=1 (tools/fnv_live_regress.py sets it for its own run). One in-process MCP server serves the
 whole run, so there is one pipe user: its client lives on a background event loop and every test calls through it.
 The project is FNV_LIVE_PROJECT (default projects/hellowasteland.windows.json); the game must already run in its
-MO2 dev profile (launch it with fnv_launch, then let the MCP server go idle so the pipe is free)."""
+MO2 dev profile (launch it with fnv_game launch, then let the MCP server go idle so the pipe is free)."""
 import asyncio
 import json
 import os
@@ -107,7 +107,7 @@ class LiveCase(unittest.TestCase):
         return (envelope.get('error') or {}).get('code')
 
     def tearDown(self):
-        reverted = self.call('fnv_revert_all')
+        reverted = self.call('fnv_undo', all=True)
         self.assertTrue(reverted.get('ok'), reverted.get('error'))
         hooks = self.ok('fnv_hooks')['hooks']
         self.assertEqual(hooks, [], 'hooks left in the game after the test')

@@ -53,7 +53,7 @@ values on the stack is also a value list: the sampler records them all.
 
 Hook holds, breakpoints, `until` and the sampler take a predicate **slot id**, never the program: the bridge stores
 the program with `pred set` first. Slots the bridge uses: 32-55 `fnv_debug` break conditions, 56 `fnv_script_debug`,
-57 `fnv_flow`, 62 the frame read of `fnv_time_control`/`fnv_wait_for`, 63 the `fnv_wait_for` condition. The rest are
+57 `fnv_flow`, 62 the frame read of `fnv_time`/`fnv_wait_for`, 63 the `fnv_wait_for` condition. The rest are
 free.
 
 ## 3. Frame gate (W1)

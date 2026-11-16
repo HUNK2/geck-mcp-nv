@@ -50,18 +50,18 @@ def verdict(text, reason=None, **evidence):
 # Next steps for error codes that already exist in the code base (fnv_live, fnv_game, fnv_link, fnv_engine).
 # The symbol database has no code yet: add it here when fnv_symdb arrives.
 NEXT_STEPS = {
-    'GAME_NOT_RUNNING': 'fnv_launch, then call again.',
-    'NOT_RUNNING': 'The game is not running: call fnv_launch.',
-    'GAME_EXITED': 'The game exited: call fnv_launch (fnv_crash_explain shows why when it crashed).',
+    'GAME_NOT_RUNNING': 'fnv_game launch, then call again.',
+    'NOT_RUNNING': 'The game is not running: call fnv_game launch.',
+    'GAME_EXITED': 'The game exited: call fnv_game launch (fnv_crash shows why when it crashed).',
     'GAME_STARTING': 'The game is still starting: wait, then call fnv_status.',
-    'NO_GAME_LOADED': 'No save or cell is loaded: call fnv_restart with start=continue, a save or a cell '
-                      '(fnv_launch when the game is closed).',
+    'NO_GAME_LOADED': 'No save or cell is loaded: call fnv_game restart with start=continue, a save or a cell '
+                      '(fnv_game launch when the game is closed).',
     'COMPANION_TIMEOUT': 'The engine companion did not answer: call fnv_status; if the game hangs call fnv_hang_doctor.',
-    'COMPANION_DISCONNECTED': 'The engine companion is gone: call fnv_status, then fnv_launch if the game is not running.',
+    'COMPANION_DISCONNECTED': 'The engine companion is gone: call fnv_status, then fnv_game launch if the game is not running.',
     'COMPANION_UNREACHABLE': 'The engine companion does not answer: call fnv_status; if it is not installed, quit the game, '
-                             'call fnv_companion_install, then fnv_launch.',
+                             'call fnv_companion_install, then fnv_game launch.',
     'COMPANION_NOT_INSTALLED': 'The engine companion is not installed: quit the game, call fnv_companion_install, '
-                               'then fnv_launch.',
+                               'then fnv_game launch.',
     'ZIG_MISSING': 'Zig is not installed: call fnv_setup_check and follow the fix for Zig.',
     'CONTROL_DISABLED': 'This call needs fnv.engine_control = "full": it changes the running game, or puts code or '
                         'files into the game or its mod profile. Set it in the project file.',

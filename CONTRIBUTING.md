@@ -34,5 +34,5 @@ Lint: `python -m ruff check .` from `bridge` (the rules are in `bridge/pyproject
 
 ## Reporting bugs
 
-Open a GitHub issue with the tool call, its answer (the envelope) and, for a crash, `fnv_crash_explain`'s answer.
+Open a GitHub issue with the tool call, its answer (the envelope) and, for a crash, `fnv_crash`'s answer.
 Check [KNOWN-ISSUES.md](bridge/docs/KNOWN-ISSUES.md) first. Security problems: see [SECURITY.md](SECURITY.md).

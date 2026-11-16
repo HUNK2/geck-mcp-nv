@@ -1,4 +1,4 @@
-"""fnv_time_control and fnv_wait_for against a fake companion: the ops sent, the clock balance, the gate, the frame
+"""fnv_time (clock and frame gate) and fnv_wait_for against a fake companion: the ops sent, the clock balance, the gate, the frame
 counter, the predicate bytes (run by a small stack machine in this file), engine map checks and the next steps.
 No game and no pipe: FakeCompanion answers batch() the way the wire ops of docs/FNV-COMPANION-V2.md do."""
 from pathlib import Path
@@ -404,7 +404,7 @@ class TimeControlTests(TimeTestCase):
         with self.assertRaises(ConvError) as cm:
             self.control.run('status')
         self.assertEqual(cm.exception.code, 'NOT_RUNNING')
-        self.assertIn('fnv_launch', str(cm.exception))
+        self.assertIn('fnv_game launch', str(cm.exception))
         self.assertEqual(self.comp.requests, [])
 
     def test_gate_refusal_is_reported_with_the_fix(self):
@@ -443,12 +443,12 @@ class TimeControlTests(TimeTestCase):
         svc = LiveService.__new__(LiveService)
         svc.project = SimpleNamespace(fnv=SimpleNamespace(engine_control='read'), project_id='test')
         svc._game = None
-        result = svc.run('fnv_time_control', lambda: self.control.run('pause'), 'act')
+        result = svc.run('fnv_time', lambda: self.control.run('pause'), 'act')
         self.assertFalse(result['ok'])
         self.assertEqual(result['error']['code'], 'CONTROL_DISABLED')
         self.assertEqual(self.comp.requests, [])
         svc.project.fnv.engine_control = 'full'
-        result = svc.run('fnv_time_control', lambda: self.control.run('pause'), 'act')
+        result = svc.run('fnv_time', lambda: self.control.run('pause'), 'act')
         self.assertTrue(result['ok'])
         self.assertEqual(result['outcome'], 'acknowledged')
 
@@ -576,7 +576,7 @@ class WaitForTests(TimeTestCase):
         with self.assertRaises(ConvError) as cm:
             self.wait.run(frames=3)
         self.assertEqual(cm.exception.code, 'NOT_RUNNING')
-        self.assertIn('fnv_launch', str(cm.exception))
+        self.assertIn('fnv_game launch', str(cm.exception))
 
 
 if __name__ == '__main__':

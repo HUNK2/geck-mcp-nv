@@ -2,7 +2,7 @@
 
     .venv/Scripts/python.exe tools/fnv_soak.py [minutes=30] [out.json]
 
-Run from bridge/ after fnv_launch and 25 s idle (the MCP server then frees the pipe). Stops early on the first
+Run from bridge/ after fnv_game launch and 25 s idle (the MCP server then frees the pipe). Stops early on the first
 failure or when the game process is gone. Private memory is sampled every 10 passes; judge flatness with
 fnv_memory pools (committed bytes, live NiRefObjects) before and after some more passes, as PLAN-3 S7 did."""
 import ctypes

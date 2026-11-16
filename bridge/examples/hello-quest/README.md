@@ -18,13 +18,13 @@ GECK is not needed. The builder emits a script uncompiled until its compiled-scr
 
 1. `fnv_script_lint` on the script (offline).
 2. `geck_spec_validate`, then `geck_plugin_build`: `build/HelloQuest.esp` with the script uncompiled.
-3. `fnv_install build/HelloQuest.esp` (MO2 dev profile), `fnv_launch coc:HelloQuestRoom`: the plugin's forms
+3. `fnv_install build/HelloQuest.esp` (MO2 dev profile), `fnv_game launch coc:HelloQuestRoom`: the plugin's forms
    now exist in the game.
 4. `fnv_scripts_compile`: the game compiles the script; its bytecode, variables and references are mapped
    to the plugin (master-relative form ids, xNVSE's leading scriptname statement dropped), checked with the
    builder's own `verify_script`, and cached with an in-game provenance.
 5. `geck_plugin_build` again: the script is now compiled (2307 bytes instead of 2061).
-6. `fnv_quit`, `fnv_install`, `fnv_test_run tests/hello-quest.yaml`: PASSED, 16 steps.
+6. `fnv_game quit`, `fnv_install`, `fnv_test tests/hello-quest.yaml`: PASSED, 16 steps.
 
 The cache entry is tied to the build's compile context (spec, sources, indexes): changing the spec means
 steps 2 to 5 again.

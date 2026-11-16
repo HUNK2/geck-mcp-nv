@@ -1,5 +1,5 @@
 """Game time for the live tools (Plan 2, W1): the clock pause, the frame gate, fixed frame steps and speed
-(fnv_time_control), and fnv_wait_for, which blocks inside the game until a frame count, a predicate or the loaded
+(fnv_time), and fnv_wait_for, which blocks inside the game until a frame count, a predicate or the loaded
 state is met. Design: D-time.md sections 2 and 3. Companion ops: docs/FNV-COMPANION-V2.md sections 2 and 3.
 
 Addresses come from D-time.md section 1. Each timer function is looked up in the engine map and must be there with
@@ -114,7 +114,7 @@ class TimeControl:
         self.state.save('time_pause', self.pid, self.start, True if self.paused_by_us else None)
 
     def _journal(self, what, value=None):
-        """A clock change, undone by time_restore (S3.6: fnv_revert_all and fnv_session end put the clock back)."""
+        """A clock change, undone by time_restore (S3.6: fnv_undo all=true and fnv_session end put the clock back)."""
         journal = getattr(self.live, 'journal', None)
         if journal is None:
             return
@@ -169,7 +169,7 @@ class TimeControl:
         result = self.batch([('gatecfg', w(fns['disable']), w(fns['enable']), w(TIME_GLOBAL))])[0]
         if not result.get('ok'):
             raise ConvError('GATE_UNSUPPORTED', 'The engine companion has no frame gate (%s). Next: call '
-                            'fnv_companion_install, then fnv_launch.' % (result.get('error') or 'gatecfg refused'), result)
+                            'fnv_companion_install, then fnv_game launch.' % (result.get('error') or 'gatecfg refused'), result)
         self.configured = True
 
     def snapshot(self, measure=False):
@@ -181,7 +181,7 @@ class TimeControl:
         gate = results[0]
         if 'held' not in gate:
             raise ConvError('GATE_UNSUPPORTED', 'The engine companion does not report the frame gate (%s). Next: call '
-                            'fnv_companion_install, then fnv_launch.' % (gate.get('error') or 'gate refused'), gate)
+                            'fnv_companion_install, then fnv_game launch.' % (gate.get('error') or 'gate refused'), gate)
         held = bool(gate.get('held'))
         frame_a = _u32(results[1], 'the frame counter')
         real_fps = None
@@ -221,7 +221,7 @@ class TimeControl:
                        'Clock counter %d -> %d.' % (counter_before, counter_after),
                        changed=True, pausedByUs=True, clockCounterBefore=counter_before,
                        clockCounter=counter_after,
-                       next='Call fnv_time_control resume to start the clock again.')
+                       next='Call fnv_time resume to start the clock again.')
 
     def resume(self):
         self.require_game()
@@ -288,7 +288,7 @@ class TimeControl:
                        'Nothing runs between frames until release. Requests are still served. If nothing calls or '
                        'pings for %d s, the gate opens by itself (the dead-man switch).' % seconds,
                        changed=not before.get('held'), held=True, timeoutSeconds=seconds,
-                       next='Call fnv_time_control release to let the game run.')
+                       next='Call fnv_time release to let the game run.')
 
     def release(self):
         self.require_game()
@@ -337,7 +337,7 @@ class TimeControl:
                        changed=True, frames=frames, frameBefore=before, frameAfter=after, advanced=after - before,
                        fixedFps=fps or None, fixedStepRestoredTo=previous_fps if fps else None,
                        held=bool(gate.get('held')),
-                       next='Call fnv_time_control release to let it run, or step again.')
+                       next='Call fnv_time release to let it run, or step again.')
 
     def fixed(self, fps, journal=True):
         if not 0 <= fps <= FPS_MAX:
@@ -402,7 +402,7 @@ class TimeControl:
                        fixedStepMs=snap['fixedStepMs'] or None, fixedFps=snap['fixedFps'],
                        multiplier=snap['multiplier'], targetMultiplier=snap['targetMultiplier'],
                        frame=snap['frame'], realFps=snap['realFps'], gate=snap['gate'], configured=self.configured,
-                       next='Call fnv_time_control release to let the game run.' if snap['held'] else None)
+                       next='Call fnv_time release to let the game run.' if snap['held'] else None)
 
     def run(self, *args, **kwargs):
         with GATE_LOCK:
@@ -461,13 +461,13 @@ class WaitFor:
             snap = self.control.snapshot(measure=True)
             if clock == 'game' and snap['clockCounter'] > 0:      # no game time passes (G5)
                 raise ConvError('CLOCK_PAUSED', 'The game clock is paused (clock counter %d), so game seconds do not '
-                                'pass. Next: fnv_time_control resume, or use clock=real.' % snap['clockCounter'],
+                                'pass. Next: fnv_time resume, or use clock=real.' % snap['clockCounter'],
                                 {'clockCounter': snap['clockCounter']})
             fps, source = self.rate(snap, clock)
             multiplier = snap['multiplier'] if clock == 'game' else 1.0
             if multiplier <= 0:
                 raise ConvError('BAD_TIMESCALE', 'The time multiplier is %g, so game seconds do not pass. Next: call '
-                                'fnv_time_control speed with x=1.' % multiplier, {'multiplier': multiplier})
+                                'fnv_time speed with x=1.' % multiplier, {'multiplier': multiplier})
             estimate = max(1, int(round(seconds * fps / multiplier)))
             frame0 = self.base_frame(timeout)
             text, limit = 'frame >= %d' % (frame0 + estimate), estimate + 2
@@ -481,7 +481,7 @@ class WaitFor:
         if not res['met']:
             ran_out = 'time' if res['frames'] < limit else 'frames'
             raise ConvError('WAIT_TIMEOUT', 'The condition was still false after %d frames (%g s): the wait ran out of '
-                            '%s. Next: call fnv_time_control status, then raise %s.'
+                            '%s. Next: call fnv_time status, then raise %s.'
                             % (res['frames'], timeout, ran_out,
                                'timeout' if ran_out == 'time' else 'max_frames (or timeout)'),
                             {'predicate': text, 'frame': res['frame'], 'ranOutOf': ran_out})

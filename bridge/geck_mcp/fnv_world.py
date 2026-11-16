@@ -5,7 +5,7 @@
   fnv_heap          memory: the 2 GB address space, the game's pools, form/actor counts, growth over time
   fnv_world_edit    move, rotate, scale, enable/disable, delete or duplicate a ref; force weather; image space
   fnv_scene_graph   a ref's 3D node tree: nodes, transforms, geometry, shaders and texture paths, controllers
-  fnv_ui_tiles      a menu's live tile tree with trait values named by the game's own trait table
+  fnv_menu tiles      a menu's live tile tree with trait values named by the game's own trait table
   fnv_vats_odds     the VATS hit chance per target and limb, recomputed with CombatFormulas::GetVATSChanceToHit
                     term by term, plus the perk layers and the number the menu shows
   fnv_frame_profile time per frame by subsystem, from timing hooks on the main loop's children
@@ -674,7 +674,7 @@ class WorldTools:
                 out.append(e)
             n['extraData'] = out
 
-    # ================================================================== fnv_ui_tiles
+    # ================================================================== fnv_menu tiles
     def _trait_names(self):
         if self._traits is not None:
             return self._traits

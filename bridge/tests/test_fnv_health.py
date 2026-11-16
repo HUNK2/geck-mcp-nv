@@ -79,7 +79,7 @@ class HealthTests(HealthTestCase):
         self.live.game.crash = {'log': 'CrashLogger.log', 'duringShutdown': False}
         out = HealthTools(self.live).check()
         self.assertEqual(self.kinds(out), ['crash'])
-        self.assertIn('fnv_crash_explain', out['items'][0]['next'])
+        self.assertIn('fnv_crash', out['items'][0]['next'])
 
     def test_a_crash_during_shutdown_is_marked_as_such(self):
         open_session(self.live, real_fps=None)

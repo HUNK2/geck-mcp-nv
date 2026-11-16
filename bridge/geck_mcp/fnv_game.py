@@ -318,12 +318,12 @@ class Game:
         return found
 
     # FILETIME (100 ns since 1601) of the Unix epoch, and how much earlier than launchedAt a process may have started
-    # and still be the one fnv_launch started (launchedAt is taken just before the start).
+    # and still be the one fnv_game launch started (launchedAt is taken just before the start).
     FILETIME_UNIX_EPOCH = 116444736000000000
     OWN_START_SLACK_SECONDS = 5
 
     def owns(self, proc):
-        """Did fnv_launch start this (pid, start FILETIME)? The session's pid must match and the process must not have
+        """Did fnv_game launch start this (pid, start FILETIME)? The session's pid must match and the process must not have
         started before launchedAt (less a few seconds): a pid Windows reused for another FalloutNV.exe does not count."""
         session = self.session()
         if not proc or session.get('pid') != proc[0] or proc[1] is None or not session.get('launchedAt'):
@@ -470,7 +470,7 @@ class Game:
     def launch(self, start='menu', timeout=180):
         proc = self.process()
         if proc:
-            raise GameError('ALREADY_RUNNING', 'The game is already running (pid %d); use fnv_restart or fnv_quit' % proc[0],
+            raise GameError('ALREADY_RUNNING', 'The game is already running (pid %d); use fnv_game restart or fnv_game quit' % proc[0],
                             {'pid': proc[0]})
         self.check_companion_installed()
         mo2 = self.mo2_root / 'ModOrganizer.exe'
@@ -744,7 +744,7 @@ class Game:
             return {'wasRunning': False}
         pid = proc[0]
         if not self.owns(proc) and getattr(self.project.fnv, 'engine_control', 'read') != 'full':
-            raise GameError('NOT_OUR_GAME', 'This FalloutNV.exe was not started by fnv_launch, so it may be your own '
+            raise GameError('NOT_OUR_GAME', 'This FalloutNV.exe was not started by fnv_game launch, so it may be your own '
                             'game. Close it yourself, or set fnv.engine_control to "full".', {'pid': pid})
         steps = []
         self.log_quit(pid, 'quit (timeout %s, force %s)' % (timeout, force))
@@ -900,7 +900,7 @@ class Game:
     def backup_saves(self, reason):
         """Copy the dev profile's saves before a session writes to the game; keep the newest 10 backups."""
         session = self.session()
-        # Key on the live process, not on session.json's pid (that is written only by fnv_launch).
+        # Key on the live process, not on session.json's pid (that is written only by fnv_game launch).
         try:
             proc = self.process()
         except GameError:

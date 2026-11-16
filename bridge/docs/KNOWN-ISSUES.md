@@ -22,7 +22,7 @@ damaged file. Most are tracked as GitHub issues.
 - Undoing a probe removal reads and writes `probe_session.json` outside a single lock.
 - A game speed change from an out-of-range multiplier is not journaled.
 - The undo of a pause ignores what the resume reports.
-- `fnv_revert_all` slows down with many entries (about 22 s for 3,000).
+- `fnv_undo all=true` slows down with many entries (about 22 s for 3,000).
 
 ## Debugger, hooks and traces
 

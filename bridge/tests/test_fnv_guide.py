@@ -41,7 +41,7 @@ class GuideFileTests(unittest.TestCase):
 
     def test_every_tool_a_guide_names_exists(self):
         known = registered_tools()
-        self.assertIn('fnv_crash_explain', known)
+        self.assertIn('fnv_crash', known)
         self.assertIn('geck_status', known)
         for name, g in load_guides().items():
             head, planned = split_planned(g['text'])
@@ -97,7 +97,7 @@ class GuideToolTests(unittest.TestCase):
     def test_find_tools_and_guides(self):
         out = self.tools.run('find', 'crash log')
         names = [r['name'] for r in out['rows']]
-        self.assertIn('fnv_crash_explain', names)
+        self.assertIn('fnv_crash', names)
         self.assertIn('crash', names)
         self.assertEqual(out['rows'][0]['name'].startswith(('fnv_crash', 'crash')), True)
         warn = self.tools.run('find', 'engine warnings missing files')

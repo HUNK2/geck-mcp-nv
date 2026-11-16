@@ -29,17 +29,17 @@ class NotRunningTests(unittest.TestCase):
         self.live._game.process = lambda fresh=False: None          # no FalloutNV.exe
         paths = [
             ('fnv_mem_read', LinkError('COMPANION_UNREACHABLE', 'Engine companion pipe x is not available')),
-            ('fnv_spawn', LiveError('NOT_RUNNING', 'The game is not running')),
-            ('fnv_time_control', ConvError('NOT_RUNNING', 'Time control needs the game running.')),
+            ('fnv_place', LiveError('NOT_RUNNING', 'The game is not running')),
+            ('fnv_time', ConvError('NOT_RUNNING', 'Time control needs the game running.')),
             ('fnv_hang_doctor', HookError('GAME_NOT_RUNNING', 'FalloutNV.exe is not running')),
             ('fnv_ref', LiveError('NO_GAME_LOADED', 'No game is loaded (phase main_menu)')),
         ]
         for name, error in paths:
             with self.subTest(name):
-                r = self.live.run(name, raising(error), kind='act' if name in ('fnv_spawn',) else 'read')
+                r = self.live.run(name, raising(error), kind='act' if name in ('fnv_place',) else 'read')
                 self.assertFalse(r['ok'])
                 self.assertEqual(r['error']['code'], 'GAME_NOT_RUNNING')
-                self.assertEqual(r['error']['recovery'], 'fnv_launch, then call again.')
+                self.assertEqual(r['error']['recovery'], 'fnv_game launch, then call again.')
                 self.assertEqual(r['outcome'], 'failed_before_change')
                 self.assertTrue(r['error']['retrySafe'])
 
@@ -86,7 +86,7 @@ class OutcomeTests(unittest.TestCase):
             made.append(self.live.journal.add({'kind': 'spawn', 'ref': 'FF000900',
                                                'undo': {'op': 'console_ref', 'ref': 'FF000900', 'lines': ['Disable']}}))
             raise LiveError('SPAWN_FAILED', 'the second copy failed', {'made': ['FF000900']})
-        r = self.live.run('fnv_spawn', action, kind='act')
+        r = self.live.run('fnv_place', action, kind='act')
         self.assertEqual(r['outcome'], 'partial_change')
         self.assertFalse(r['error']['retrySafe'])
         self.assertEqual(r['data']['journalIds'], [made[0]['id']])
@@ -122,7 +122,7 @@ class OutcomeTests(unittest.TestCase):
             t.start()
             t.join()
             raise LiveError('SPAWN_FAILED', 'nothing made')
-        r = self.live.run('fnv_spawn', action, kind='act')
+        r = self.live.run('fnv_place', action, kind='act')
         self.assertEqual(r['outcome'], 'failed_before_change')
 
     def test_identity_failure_does_not_break_the_error_envelope(self):

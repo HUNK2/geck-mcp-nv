@@ -1459,7 +1459,7 @@ class Debugger:
             return ('Nothing was on record as frozen: the game is parked by the debugger (%s stop(s)). Next: fnv_debug '
                     'continue.' % ping['parked'])
         if ping.get('held'):
-            return ('Nothing was on record as frozen: the frame gate is held. Next: fnv_time_control release (or '
+            return ('Nothing was on record as frozen: the frame gate is held. Next: fnv_time release (or '
                     'resume for a paused clock).')
         stalled = self._frames_stalled(proc)
         if stalled is None:

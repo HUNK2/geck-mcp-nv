@@ -8,8 +8,8 @@ it is built on and keeps the full history of; see "Built on geck-mcp-nv" below.
 
 ## What it is
 
-One MCP server with <!-- counts -->**165 `fnv_*` tools** for the game and its engine and **28 `geck_*` tools** for the
-GECK (193 in all; the legacy toolset adds 15 more)<!-- /counts -->. The counts are checked against the server's own
+One MCP server with <!-- counts -->**148 `fnv_*` tools** for the game and its engine and **28 `geck_*` tools** for the
+GECK (176 in all; the legacy toolset adds 15 more)<!-- /counts -->. The counts are checked against the server's own
 tool list by the tests.
 
 - **Engine knowledge**: function and class lookup from the decompilation, a symbol database with source lines and
@@ -41,7 +41,7 @@ Follow [bridge/docs/FNV-MCP-SETUP.md](bridge/docs/FNV-MCP-SETUP.md), the one set
 run it from a clone with `python run_mcp.py --project <file>` (the guide registers exactly that with your MCP
 client). Then a first prompt:
 
-> Call fnv_setup_check and fix what it reports with me, then launch the game with fnv_launch and show me
+> Call fnv_setup_check and fix what it reports with me, then launch the game with fnv_game launch and show me
 > fnv_status.
 
 The tool references are [FNV-ENGINE-TOOLS.md](bridge/docs/FNV-ENGINE-TOOLS.md) and

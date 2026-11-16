@@ -162,11 +162,11 @@ class BareIdentifierTests(unittest.TestCase):
 
 
 class ExpressionToolsAreActTests(unittest.TestCase):
-    """W1: fnv_snapshot, fnv_diff and fnv_watch ran caller console lines and expressions as kind read."""
+    """W1: fnv_snapshot (capture and diff) and fnv_watch ran caller console lines and expressions as kind read."""
 
     def test_every_call_is_act(self):
         from geck_mcp.fnv_live_tools import gated_kind
-        for name, action in (('fnv_snapshot', None), ('fnv_diff', None), ('fnv_watch', 'sample'),
+        for name, action in (('fnv_snapshot', None), ('fnv_snapshot', 'diff'), ('fnv_watch', 'sample'),
                              ('fnv_watch', 'frames')):
             self.assertEqual(gated_kind(name, action, 'read'), 'act', name)
 

@@ -7,17 +7,17 @@ tool descriptions in this repository. The tests check that every tool name below
 
 ## Steps
 
-1. **Is it new?** Call `fnv_crash_history`. It groups crash logs by signature (exception, crash-site function, next
+1. **Is it new?** Call `fnv_crash history`. It groups crash logs by signature (exception, crash-site function, next
    frames). `new: true` means no earlier call has seen this signature. Every normal quit under MO2 can leave a
    `CrashLogger.log` too: the call flags crashes during shutdown, so ignore those unless the game really crashed.
-2. **Read the crash.** Call `fnv_crash_explain`. It gives the stack in engine function names and DLL offsets, the
-   forms involved and the likely culprit. `fnv_crash_latest` gives the same log without the interpretation.
-3. **What was running?** Call `fnv_crash_context` (action `latest`). The engine companion writes a file at the
+2. **Read the crash.** Call `fnv_crash`. It gives the stack in engine function names and DLL offsets, the
+   forms involved and the likely culprit. `fnv_crash latest` gives the same log without the interpretation.
+3. **What was running?** Call `fnv_crash context` (action `latest`). The engine companion writes a file at the
    fault: the engine calls active on the crashing thread, the console line or request being run and recent events.
-   Without it the crash log cannot name the running script. To get it next time, call `fnv_crash_context` with
+   Without it the crash log cannot name the running script. To get it next time, call `fnv_crash context` with
    action `enable` before you reproduce the crash.
 4. **What did the engine say just before?** Call `fnv_warnings` with action `status`. When the setting is off, call
-   `enable` and restart the game (`fnv_restart`), then reproduce. Then call `read` with category `MASTERFILE` or
+   `enable` and restart the game (`fnv_game restart`), then reproduce. Then call `read` with category `MASTERFILE` or
    `SCRIPTS`, or `summary`. A missing master, a wrong record type or a missing asset often comes before the crash.
    Also read `fnv_logs` with sources `nvse` and `crash`.
 5. **Check the load order.** Call `fnv_loadorder`: missing masters, wrong order, plugins that are on disk but off
@@ -26,9 +26,9 @@ tool descriptions in this repository. The tests check that every tool name below
 6. **Does a plugin patch the crashing code?** When the crash is inside engine code, call `fnv_patch_map`. It lists
    code and pointers other plugins changed, by module. A crash site inside a patched range points at that module.
 7. **Understand the crash site.** `fnv_symbolize` turns an address into a function and offset. `fnv_func_code` shows
-   its decomp source, `fnv_func_callers` shows who calls it, `fnv_class_layout` shows the fields of the object it
+   its decomp source, `fnv_func_find mode=callers` shows who calls it, `fnv_class_layout` shows the fields of the object it
    used. For a null pointer, find which caller passed it.
-8. **Reproduce it on demand.** Write a short YAML scenario that does what you did and run it with `fnv_test_run`.
+8. **Reproduce it on demand.** Write a short YAML scenario that does what you did and run it with `fnv_test`.
    With `relaunch_on_crash` (the default) the run reports the crash doctor's diagnosis and starts the game again.
    Use a named test save (`fnv_test_save`) so the start state is the same each time.
 9. **A hang is not a crash.** When the game does not answer and writes no crash log, call `fnv_hang_doctor`. It
@@ -52,18 +52,18 @@ tool descriptions in this repository. The tests check that every tool name below
 ## Known traps
 
 - The log files of the game are rewritten at each start. Read them before you launch again.
-  `fnv_crash_history` keeps what it has seen.
+  `fnv_crash history` keeps what it has seen.
 - `falloutnv_error.log` is written through a buffer, so the last lines before a crash may be missing.
 - A plugin can be installed only while the game is closed (`fnv_install`).
-- `fnv_crash_explain` names a likely culprit. It is evidence, not proof. Confirm with a reproduction.
+- `fnv_crash` names a likely culprit. It is evidence, not proof. Confirm with a reproduction.
 
 ## Checks that prove the fix
 
-1. Run the same scenario again with `fnv_test_run`. It must finish with no crash.
-2. Call `fnv_crash_history`. The signature must not have a new entry after the fix.
+1. Run the same scenario again with `fnv_test`. It must finish with no crash.
+2. Call `fnv_crash history`. The signature must not have a new entry after the fix.
 3. Call `fnv_status`: phase `in_game` after the scenario, not `not_running`.
 4. Call `fnv_warnings` with action `clear` before the run and `read` after it. No new warning may name your plugin.
-5. Run the tests of the mod (`fnv_test_run_all`) to see that nothing else broke.
+5. Run the tests of the mod (`fnv_test run_all`) to see that nothing else broke.
 
 ## Stop at the crash instead of dying
 
@@ -76,11 +76,11 @@ A fault on a loader thread during a load (a corrupt mesh, seen 2026-11-11) leave
 the companion answers only on the main thread. `fnv_debug status` then reads the held fault from outside: the
 registers of the fault from its context file, the stack above them with function names and source lines, and the
 file paths on that stack (`meshes\...nif`). `fnv_asset where` on that path names the mod folder, `fnv_record_find`
-with the plugin lists its records. `fnv_quit` with force ends the game afterwards.
+with the plugin lists its records. `fnv_game quit` with force ends the game afterwards.
 
 ## Find the culprit plugin or object
 
 `fnv_object identify` on a pointer from `locals` or the crash log says which pool block it is in, its class and its
 form: a freed or reused block shows a class that does not fit. When a load-order change brought the crash,
-`fnv_bisect` with level `mods` or `plugins` and the `fnv_do` steps that reproduce it names the one mod or plugin
+`fnv_bisect` with level `mods` or `plugins` and the `fnv_test steps` steps that reproduce it names the one mod or plugin
 (the game restarts each round).

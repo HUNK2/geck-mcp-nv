@@ -629,7 +629,7 @@ class HandsTools:
                             stop_reason = 'blocked'
                             break
                     if self._menus().get('inMenuMode'):
-                        # A message box that something closes (fnv_do closes them, as a player would click OK,
+                        # A message box that something closes (fnv_test steps closes them, as a player would click OK,
                         # seen live: the DLC "items added" boxes mid-walk) only interrupts the walk: wait for it,
                         # then walk on from where the player stands. A menu that stays open stops the walk.
                         if menus_waited < 5 and self._menu_closes(3.0):

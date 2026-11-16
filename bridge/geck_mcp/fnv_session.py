@@ -127,11 +127,11 @@ class SessionTools:
                                    'baseline': baseline, 'journal': mark['journal'], 'mark': mark,
                                    'marks': [{'label': 'session start', **mark}]}
         return verdict('Session open: the game is ready (%s)' % ('launched' if prepared.get('launched') else 'already running'),
-                       'Run the steps with fnv_do; fnv_health reports what is abnormal from the last mark; fnv_session end '
+                       'Run the steps with fnv_test steps; fnv_health reports what is abnormal from the last mark; fnv_session end '
                        'closes the session.',
                        changed=True, start=start, game=prepared, warnings=warnings_state,
                        deterministic=deterministic_state, baseline=baseline,
-                       next='Call fnv_do with the steps to test.')
+                       next='Call fnv_test steps with the steps to test.')
 
     def mark(self, label=None):
         state = self._open()
@@ -245,11 +245,11 @@ class HealthTools:
         if crash:
             shutdown = ' during shutdown (not a crash of play)' if crash.get('duringShutdown') else ''
             items.append({'kind': 'crash', 'what': 'The game wrote a crash log since the mark%s' % shutdown,
-                          'next': 'Call fnv_crash_explain, then fnv_guide topic "crash".'})
+                          'next': 'Call fnv_crash, then fnv_guide topic "crash".'})
         fresh = [p for p in context_files() if p.stat().st_mtime >= mark['time']]
         if fresh:
             items.append({'kind': 'crash_context', 'what': '%d crash-context file(s) since the mark' % len(fresh),
-                          'next': 'Call fnv_crash_context.'})
+                          'next': 'Call fnv_crash context.'})
 
     def _frame_time(self, state, items):
         base = state['baseline'].get('realFps')

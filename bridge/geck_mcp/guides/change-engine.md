@@ -17,10 +17,10 @@ Use this when a script cannot do it and the change belongs in engine code. Statu
 3. **Change a function inside.** `fnv_code checkout` the function, `edit` (exact text inside it), `build` (the game's
    own compiler; names that cannot be bound are listed), `compare` with arguments (old and new side by side),
    `swap`, test, `unswap`. Functions with exception handling or new writable statics are refused.
-4. **Prove it.** Call the function (`fnv_engine_call` or `fnv_systems formula`), run the scenario (`fnv_do`), and
+4. **Prove it.** Call the function (`fnv_engine_call` or `fnv_systems formula`), run the scenario (`fnv_test steps`), and
    check `fnv_health`. For speed changes, `fnv_profile` before and after.
 5. **Ship it.** A module becomes a normal xNVSE plugin with `fnv_plugin_build` (`build` with `hooks` listing the
-   functions it hooks, `install`, then `fnv_restart`, `log`). A `fnv_code` swap is recompiled game code: local use
+   functions it hooks, `install`, then `fnv_game restart`, `log`). A `fnv_code` swap is recompiled game code: local use
    only; ship the change as a module hook instead.
 
 ## What the answers mean

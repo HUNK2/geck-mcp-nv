@@ -4,14 +4,14 @@
 
 The first version of the fork. The entries below this one are geck-mcp-nv's own history, by 2Shay.
 
-- **The fnv_* tools** (165): engine knowledge from the fnv_decomp decompilation (functions, classes, settings,
+- **The fnv_* tools** (148): engine knowledge from the fnv_decomp decompilation (functions, classes, settings,
   commands, a symbol database with source lines and named locals), a crash doctor, game control and scenario
   tests, live inspection, full control of the running game through the engine companion (time control, a
   debugger, hooks, C modules, decomp functions recompiled and swapped in, xNVSE plugin export), profiling,
   coverage and whole-plugin checks. `fnv_guide` has step-by-step guides.
 - **Safety:** two levels, `fnv.engine_control` `read` (the default) and `full`; anything that changes the game or
   puts code or files into it or its mod profile needs `full`. Paths from tool arguments stay inside the project's
-  folders; package names are plain names; `fnv_quit` closes only the game `fnv_launch` started; tools never take a
+  folders; package names are plain names; `fnv_game quit` closes only the game `fnv_game launch` started; tools never take a
   compiler path.
 - **No private data needed:** the watch hooks find their functions by address, so an engine map built without
   the fnvsym proof table is enough; the `fnv_name_*` tools are an optional extra that needs `FNVSYM_ROOT`.
@@ -25,6 +25,14 @@ The first version of the fork. The entries below this one are geck-mcp-nv's own 
 - **Toolsets:** the project key `toolsets` (or `--toolsets game,naming`) picks which tool families the server
   registers: `game`, `editor`, `naming` and `legacy`; the default is every one but `legacy`. `fnv_guide find`
   still names a hidden tool and the toolset that turns it on.
+- **Tool merge** (old names stop working; the table is in `bridge/docs/FNV-LIVE-TOOLS.md`, "Renamed tools"):
+  tools that did the same job became one tool with actions. `fnv_crash` (explain by default, latest, history,
+  context, capture_on/off/status), `fnv_game` (launch, quit, restart), `fnv_test` (run by default, run_all,
+  steps), `fnv_time` (calendar plus the clock and frame gate), `fnv_snapshot` (capture, diff), `fnv_menu` (state,
+  tiles), `fnv_trace` (`stack` and several `when` conditions record call stacks), `fnv_undo all=true`,
+  `fnv_ui_do close_all`, `fnv_place at export=false` (a test placement fnv_author export leaves out),
+  `fnv_func_find mode=callers|callees`, `fnv_script_instances of=` for script variables. A merged tool refuses a
+  parameter its chosen action does not use (`INVALID_ARGUMENT`).
 - **Removed:** the second server under `windows/`, the sprite tools and the PyFFI extra, tracked binaries, the
   upstream working notes, and three examples that needed game files the repository cannot ship.
 - **Name and version:** the server announces itself as `fnv-mcp` 0.5.0b1 (the Python package stays `geck_mcp`).

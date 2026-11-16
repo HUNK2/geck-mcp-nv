@@ -42,7 +42,7 @@ class PositionSchemaTests(unittest.IsolatedAsyncioTestCase):
             for tool in tools.values():
                 props = tool.input_schema.get('properties', {})
                 for name in ('position', 'start', 'end'):
-                    if name in props and tool.name not in ('fnv_launch', 'fnv_restart', 'fnv_probe', 'fnv_do',
+                    if name in props and tool.name not in ('fnv_game', 'fnv_test', 'fnv_probe',
                                                            'fnv_session', 'fnv_systems', 'fnv_bisect',
                                                            'fnv_dialogue_choose'):
                         self.assertIn('array', kinds(props[name]), '%s.%s' % (tool.name, name))

@@ -8,7 +8,7 @@ on the running game (control, tests, live inspection, full control) are in [FNV-
 | --- | --- |
 | `fnv_func_find` | Which engine functions match these words, this address, or this text in their code? |
 | `fnv_func_code` | The decompiled C++ of one function; calls to unnamed functions are annotated with proven names |
-| `fnv_func_callers` / `fnv_func_callees` | Who calls it, what it calls (direct calls read from the exe; several levels) |
+| `fnv_func_find mode=callers` / `fnv_func_find mode=callees` | Who calls it, what it calls (direct calls read from the exe; several levels) |
 | `fnv_symbolize` | Address → function + offset, a setting/static object, or DLL + offset (with the symbol database: also the source line) |
 | `fnv_symbols` | The compiler's symbol database: source line of a code address, named parameters and locals, exact type layouts |
 | `fnv_name_status` | Is this name proven, and by what evidence? |
@@ -17,7 +17,7 @@ on the running game (control, tests, live inspection, full control) are in [FNV-
 | `fnv_script_explain` | The commands in a script line or script: handlers (execute, condition eval, parser), the named engine functions they reach, the settings they read and the start of their code |
 | `fnv_global_find` / `fnv_setting_info` | Settings and static objects: address, default value, which functions use them |
 | `fnv_string_xrefs` | Functions whose code contains a string |
-| `fnv_crash_latest` / `fnv_crash_explain` | The newest crash log, parsed, and explained in engine terms |
+| `fnv_crash latest` / `fnv_crash` | The newest crash log, parsed, and explained in engine terms |
 | `fnv_save_inspect` / `fnv_save_diff` | A `.fos` save decoded with the game's save format (header, plugins, location, globals, changed forms, quests), and two saves compared |
 
 Every result carries the engine map's identity (game build, decomp commit, proof file hash, whether the
@@ -77,7 +77,7 @@ Environment variables `FNV_ENGINE_MAP`, `FNV_DECOMP` and `FNV_CRASH_DIRS` work t
    the contact point, or a ray cast from the attacker's eyes), computes that part's damage with
    `FUN_00647a30(target, part, base)` and scales it by the setting. Its member and global names in
    the decomp are machine-made (status `unnamed`), so read the logic, not the names.
-3. `fnv_func_callers("0x009B6620", depth=2)` → `InitHitData` and `InitFromObjects`, called from
+3. `fnv_func_find mode=callers("0x009B6620", depth=2)` → `InitHitData` and `InitFromObjects`, called from
    `ImpactProjectile::ProcessHits`.
 
 ## Symbol database
@@ -113,7 +113,7 @@ Where the database helps other tools:
 - `fnv_symbolize`, and every tool that names an address, adds `source` (`src/fallout/ai/playercharacter.cpp:55760`),
   `sourceLine` (that line of the decomp, trimmed) and `lineOffset` (where in the function that line starts)
   when the address is in a function that has lines.
-- `fnv_crash_explain` carries `source` and `sourceLine` into each game frame.
+- `fnv_crash` carries `source` and `sourceLine` into each game frame.
 - `fnv_hang_doctor` adds `source` to each game frame. For the first 6 game frames of each sample it also
   reads the named parameters and locals from the game at frame pointer + offset (up to 12 per frame;
   numbers as numbers, pointers as hex, floats as floats; values larger than 8 bytes are skipped). A top
@@ -126,10 +126,10 @@ Where the database helps other tools:
 
 Install [Yvile's Crash Logger](https://www.nexusmods.com/newvegas/mods/82540). It writes
 `CrashLogger.log` next to `FalloutNV.exe` at each start and keeps older logs in `Crash Logs\`.
-`fnv_crash_latest` picks the newest log that records a crash (the game folder, `Crash Logs`, the MO2
+`fnv_crash latest` picks the newest log that records a crash (the game folder, `Crash Logs`, the MO2
 overwrite folder and any `crash_dirs`); pass `path` for a specific file.
 
-`fnv_crash_explain` gives:
+`fnv_crash` gives:
 - each call-trace frame as an engine function with its proof status and source location, or as
   DLL + offset (the logger rebases DLL frames to 0x10000000; the tool undoes that) with the DLL's path
   and version;

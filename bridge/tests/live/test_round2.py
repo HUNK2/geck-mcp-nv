@@ -25,19 +25,19 @@ class Round2Tests(LiveCase):
 
     # G4: notUndoable is this game's {count, newest 50 ids} (S2.6); results are capped at 200 (S5.3)
     def test_g4_revert_all_reply_small(self):
-        self.ok('fnv_spawn', form=CAPS, count=1, distance=100)
-        envelope = self.call('fnv_revert_all')
+        self.ok('fnv_place', action='at', export=False, base=CAPS, count=1, distance=100)
+        envelope = self.call('fnv_undo', all=True)
         self.assertTrue(envelope.get('ok'), envelope.get('error'))
         self.assertLess(envelope['_size'], 20000, 'revert_all reply of %d characters' % envelope['_size'])
 
     def test_g5_wait_refuses_paused_clock(self):
-        self.ok('fnv_time_control', action='pause')
+        self.ok('fnv_time', action='pause')
         try:
             envelope = self.call('fnv_wait_for', seconds=1, clock='game', timeout=10)
             met = (envelope.get('data') or {}).get('met')
             self.assertFalse(envelope.get('ok') and met, 'game seconds "met" while the game clock was paused')
         finally:
-            self.ok('fnv_time_control', action='resume')
+            self.ok('fnv_time', action='resume')
 
     def test_g9_gamehour_fraction(self):
         before = self.ok('fnv_globals', query='GameHour')

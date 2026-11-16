@@ -10,6 +10,6 @@ The investigation, with the tools:
 3. `fnv_blame field "HelloBugLevel + 0x24"`, then `report`: script 0D000803 (the janitor) line 8,
    `set HelloBugLevel to 0`.
 4. `fnv_script_hot_swap HelloBugJanitorScript` with the line removed.
-5. `fnv_test_run tests/hello-bug-finishes.yaml`: failed before the fix, passes after.
+5. `fnv_test tests/hello-bug-finishes.yaml`: failed before the fix, passes after.
 
 The plugin ships the bug on purpose (it is the exercise); the fixed janitor is the same script without line 8.

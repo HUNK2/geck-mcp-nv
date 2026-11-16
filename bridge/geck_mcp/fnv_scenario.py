@@ -544,7 +544,7 @@ class ScenarioRunner:
                 raise ScenarioError('PLUGIN_NOT_LOADED', '%s is not loaded in the dev profile (fnv_install)' % plugin)
         info['plugins'] = wanted
         if scenario.get('crash_context', True):
-            # Script hooks so a crash during the test names the running script (fnv_crash_context).
+            # Script hooks so a crash during the test names the running script (fnv_crash context).
             try:
                 from .fnv_deep import DeepTools
                 deep = getattr(self.live, 'deep', None) or DeepTools(self.live)

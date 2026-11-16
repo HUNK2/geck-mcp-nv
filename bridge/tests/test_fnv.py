@@ -482,7 +482,7 @@ class CrashTests(FnvTestBase):
         self.assertEqual(r['error']['code'], 'CRASH_LOG_MISSING')
 
     def test_tool_catalog(self):
-        self.assertEqual(len(FNV_TOOLS), 19)
+        self.assertEqual(len(FNV_TOOLS), 15)   # tool merge tier 1: crash and callers/callees moved
         self.assertTrue(all(name.startswith('fnv_') for name in FNV_TOOLS))
 
 

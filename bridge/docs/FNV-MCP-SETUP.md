@@ -100,17 +100,17 @@ Nothing here downloads files or ships game files, the decompilation or anything 
    when one is missing.
 8. With the game closed, call **`fnv_companion_install`**: it builds the engine companion with Zig and installs it
    as its own MO2 mod.
-9. **`fnv_launch start=coc:GSProspectorSaloonInterior`** (or `continue` for your newest dev save), then
+9. **`fnv_game launch start=coc:GSProspectorSaloonInterior`** (or `continue` for your newest dev save), then
    **`fnv_status`**: it answers from the running game. From here, `fnv_guide` has step-by-step guides.
 
 A first prompt to give the agent: *"Call fnv_setup_check and fix what it reports with me, then launch the game
-with fnv_launch and show me fnv_status."*
+with fnv_game launch and show me fnv_status."*
 
 ## Safety levels
 
 `fnv.engine_control` has two levels.
 
-- **`"read"`** (the default): look at the game, start and stop the dev game (only the game `fnv_launch` started),
+- **`"read"`** (the default): look at the game, start and stop the dev game (only the game `fnv_game launch` started),
   and install the engine companion.
 - **`"full"`**: change the game and run code in it: memory writes, engine calls, console changes, hot-swap, hooks,
   and anything that puts agent-chosen code or files into the game or its mod profile (`fnv_plugin_build` build
@@ -125,7 +125,7 @@ play with.
 
 | Tool family | Needs |
 | --- | --- |
-| `fnv_guide`, `fnv_setup_check`, `fnv_crash_latest`, `fnv_crash_explain` (without engine names), `fnv_save_inspect`, `fnv_save_diff` | nothing beyond the project file |
+| `fnv_guide`, `fnv_setup_check`, `fnv_crash latest`, `fnv_crash` (without engine names), `fnv_save_inspect`, `fnv_save_diff` | nothing beyond the project file |
 | Engine knowledge: `fnv_func_*`, `fnv_class_*`, `fnv_symbolize`, `fnv_global_find`, `fnv_setting_info`, `fnv_string_xrefs`, `fnv_command_info`, `fnv_script_explain` | the engine map |
 | `fnv_symbols`, source lines and named locals in other tools | the symbol database (optional) |
 | `fnv_name_*` (the naming tools, an optional extra) | the fnvsym proof folder (`FNVSYM_ROOT`) |
@@ -164,7 +164,7 @@ Paths in the project file may be relative to the project file. `fnv_*` keys go i
 | `fnv.mo2_executable` | `NVSE` | The MO2 executable entry that starts the game |
 | `fnv.zig` | none | Zig 0.14.1 `zig.exe` |
 | `fnv.engine_pipe` | `fnvmcp-engine` | Name of the engine companion's pipe. The tools talk only to a pipe the running FalloutNV.exe serves (`PIPE_NOT_GAME` otherwise) |
-| `fnv.tests_dir` | none | Folder of scenario tests for `fnv_test_run_all` |
+| `fnv.tests_dir` | none | Folder of scenario tests for `fnv_test run_all` |
 | `fnv.clean_exe` | none | Your unpacked FalloutNV.exe 1.4.0.525 (read locally, never copied) |
 | `FNV_ENGINE_MAP`, `FNV_DECOMP`, `FNV_SYMDB`, `FNV_CRASH_DIRS`, `FNV_RESEARCH_DIR` | none | The same as the `fnv` keys above; the project file wins |
 | `FNV_CLEAN_EXE` | none | The same as `fnv.clean_exe`; `fnv_plugin_build` then falls back to `%USERPROFILE%\.fnvdecomp\FalloutNV.exe` |

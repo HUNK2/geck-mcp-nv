@@ -44,13 +44,13 @@ class ConvTests(unittest.TestCase):
         self.assertEqual(list(out), ['verdict', 'reason', 'count'])
 
     def test_next_step_uses_existing_codes(self):
-        self.assertIn('fnv_launch', fnv_conv.next_step('NOT_RUNNING'))
+        self.assertIn('fnv_game launch', fnv_conv.next_step('NOT_RUNNING'))
         self.assertIn('fnv_companion_install', fnv_conv.next_step('COMPANION_NOT_INSTALLED'))
         self.assertIn('engine_control', fnv_conv.next_step('CONTROL_DISABLED'))
         self.assertIn('engine map', fnv_conv.next_step('ENGINE_MAP_UNAVAILABLE'))
         self.assertIsNone(fnv_conv.next_step('SOMETHING_ELSE'))
         error = fnv_conv.ConvError('NOT_RUNNING', 'The game is not running.')
-        self.assertIn('fnv_launch', str(error))
+        self.assertIn('fnv_game launch', str(error))
 
     def test_references_and_aliases(self):
         live, aliases = FakeLive(), fnv_conv.Aliases()

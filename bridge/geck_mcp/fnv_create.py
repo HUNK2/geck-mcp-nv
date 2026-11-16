@@ -736,7 +736,7 @@ class FormTools:
         self.created.append(entry)
         self.live.journal.add({'kind': 'form_create', **entry, 'undo': None})
         return {'created': entry, 'how': how,
-                'next': 'fnv_form_edit changes fields; fnv_spawn or fnv_place at puts it in the world; fnv_author '
+                'next': 'fnv_form_edit changes fields; fnv_place at export=false or fnv_place at puts it in the world; fnv_author '
                         'export writes it to the plugin spec.'}
 
     # The fields fnv_form reload applies, per record type: (subrecord, decoder, setter template).
@@ -1620,7 +1620,7 @@ class AuthorTools:
         (folder / (name + '.spec.json')).write_text(json.dumps(spec, indent=1), encoding='utf-8')
         (folder / (name + '.test.json')).write_text(json.dumps(test, indent=1), encoding='utf-8')
         (folder / 'README.md').write_text('# %s\n\nScaffold (%s) made by fnv_author. Build with geck_plugin_build, '
-                                          'install with fnv_install, test with fnv_test_run.\n' % (name, kind),
+                                          'install with fnv_install, test with fnv_test.\n' % (name, kind),
                                           encoding='utf-8')
         return {'folder': str(folder), 'files': sorted(p.name for p in folder.iterdir()),
                 'note': 'Templates named here (Clipboard, VMS01, FacRmFloor01) must exist as dumps in state/templates '

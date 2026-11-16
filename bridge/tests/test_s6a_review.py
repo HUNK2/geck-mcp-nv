@@ -107,7 +107,7 @@ class ThawGuardTests(unittest.TestCase):
         self.dbg.link.ping = lambda timeout=None: {'parked': 0, 'held': True}
         out = self.dbg.thaw()
         self.assertEqual(self.resumed, [])
-        self.assertIn('fnv_time_control', out['reason'])
+        self.assertIn('fnv_time', out['reason'])
 
     def test_m3_unreadable_counter_resumes_nothing(self):
         self.frame_reads = []

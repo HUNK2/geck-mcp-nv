@@ -262,7 +262,7 @@ class EyesTools:
         return Camera(position, rotate, clip, frustum, _f(raw_sg, SG_FOV - SG_CAMERA), width, height)
 
     def _saved_undone(self):
-        """The saved state's journal entry was undone (fnv_undo / fnv_revert_all ran its undo): the camera is no
+        """The saved state's journal entry was undone (fnv_undo / fnv_undo all=true ran its undo): the camera is no
         longer ours to restore, and the next change needs a new entry (N3)."""
         jid = (self.saved or {}).get('journalId')
         get = getattr(self.live.journal, 'get', None)

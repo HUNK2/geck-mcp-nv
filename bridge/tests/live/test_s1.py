@@ -23,7 +23,7 @@ class S1Tests(LiveCase):
         try:
             for tool, args in (('fnv_trace', {'function': 'Actor::GetLevel', 'action': 'start'}),
                                ('fnv_hooks', {'action': 'remove', 'hook_id': 'all'}),
-                               ('fnv_do', {'steps': [{'wait': 1}]}),
+                               ('fnv_test', {'action': 'steps', 'steps': [{'wait': 1}]}),
                                ('fnv_damage_log', {})):
                 envelope = reader.call(tool, args)
                 self.assertEqual((envelope.get('error') or {}).get('code'), 'CONTROL_DISABLED', (tool, envelope))

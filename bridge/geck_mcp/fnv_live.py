@@ -138,7 +138,7 @@ class LiveService:
 
     def _unhooked(self, hook_id):
         """A hook came out: when it was the last one of its label, its entry is closed (a tool that takes its own
-        hook out again leaves nothing for fnv_revert_all)."""
+        hook out again leaves nothing for fnv_undo all=true)."""
         done = gone = None
         with self._hook_lock:
             for label, info in list(self._hook_map.items()):
@@ -297,7 +297,7 @@ class LiveService:
     # COMPANION_UNREACHABLE joins them only when no game process exists (a running game with a busy pipe keeps it).
     GAME_NOT_RUNNING_CODES = ('NOT_RUNNING', 'GAME_NOT_RUNNING')
     # these join them only when no game process exists: a game at the main menu answers NO_GAME_LOADED with its own
-    # next step (fnv_launch refuses while a game runs; S5 review I1)
+    # next step (fnv_game launch refuses while a game runs; S5 review I1)
     NO_PROCESS_CODES = ('COMPANION_UNREACHABLE', 'NO_GAME_LOADED')
     UNCERTAIN_CODES = ('COMPANION_TIMEOUT', 'COMPANION_DISCONNECTED')
 
@@ -407,7 +407,7 @@ class LiveService:
         """The game runs and the companion answers; returns the ping."""
         ping = self.link.ping()
         if not ping.get('deferredInit'):
-            raise LiveError('GAME_STARTING', 'The game is still starting; wait or call fnv_launch')
+            raise LiveError('GAME_STARTING', 'The game is still starting; wait or call fnv_game launch')
         return ping
 
     def in_game(self):
@@ -415,7 +415,7 @@ class LiveService:
         if not ping.get('loaded'):
             phase, _ = self.game.phase(ping)
             if phase != 'in_game' and phase != 'in_menu' and phase != 'paused_menu':
-                raise LiveError('NO_GAME_LOADED', 'No game is loaded (phase %s): use fnv_launch with a save or cell' % phase)
+                raise LiveError('NO_GAME_LOADED', 'No game is loaded (phase %s): use fnv_game launch with a save or cell' % phase)
         return ping
 
     def changing(self, reason):
@@ -998,11 +998,11 @@ class LiveService:
     # session, the dev profile's save slots). Matched on the first word, case-insensitively, also after `ref.`.
     # Long and short names from the engine map's command table (ExitGame is also `exit`, CenterOnWorld `cow`; JIP
     # adds RunBatchScript; S5 review I2).
-    _LOAD = 'fnv_restart start=save:<name> (or fnv_test_save action=load for a test save)'
+    _LOAD = 'fnv_game restart start=save:<name> (or fnv_test_save action=load for a test save)'
     _SAVE = 'fnv_test_save action=save'
-    _BATCH = 'fnv_do (one console step per line)'
-    CONSOLE_INSTEAD = {'qqq': 'fnv_quit', 'quitgame': 'fnv_quit', 'exitgame': 'fnv_quit', 'exit': 'fnv_quit',
-                       'restartgame': 'fnv_restart', 'load': _LOAD, 'loadgame': _LOAD, 'con_loadgame': _LOAD,
+    _BATCH = 'fnv_test steps (one console step per line)'
+    CONSOLE_INSTEAD = {'qqq': 'fnv_game quit', 'quitgame': 'fnv_game quit', 'exitgame': 'fnv_game quit', 'exit': 'fnv_game quit',
+                       'restartgame': 'fnv_game restart', 'load': _LOAD, 'loadgame': _LOAD, 'con_loadgame': _LOAD,
                        'save': _SAVE, 'savegame': _SAVE, 'forcesave': _SAVE, 'systemsave': _SAVE, 'autosave': _SAVE,
                        'cow': 'fnv_move', 'centeronworld': 'fnv_move',
                        'bat': _BATCH, 'runbatch': _BATCH, 'runbatchscript': _BATCH}

@@ -4,7 +4,7 @@
                   one argument, or run a script line whenever it is called (with a filter and a hit limit)
   fnv_patch       write bytes, NOPs, a ret or a jmp/call at an address in the game's code, journaled with the
                   original bytes and checked against the clean exe
-  fnv_tracepoint  record calls of a function when a condition holds: arguments as objects, the caller and the
+  fnv_trace stack=true  record calls of a function when a condition holds: arguments as objects, the caller and the
                   call stack (return addresses on the stack, kept when a call instruction precedes them)
   fnv_engine_get  call a proven read-only getter (Get*/Is*/Has*/Can*...) with typed arguments, outside full
                   control: only when fnv_oracle.Purity shows its code and callees write no non-stack memory, and
@@ -331,7 +331,13 @@ class ControlTools:
                 'note': 'Live in the running game until undone (fnv_undo with this journal id) or the game restarts. '
                         'A patch that splits an instruction crashes when the CPU reaches it: patch whole instructions.'}
 
-    # ================================================================== fnv_tracepoint
+    # ================================================================== fnv_trace with stacks (was fnv_tracepoint)
+    def has_tracepoint(self, function, allow_unproven=False):
+        """Whether a recording trace (stacks, several conditions) runs on this function: fnv_trace read and stop go to
+        it, other traces to the agent's plain trace."""
+        address = self._function(function, allow_unproven)[0]
+        return self.deep.hook(TP_PREFIX + '%08X' % address) is not None
+
     def tracepoint(self, function, action='start', when=None, limit=30, allow_unproven=False, stack=True):
         """when: [{on: this|caller|param0..7, ref|value}] - the first is checked in the game, the rest here."""
         self.live.in_game()

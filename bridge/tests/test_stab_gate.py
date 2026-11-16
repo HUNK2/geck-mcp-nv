@@ -39,14 +39,12 @@ MUTATING_CASES = {
     ('fnv_hooks', 'remove'): {'action': 'remove', 'hook_id': 'all'},
     ('fnv_trace', 'start'): {'action': 'start', 'function': 'Actor::GetLevel'},
     ('fnv_trace', 'stop'): {'action': 'stop', 'function': 'Actor::GetLevel'},
-    ('fnv_tracepoint', 'start'): {'action': 'start', 'function': 'Actor::GetLevel'},
-    ('fnv_tracepoint', 'stop'): {'action': 'stop', 'function': 'Actor::GetLevel'},
     ('fnv_script_profile', '*'): {'action': 'read'},   # read installs the hook too
     ('fnv_script_trace', '*'): {'action': 'read', 'script': 'MyScript'},   # read installs the hook too
     ('fnv_damage_log', '*'): {'action': 'read'},   # read installs the hook too
     ('fnv_frame_profile', '*'): {},
-    ('fnv_crash_context', 'enable'): {'action': 'enable'},
-    ('fnv_crash_context', 'disable'): {'action': 'disable'},
+    ('fnv_crash', 'capture_on'): {'action': 'capture_on'},
+    ('fnv_crash', 'capture_off'): {'action': 'capture_off'},
     ('fnv_memory', 'alloc_trace'): {'action': 'alloc_trace'},
     ('fnv_memory', 'refcount'): {'action': 'refcount', 'pointer': '0x01000000'},
     ('fnv_events', 'subscribe'): {'subscribe': ['onhit']},
@@ -57,14 +55,30 @@ MUTATING_CASES = {
     ('fnv_window', 'capture_mouse'): {'action': 'capture_mouse'},
     ('fnv_window', 'unpause'): {'action': 'unpause'},
     ('fnv_snapshot', '*'): {'name': 'x', 'items': [{'console': 'player.kill'}]},
-    ('fnv_diff', '*'): {'before': 'x'},
     ('fnv_systems', 'formula'): {'action': 'formula', 'name': 'x'},
     ('fnv_systems', 'sweep'): {'action': 'sweep', 'name': 'x'},
     ('fnv_systems', 'barter'): {'action': 'barter', 'args': ['0x00015169']},   # round 4: perk hooks + engine calls
     ('fnv_leveled_roll', 'seed'): {'form': '0x00000014', 'seed': 1},
-    ('fnv_test_run', '*'): {'yaml': 'name: x\nsteps:\n  - wait: 1\n'},
-    ('fnv_test_run_all', '*'): {},
-    ('fnv_do', '*'): {'steps': STEPS},
+    ('fnv_test', '*'): {'yaml': 'name: x\nsteps:\n  - wait: 1\n'},
+    # TOOL-MERGE tier 1: merged tools list their changing actions; their reads are in READ_CASES
+    ('fnv_time', 'calendar_set'): {'set_hour': 12},
+    ('fnv_time', 'pause'): {'action': 'pause'},
+    ('fnv_time', 'resume'): {'action': 'resume'},
+    ('fnv_time', 'force_resume'): {'action': 'force_resume'},
+    ('fnv_time', 'hold'): {'action': 'hold'},
+    ('fnv_time', 'release'): {'action': 'release'},
+    ('fnv_time', 'step'): {'action': 'step', 'frames': 1},
+    ('fnv_time', 'fixed'): {'action': 'fixed', 'fps': 60},
+    ('fnv_time', 'speed'): {'action': 'speed', 'x': 1},
+    ('fnv_undo', '*'): {'all': True},
+    ('fnv_ui_do', '*'): {'action': 'close_all'},
+    ('fnv_place', 'at'): {'action': 'at', 'base': '0x0000000F', 'export': False},
+    ('fnv_place', 'array'): {'action': 'array', 'base': '0x0000000F'},
+    ('fnv_place', 'nudge'): {'action': 'nudge', 'ref': 'player', 'offset': [1, 0, 0]},
+    ('fnv_place', 'rotate'): {'action': 'rotate', 'ref': 'player', 'rotation': [0, 0, 1]},
+    ('fnv_place', 'scale'): {'action': 'scale', 'ref': 'player', 'scale': 1},
+    ('fnv_place', 'snap'): {'action': 'snap', 'ref': 'player'},
+    ('fnv_place', 'remove'): {'action': 'remove'},
     ('fnv_session', 'start'): {'action': 'start'},
     ('fnv_session', 'end'): {'action': 'end'},
     ('fnv_crawl', '*'): {'action': 'cells'},
@@ -84,8 +98,9 @@ READ_CASES = {
     'fnv_atlas': {'action': 'actions'},
     'fnv_hooks': {'action': 'list'},
     'fnv_trace': {'action': 'list'},
-    'fnv_tracepoint': {'action': 'list', 'function': 'Actor::GetLevel'},
-    'fnv_crash_context': {'action': 'status'},
+    'fnv_crash': {'action': 'capture_status'},
+    'fnv_time': {'action': 'status'},
+    'fnv_place': {'action': 'list'},
     'fnv_memory': {'action': 'pools'},
     'fnv_events': {},
     'fnv_systems': {'action': 'formulas'},
@@ -231,7 +246,7 @@ class FullOnlyTests(GateFixture, unittest.IsolatedAsyncioTestCase):
         self.assertTrue(needs_full('fnv_plugin_build', 'install'))
         self.assertTrue(needs_full('fnv_plugin_build', None))     # a listed tool with no action: assume the worst
         self.assertFalse(needs_full('fnv_plugin_build', 'scaffold'))
-        self.assertFalse(needs_full('fnv_launch', None))
+        self.assertFalse(needs_full('fnv_game', None))
 
     async def test_no_fnv_block_means_read(self):
         self.project = self.project.model_copy(update={'fnv': None})

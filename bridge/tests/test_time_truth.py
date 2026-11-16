@@ -20,7 +20,7 @@ class ClockTests(TimeTestCase):
         with self.assertRaises(ConvError) as caught:
             self.wait.run(seconds=1)
         self.assertEqual(caught.exception.code, 'CLOCK_PAUSED')
-        self.assertIn('fnv_time_control resume, or use clock=real', str(caught.exception))
+        self.assertIn('fnv_time resume, or use clock=real', str(caught.exception))
         out = self.wait.run(seconds=1, clock='real')       # real seconds still pass
         self.assertEqual(out['estimatedFrames'], 60)
 

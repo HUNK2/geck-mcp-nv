@@ -20,10 +20,8 @@ FunctionRef = Annotated[str, Field(min_length=1, max_length=300,
                                                'Cmd_IsLimbGone_Eval, FUN_005a3db0)')]
 
 FNV_TOOLS = {
-    'fnv_func_find': 'offline read: functions by name words, address, or text/regex in their decomp code',
+    'fnv_func_find': 'offline read: functions by name words, address, or text/regex in their decomp code; direct callers or callees (call graph from the exe), several levels',
     'fnv_func_code': 'offline read: decomp source of one function, placeholder calls annotated with proven names',
-    'fnv_func_callers': 'offline read: direct callers (call graph from the exe), several levels',
-    'fnv_func_callees': 'offline read: direct callees and import calls, several levels',
     'fnv_symbolize': 'offline read: addresses -> exe function + offset, static object, or module + offset',
     'fnv_symbols': 'offline read: compiler symbol database: source line per code address, named locals, exact type layouts',
     'fnv_name_status': 'offline read: is a name proven, by which evidence (fnvsym verified.csv)',
@@ -35,8 +33,6 @@ FNV_TOOLS = {
     'fnv_global_find': 'offline read: settings and static objects with addresses (proven initializers)',
     'fnv_setting_info': 'offline read: one game/INI setting, its address and the functions that use it',
     'fnv_string_xrefs': 'offline read: functions whose decomp code contains a string',
-    'fnv_crash_latest': 'offline read: newest crash log parsed (exception, registers, call stack, modules)',
-    'fnv_crash_explain': 'offline read: crash log stack in decomp names and DLL offsets, forms involved, likely culprit',
     'fnv_save_inspect': 'offline read: a .fos save decoded with the game save code: header, plugins, location, globals, changed forms',
     'fnv_save_diff': 'offline read: two saves compared: changed forms, quest stages, positions, globals',
 }
@@ -643,7 +639,7 @@ class FnvService:
             log = fnv_crash.find_latest(self.project, self._read_path(path))
             parsed = fnv_crash.parse_file(log)
             return fnv_crash.summarise(parsed, max_frames)
-        return self.run('fnv_crash_latest', action)
+        return self.run('fnv_crash', action)
 
     def crash_explain(self, path=None, max_frames=40):
         from . import fnv_crash
@@ -661,7 +657,7 @@ class FnvService:
             out = fnv_crash.explain(parsed, engine, self.project, max_frames)
             if unavailable:
                 out['engineMap'] = unavailable
-            # The engine companion's own record of the fault (fnv_crash_context), matched by address and time.
+            # The engine companion's own record of the fault (fnv_crash context), matched by address and time.
             from .fnv_deep import match_context
             site = (out.get('crashSite') or {}).get('absolute')
             context = match_context(site, out.get('modified')) if site else None
@@ -677,7 +673,7 @@ class FnvService:
                     out['runningScriptFromCompanion'] = {'script': calls[0].get('thisFormId'),
                                                          'on': calls[0].get('arg0FormId'), 'via': calls[0].get('label')}
             return out
-        return self.run('fnv_crash_explain', action)
+        return self.run('fnv_crash', action)
 
 
     # ----------------------------------------------------------------------------- saves
@@ -777,14 +773,19 @@ def register(server, project, observe, result_type):
 
     @server.tool(annotations=observe)
     async def fnv_func_find(query: Annotated[str, Field(min_length=1, max_length=300)],
-                            mode: Literal['auto', 'name', 'code', 'regex', 'address'] = 'auto',
+                            mode: Literal['auto', 'name', 'code', 'regex', 'address', 'callers', 'callees'] = 'auto',
                             status: list[Status] | None = None, limit: Limit = 25,
-                            offset: Offset = 0) -> result_type:
+                            offset: Offset = 0, depth: Depth = 1) -> result_type:
         """Find Fallout: New Vegas 1.4.0.525 engine functions. mode=name matches all words of the query in the
         function's names (CamelCase aware: "limb damage" finds ApplyLimbDamage); mode=code searches the decomp
         source text of each function (case-insensitive), regex likewise with a regular expression; address
         symbolizes; auto picks address, then name, then code. Proven names rank first. Each result gives
-        address, name, status (proven / class_proven / probable / decomp / unnamed) and file:line."""
+        address, name, status (proven / class_proven / probable / decomp / unnamed) and file:line. mode=callers:
+        the functions that call the function named in query directly (call graph read from the game exe), up to
+        `depth` levels; calls through vtables or function pointers are not visible. mode=callees: the functions it
+        calls directly (and Windows/DLL imports it calls), up to `depth` levels."""
+        if mode in ('callers', 'callees'):
+            return await invoke(service.func_graph, query, mode, depth, limit)
         return await invoke(service.func_find, query, mode, status, limit, offset)
 
     @server.tool(annotations=observe)
@@ -793,17 +794,6 @@ def register(server, project, observe, result_type):
         """Decompiled C++ of one engine function from the decomp checkout, with its signature, proof status and
         call counts. Calls to placeholder functions (FUN_xxxxxxxx) are annotated with their proven names."""
         return await invoke(service.func_code, function, max_lines)
-
-    @server.tool(annotations=observe)
-    async def fnv_func_callers(function: FunctionRef, depth: Depth = 1, limit: Limit = 50) -> result_type:
-        """Functions that call this one directly (call graph read from the game exe), up to `depth` levels.
-        Calls through vtables or function pointers are not visible."""
-        return await invoke(service.func_graph, function, 'callers', depth, limit)
-
-    @server.tool(annotations=observe)
-    async def fnv_func_callees(function: FunctionRef, depth: Depth = 1, limit: Limit = 50) -> result_type:
-        """Functions this one calls directly (and Windows/DLL imports it calls), up to `depth` levels."""
-        return await invoke(service.func_graph, function, 'callees', depth, limit)
 
     @server.tool(annotations=observe)
     async def fnv_symbolize(addresses: Annotated[list[str], Field(min_length=1, max_length=200)],
@@ -901,20 +891,6 @@ def register(server, project, observe, result_type):
         """Engine functions whose decompiled code contains a string ("Pip-Boy", an INI key, an error text)."""
         return await invoke(service.string_xrefs, text, limit, offset)
 
-    @server.tool(annotations=observe)
-    async def fnv_crash_latest(path: Annotated[str, Field(max_length=1000)] | None = None,
-                               max_frames: Annotated[int, Field(ge=5, le=400)] = 40) -> result_type:
-        """Newest crash log (Yvile's Crash Logger CrashLogger.log or its Crash Logs folder; Cobb's
-        CobbCrashLogger.log) parsed: exception, registers, call stack, plugins, modules. Optional path."""
-        return await invoke(service.crash_latest, path, max_frames)
-
-    @server.tool(annotations=observe)
-    async def fnv_crash_explain(path: Annotated[str, Field(max_length=1000)] | None = None,
-                                max_frames: Annotated[int, Field(ge=5, le=400)] = 40) -> result_type:
-        """Explain the newest (or given) crash log: each stack frame as a decomp function with proof status
-        or as plugin DLL + offset, the forms involved, and the likely culprit with reasons."""
-        return await invoke(service.crash_explain, path, max_frames)
-
     SaveName = Annotated[str, Field(min_length=1, max_length=1000,
                                     description='Save file: full path, file name in the dev profile saves folder, '
                                                 'name without .fos, or a test-save name')]
@@ -948,5 +924,5 @@ def register(server, project, observe, result_type):
     act = ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempotentHint=False, openWorldHint=False)
     control = ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=False)
     live_read = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=False, openWorldHint=False)
-    fnv_live_tools.register(server, project, (live_read, act, control), result_type)
+    fnv_live_tools.register(server, project, (live_read, act, control), result_type, offline=service)
     return service

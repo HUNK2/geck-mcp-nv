@@ -20,6 +20,30 @@ engine tools in [FNV-ENGINE-TOOLS.md](FNV-ENGINE-TOOLS.md):
   pressed through the engine, test saves, time and RNG control, spawning and moving, condition evaluation
   for any record, quest markers, running script instances, leveled-list rolls and crash history.
 
+## Renamed tools (0.5.0b1 tool merge)
+
+Tools that did the same job became one tool with actions. The old names no longer work. The notes further down
+(test logs from before the merge) use the new names.
+
+| Old tool | Now |
+|---|---|
+| `fnv_crash_explain`, `fnv_crash_latest`, `fnv_crash_history` | `fnv_crash` (explain, the default), `fnv_crash latest`, `fnv_crash history` |
+| `fnv_crash_context` latest / enable / disable / status | `fnv_crash` context / capture_on / capture_off / capture_status |
+| `fnv_tracepoint` | `fnv_trace stack=true` (or several `when` conditions) |
+| `fnv_vars` | `fnv_script_instances of=<quest or ref>` |
+| `fnv_func_callers`, `fnv_func_callees` | `fnv_func_find mode=callers`, `mode=callees` |
+| `fnv_time_control` | `fnv_time` with the same actions (`calendar` is the old `fnv_time`) |
+| `fnv_diff` | `fnv_snapshot diff` |
+| `fnv_revert_all` | `fnv_undo all=true` |
+| `fnv_launch`, `fnv_quit`, `fnv_restart` | `fnv_game launch`, `quit`, `restart` |
+| `fnv_ui_tiles` | `fnv_menu tiles` (`fnv_menu` alone is `state`) |
+| `fnv_menu_control` press / close / close_all | `fnv_ui_do` message / close / close_all |
+| `fnv_spawn` | `fnv_place at export=false` (with `count`, `distance`, `direction`) |
+| `fnv_test_run`, `fnv_test_run_all`, `fnv_do` | `fnv_test` (run, the default), `fnv_test run_all`, `fnv_test steps` |
+
+A merged tool refuses a parameter its chosen action does not use (`INVALID_ARGUMENT`), so a call with a leftover
+argument from another action is not silently half-done.
+
 They need the **fnvmcp engine companion**, an opt-in xNVSE plugin separate from geck-mcp-nv's own
 companions. Unlike those, it works with engine addresses, so it lives in this fork's fnv-mcp work and
 is not part of upstream's address-free design.
@@ -135,9 +159,9 @@ missing. In short:
    Since 2026-11-12 (PLAN-3 S1.5, bug T1) "act" covers every action that changes the running game or leaves
    something installed in it, listed in `MUTATING_ACTIONS` in `geck_mcp/fnv_live_tools.py`. With `"read"` these
    now refuse too (they used to run as read or control):
-   - `fnv_hooks remove`; `fnv_trace`, `fnv_tracepoint`, `fnv_script_profile`, `fnv_script_trace`, `fnv_damage_log`
+   - `fnv_hooks remove`; `fnv_trace`, `fnv_trace stack=true`, `fnv_script_profile`, `fnv_script_trace`, `fnv_damage_log`
      start and stop, and read for the three that install their hook on the first read (`fnv_script_profile`,
-     `fnv_script_trace`, `fnv_damage_log`); `fnv_frame_profile`; `fnv_crash_context` enable and disable;
+     `fnv_script_trace`, `fnv_damage_log`); `fnv_frame_profile`; `fnv_crash` capture_on and capture_off;
      `fnv_memory` alloc_trace and refcount;
      `fnv_events` subscribe and unsubscribe; `fnv_watch frames=`; `fnv_systems` formula, sweep and barter;
      `fnv_perk_entries` start, stop and evaluate; `fnv_leveled_roll seed=`. These tools are now annotated as act
@@ -148,16 +172,16 @@ missing. In short:
      `pip install "capstone==5.0.7"`); without them it answers `CLEAN_EXE_MISSING` or `CAPSTONE_MISSING`.
    - `fnv_probe` install, remove, clear, config and harvest; `fnv_name_oracle` run, calibrate and sweep;
      `fnv_name_test` test and battery; `fnv_field_watch`; `fnv_atlas` run and import_frida.
-   - The scenario runners, whose steps change the game: `fnv_test_run`, `fnv_test_run_all`, `fnv_do`,
+   - The scenario runners, whose steps change the game: `fnv_test`, `fnv_test run_all`, `fnv_test steps`,
      `fnv_session` start and end, `fnv_crawl`, `fnv_bisect`, `fnv_replay` record, stop and play.
 
-   Reads in the same tools (list, read, status, report) still work with `"read"`. `fnv_launch`, `fnv_quit` and
+   Reads in the same tools (list, read, status, report) still work with `"read"`. `fnv_game launch`, `fnv_game quit` and
    the installs stay control.
    For `fnv_patch_map`, add `"clean_exe"`: your own unpacked FalloutNV.exe 1.4.0.525 (the Steam exe keeps its
    code encrypted on disk; Steamless unpacks it). It is read locally and never copied.
 3. With the game closed, `fnv_companion_install` builds the DLL with Zig and installs it as the MO2 mod
    `fnvmcp engine companion` (it never writes into the game folder).
-4. `fnv_launch start=continue` starts the game and loads the newest dev-profile save.
+4. `fnv_game launch start=continue` starts the game and loads the newest dev-profile save.
 
 ## Tools
 
@@ -169,15 +193,15 @@ Every answer is an envelope: `ok`, `outcome`, `data`, `error`. For an `fnv_*` ca
 | Tool | Kind | What it does |
 | --- | --- | --- |
 | `fnv_status` | read | Running? Phase (main_menu, loading, in_game, in_menu, paused_menu), cell, loaded plugins, companion ping |
-| `fnv_launch` / `fnv_quit` / `fnv_restart` | control | Start at `menu`, `continue`, `save:<name>` or `coc:<cell>`; quit via `qqq`, then window close, then terminate |
+| `fnv_game launch` / `fnv_game quit` / `fnv_game restart` | control | Start at `menu`, `continue`, `save:<name>` or `coc:<cell>`; quit via `qqq`, then window close, then terminate |
 | `fnv_install` | control | A built plugin into the dev profile as its own MO2 mod, enabled (game closed) |
 | `fnv_companion_install` | control | Build and install the engine companion |
 | `fnv_logs` | read | New lines of nvse.log, the console log, CrashLogger.log, JIP and MO2 logs |
-| `fnv_test_run` / `fnv_test_run_all` | control | Run YAML scenarios (below) |
-| `fnv_snapshot` / `fnv_diff` | act | Capture chosen state and compare |
+| `fnv_test` / `fnv_test run_all` | control | Run YAML scenarios (below) |
+| `fnv_snapshot` / `fnv_snapshot diff` | act | Capture chosen state and compare |
 | `fnv_player` `fnv_ref` `fnv_refs_near` `fnv_crosshair` | read | Player and references: base, position, cell, flags, runtime class (RTTI), extra data |
 | `fnv_actor_ai` `fnv_actor_values` `fnv_effects` | read | AI package and procedure, process level, combat, detection; actor values with their modifiers and the effects behind them; active effects with source items |
-| `fnv_quest` `fnv_vars` | read | Stage list with done flags, objectives with text and state, script variables by name |
+| `fnv_quest` `fnv_script_instances of=` | read | Stage list with done flags, objectives with text and state, script variables by name |
 | `fnv_extra_data` `fnv_inventory` | read | A reference's extra data decoded; items with counts and equipped state |
 | `fnv_script_errors` `fnv_events` `fnv_formid_live` | read | Script errors with script/mod; companion events; a plugin's load-order prefix |
 | `fnv_mem_read` | read | Memory at an address or field path (`m_pBaseProcess.m_eProcessType`), decoded with the decomp layouts |
@@ -186,11 +210,11 @@ Every answer is an envelope: `ok`, `outcome`, `data`, `error`. For an `fnv_*` ca
 | `fnv_engine_call` | act | Call a proven engine function by name (convention from the decomp signature) |
 | `fnv_setting_set` `fnv_script_set` | act | Game/INI settings; quest stages, objectives, variables, globals |
 | `fnv_actor_control` `fnv_input` | act | Actor actions (combat, packages, idles, move, kill, items, actor values); bounded player input |
-| `fnv_journal` `fnv_undo` `fnv_revert_all` | read/act | Every change with its old value; undo one, several, or all |
+| `fnv_journal` `fnv_undo` `fnv_undo all=true` | read/act | Every change with its old value; undo one, several, or all |
 | `fnv_script_profile` | read | Calls and time per script (quest, object, effect) with the owning quest: hooks on `Script::Run` and `Script::RunScriptEffectStart/Finish/Update` |
 | `fnv_script_trace` | read | The statements of one script as they run: kind (set, if, command name), block names, branches taken, failures, time; with the source, line numbers and the lines that did not run. Hook on `ScriptRunner::EvaluateLine` filtered to the script |
 | `fnv_damage_log` | read | Applied damage (`Actor::DamageHealthAndFatigue`) with the hit behind it: attacker, target, weapon, body part, health/limb/fatigue/armor damage, base damage, multiplier, critical/sneak/fatal flags |
-| `fnv_crash_context` | read | The newest crash-context files, named with the engine map; `enable` adds the script hooks so they name the running script. `fnv_crash_explain` attaches the matching file |
+| `fnv_crash context` | read | The newest crash-context files, named with the engine map; `enable` adds the script hooks so they name the running script. `fnv_crash` attaches the matching file |
 | `fnv_hang_doctor` | read | The main thread's (or every thread's) stack sampled from outside the process and named: where a hang is stuck. Works when the companion does not answer |
 | `fnv_patch_map` | read | Engine code, imports and vtable slots other modules changed, by owner, with jump chains and functions patched by several owners |
 | `fnv_hooks` | read | The watch hooks installed; remove one or all |
@@ -213,14 +237,14 @@ Every answer is an envelope: `ok`, `outcome`, `data`, `error`. For an `fnv_*` ca
 | `fnv_watch` | act | Values sampled over time (expressions, globals, actor values, positions, memory fields by class layout): first, last, min, max and a timeline of changes with frames; stops early on `until` |
 | `fnv_screenshot` | read | The current frame as PNG, returned as an image: the engine's own back-buffer capture (`SaveScreenshot`, works with the window covered), else a window capture |
 | `fnv_test_save` | act | Named test saves (`fnvmcp_test_*`) in the dev profile: save, load (waits for the game's post-load message), list, delete |
-| `fnv_crash_history` | read | Every crash log explained and grouped by signature: count, first/last time, likely culprits, new signatures flagged, crashes during exit cleanup marked |
+| `fnv_crash history` | read | Every crash log explained and grouped by signature: count, first/last time, likely culprits, new signatures flagged, crashes during exit cleanup marked |
 | `fnv_move` | act | Teleport the player or a ref to a ref, a cell (coc, or JIP `MoveToCell` with a position) or a position; waits for the cell to load; undoable |
-| `fnv_spawn` | act | Place a base form near a ref (`PlaceAtMe`) and return the new refs; undo disables and deletes them |
+| `fnv_place at export=false` | act | Place a base form near a ref (`PlaceAtMe`) and return the new refs; undo disables and deletes them |
 | `fnv_condition_eval` | read | Every condition list of a record (INFO, PACK, PERK and its entry tabs, SPEL/ENCH/ALCH/INGR effects, QUST quest, stage log entries and objective targets, RCPE, IDLE, MESG buttons, CPTH) evaluated against chosen refs, with what fails |
 | `fnv_quest_targets` | read | Each objective's targets: ref, cell, position, target conditions, the door a marker points at, the player's target cache, and every reason a marker is not shown |
 | `fnv_script_instances` | read | Running quest scripts and the object scripts of every loaded cell (the lists `TES::RunScripts` walks), variables, instance counts per script, and whether scripts run at all |
 | `fnv_menu` | read | Interface mode, active menu, menu stack, visible menus by name, loading screen, and an open message box with title, text and buttons |
-| `fnv_menu_control` | act | Press a message box button by index or label through the engine's click handler (`GetButtonPressed` sees it), close the open menu, close all menus |
+| `fnv_ui_do` | act | Press a message box button by index or label through the engine's click handler (`GetButtonPressed` sees it), close the open menu, close all menus |
 | `fnv_rng` | act | The game's one Mersenne Twister: state, or seed it like `MersenneTwister::Seed` |
 | `fnv_time` | act | Read the calendar, jump to an hour, advance hours (day/month/year roll over), change the timescale; `engine_wait` runs the game's own one-hour wait step |
 | `fnv_leveled_roll` | read | Roll a leveled list many times with `TESLeveledList::CalculateCurrentForm` at a level: share of each form and count, and of nothing; repeatable with a seed |
@@ -233,14 +257,14 @@ Every answer is an envelope: `ok`, `outcome`, `data`, `error`. For an `fnv_*` ca
 | `fnv_cell_grid` | read | Loaded exterior grid, current interior, interior and exterior cell buffers: each cell with its grid coordinates, load state and why it is loaded |
 | `fnv_hook_set` | act | Change an engine function live: skip it with a result (float results in st0), replace its result, change one argument, or run a script line on each call; filter, hit limit, read the changed calls, journaled |
 | `fnv_patch` | act | Bytes, NOPs, a ret or a jmp/call into the game's code; refuses over companion hooks and foreign patches (clean exe compare) unless forced; journaled with the original bytes |
-| `fnv_tracepoint` | read | Record a function's calls that meet conditions, with arguments as objects, result, time, caller and the call stack; groups hits by path |
+| `fnv_trace stack=true` | read | Record a function's calls that meet conditions, with arguments as objects, result, time, caller and the call stack; groups hits by path |
 | `fnv_engine_get` | read | Call a proven getter (Get/Is/Has/Can/...) whose machine code and callees write no memory but their own stack (fnv_oracle.Purity on the clean exe), always guarded, with typed arguments; pointer results described |
 | `fnv_globals` | read | Global variables from the data handler's list, filtered; set values (journaled) |
 | `fnv_dialogue` | read | The conversation on screen: speaker, state, spoken topic and info, the line and name as shown, the choices in order with topic, info, quest and heard flag |
 | `fnv_heap` | read | The game's address space (2 GB unless large address aware, largest free block), memory pools by use, form and process-level actor counts; growth over N seconds |
 | `fnv_world_edit` | act | Move, rotate, scale, enable, disable, delete or duplicate a ref with the functions the console commands use; force or release weather; trigger or stop an image-space modifier; undoable |
 | `fnv_scene_graph` | read | A loaded ref's node tree: classes (MSVC RTTI or Gamebryo NiRTTI), names, hidden flag, transforms, geometry counts, skinning, shader and texture paths, controllers and sequences, extra data |
-| `fnv_ui_tiles` | read | A menu's live tile tree with trait values named by the game's trait table |
+| `fnv_menu tiles` | read | A menu's live tile tree with trait values named by the game's trait table |
 | `fnv_vats_odds` | read | VATS hit chance per target and limb from CombatFormulas::GetVATSChanceToHit and the ep 8 perk layer, the percent the menu shows, and the gun formula term by term |
 | `fnv_frame_profile` | read | Time per frame by subsystem from timing hooks on the main loop's children, removed afterwards |
 | `fnv_window` | control (act for release_mouse, capture_mouse, unpause) | Free the user's mouse while the game runs (DirectInput non-exclusive background mode on the game window), capture it again, close the pause menu; persist writes `bBackground Mouse=1` to the dev profile's Fallout.ini (checked: launch starts with it, live toggles return S_OK) |
@@ -301,14 +325,14 @@ variable `FNV_RESEARCH_DIR`) by heading section, and the facts in `fnv_facts.py`
 the shipped guides instead and points to `fnv_func_find` for the decomp. A test fails when a guide names
 an `fnv_*` or `geck_*` tool that does not exist.
 
-## Game time: fnv_time_control and fnv_wait_for (Plan 2, W1)
+## Game time: fnv_time and fnv_wait_for (Plan 2, W1)
 
 Addresses come from `D-time.md` section 1. Each timer function is looked up in the engine map by address and must
 have the expected signature; otherwise the tool refuses with `ENGINE_MAP_MISMATCH` and calls nothing. Frame waits
 and predicates run inside the game in one request (`pred set`, `until`, `pred clear`), so the game does not run
 between the base frame and the wait.
 
-**`fnv_time_control`** (kind `act`; `status` is a read). Actions:
+**`fnv_time`** (kind `act`; `status` is a read). Actions:
 
 | Action | What it does |
 | --- | --- |
@@ -320,7 +344,7 @@ between the base frame and the wait.
 | `status` | Gate state, clock counter, fixed step, multiplier, frame, and the real frame rate from two readings |
 
 Changing actions need `fnv.engine_control` set to `full`. Without a running game the tool answers `GAME_NOT_RUNNING`
-with the next step (`fnv_launch`).
+with the next step (`fnv_game launch`).
 
 **`fnv_wait_for`** (kind `read`). Exactly one condition:
 
@@ -340,9 +364,9 @@ chains `[[0x011DEA0C]+0x07]:u8` (each `[...]` is one read); hook bases `this.[..
 i32 f32`. Limits: 64 operations, stack depth 16. Errors name the column (`BAD_PREDICATE`). Field paths through the
 symbol database are not supported yet.
 
-## Frame-exact control: fnv_input frames, fnv_do, fnv_session, fnv_health (Plan 2, W1)
+## Frame-exact control: fnv_input frames, fnv_test steps, fnv_session, fnv_health (Plan 2, W1)
 
-As of Plan 2 W2 the bridge registers 178 tools: 44 geck tools (unchanged) and 134 `fnv_*` tools. This wave adds `fnv_do`,
+As of Plan 2 W2 the bridge registers 178 tools: 44 geck tools (unchanged) and 134 `fnv_*` tools. This wave adds `fnv_test steps`,
 `fnv_session` and `fnv_health`.
 
 **Input with frames.** `fnv_input` takes `frames=N` (1 to 10000) for a press that lasts exactly N frames. Controls 0
@@ -353,7 +377,7 @@ move is `[dx, dy]` per frame (signed; sent as two's complement). The injector is
 jump or call is refused (`PROLOGUE_RELOCATION`), because `inpcfg` takes no relocation list. Each job ends by itself
 after its frames. The call waits for them unless it is told not to. Needs `fnv.engine_control` set to `full`.
 
-**fnv_do** (control). Runs steps given inline, with the same keys as a YAML scenario. Arguments: `steps` (1 to 200),
+**fnv_test steps** (control). Runs steps given inline, with the same keys as a YAML scenario. Arguments: `steps` (1 to 200),
 `name`, `start` (`menu`, `continue`, `save:<name>` or `coc:<cell>`), `plugins`, `setup`, `teardown`, `deterministic`,
 `repeat` (1 to 20), `timeout_seconds` (20 to 900) and `relaunch_on_crash`. It returns the scenario report.
 
@@ -572,7 +596,7 @@ How:
   `fast_travel` from Goodsprings to Primm (an hour passed); TrudyRef is disabled at a fresh start and `talk` refuses
   with `disabled`. `activate direct=true` on a load door does not move the player (use the crosshair press or
   `fnv_move`).
-- `fnv_do` takes the eyes and hands as steps: `photo {action, ref, angles}`, `play {action: goto|talk|activate|look_at,
+- `fnv_test steps` takes the eyes and hands as steps: `photo {action, ref, angles}`, `play {action: goto|talk|activate|look_at,
   ref | position}` (passes when it arrived, a dialogue opened, the target is in the crosshair, or activate was pressed
   with no refusal) and `ui {action, label, ...}`. `break` and `flow` stop the main thread and are not scenario steps.
 
@@ -854,7 +878,7 @@ Code: `geck_mcp/fnv_crawl.py`, `geck_mcp/fnv_suite.py`; guides `slow`, `change-e
 | Tool | Kind | What it does |
 |---|---|---|
 | `fnv_crawl` | control | `cells plugin`: every cell the plugin adds or edits, visited and settled, then script errors, engine warnings, files not found, references with no 3D, dead load doors, frame rate and a photo, worst first. `dialogue npc`: every line written for the NPC with topic, quest, the engine's verdict and failing condition, and the voice and lip files with whether they exist |
-| `fnv_bisect` | control | `level=mods\|plugins` and the failing `fnv_do` steps: checks it fails with everything on and passes with every candidate off, then halves the suspects each round (the game is quit and relaunched) and names the culprit; the profile is put back |
+| `fnv_bisect` | control | `level=mods\|plugins` and the failing `fnv_test steps` steps: checks it fails with everything on and passes with every candidate off, then halves the suspects each round (the game is quit and relaunched) and names the culprit; the profile is put back |
 | `fnv_selftest` | read | What each family relies on, against the running game: ok, degraded or broken with the fact |
 
 What was seen:
@@ -884,7 +908,7 @@ What was seen:
 Each scenario was run against a plugin built for it with the spec builder (`examples/hello-bug` is in the
 repository; the other three needed game files it cannot ship), its scripts compiled by the running game. What failed on the way was fixed and is listed.
 
-**S1, build a quest mod and play it as a player** (one `fnv_do` call): PASSED, 23 steps in 64 s, no console and no teleport. The player walks to a contact, talks,
+**S1, build a quest mod and play it as a player** (one `fnv_test steps` call): PASSED, 23 steps in 64 s, no console and no teleport. The player walks to a contact, talks,
 picks "Sure, I'll look for them." (stage 20, set by the line's result script), walks to and picks up three tokens
 (stage 30 from the quest script), talks again, hands them in (stage 40, the tokens taken, 100 caps given by the
 result script), and a photo sheet of the contact is taken. Fixed on the way:
@@ -895,9 +919,9 @@ result script), and a photo sheet of the contact is taken. Fixed on the way:
 - A line's result script runs only when the line's record flag `0x2000` is set: all 6,277 lines of FalloutNV.esm
   with a compiled result script carry it and none of the 16,970 others (`TESTopicInfo::GetResultScript` reads the
   scripts from the file only then). Without it the line was said and its script never ran.
-- `fnv_do` has a `dialogue` step: `{choose: [option, ...], speaker: ref}`, the call a click on a response makes.
+- `fnv_test steps` has a `dialogue` step: `{choose: [option, ...], speaker: ref}`, the call a click on a response makes.
 - `fnv_play goto` waits up to 3 s for a message box that something closes (the DLC "items added" boxes, closed by
-  `fnv_do`) and walks on, instead of stopping.
+  `fnv_test steps`) and walks on, instead of stopping.
 
 **S4, a script misbehaves** (`examples/hello-bug`): PASSED. HelloBugQuest counts the global HelloBugLevel up to
 100 and never gets there. `fnv_script_debug` stopped on source line 8 (`if HelloBugLevel >= 100`), eval read 39,
@@ -916,7 +940,7 @@ the way:
 - In-game compiles replaced global EditorIDs with form ids when a first compile failed for another reason
   (`set <form id> to` is no variable). Globals keep their names (the running game keeps them).
 - Quest scripts do not run while the pause menu is open (it opens when the game window loses focus): the guide says
-  to close it with `fnv_menu_control`.
+  to close it with `fnv_ui_do`.
 
 **S6, a new mesh looks wrong**: PASSED. A crate mesh shipped loose in its mod names a
 misspelled texture (`CrateLarge0l.dds`). The photo sheet (four angles) showed it without its paint beside the
@@ -1036,7 +1060,7 @@ Everything the waves left as "not built" was built or decided against; each item
   is on (`fnv_render toggle debug_text`); `marker`, `clear`.
 - `fnv_replay`: two held controls recorded with their frames from a save, replayed under the frame gate: the player
   ended within 2 units of the recorded position.
-- `fnv_launch start=cell:<interior EditorID>` (SStartingCell in the INI): run 2026-11-12, crashed the game at startup
+- `fnv_game launch start=cell:<interior EditorID>` (SStartingCell in the INI): run 2026-11-12, crashed the game at startup
   in every cell tried (HelloWasteland, GSProspectorSaloonInterior): TES::LoadInterior -> LoadingMenu setup 0x00788AB0
   -> Tile::Set on InterfaceManager's root tile, still null before the main menu builds it. Removed; `coc:` goes
   through the main menu. Intros were already skipped (SIntroSequence blank).
@@ -1083,7 +1107,7 @@ without a person clicking. Where the game has a function or a data structure for
   own log strings, and checked against the unpacked exe's bytes). It copies the back buffer, so it works
   when the window is covered. It needs the device to allow locking the back buffer (`bAllowScreenShot=1`,
   and multisampling off or a driver that allows it); otherwise the tool falls back to a window capture.
-- **fnv_menu / fnv_menu_control** read `InterfaceManager` (0x011D8A80, read by `InterfaceManager::Instance`,
+- **fnv_menu / fnv_ui_do** read `InterfaceManager` (0x011D8A80, read by `InterfaceManager::Instance`,
   proven): mode +0x0C, active menu +0xD0, menu stack +0x114, and the visibility byte per menu id
   (0x011F308F + id). The message box is `MessageMenu` (0x011DA4F0): its tiles are found by name (`MM_Title`,
   `MM_MessageText`) and the buttons are the items of its list box (+0x40), each label the `ListItemText`
@@ -1177,7 +1201,7 @@ memory and world edits) and checked in the running game on the dev profile:
   kept 7), result 30 with a player filter, fnv_undo removing the hook.
 - **Patches** (`fnv_patch`): `B8 05 00 00 00 C3` over GetLevel's first six bytes made every actor level 5; a second
   patch with a wrong `expect` was refused; fnv_undo restored `55 8B EC 51 89 4D`.
-- **Tracepoints** (`fnv_tracepoint`): the hook record's snapshot area holds up to 24 stack words that point into the
+- **Tracepoints** (`fnv_trace stack=true`): the hook record's snapshot area holds up to 24 stack words that point into the
   exe (`HF_STACK`); the bridge keeps those preceded by a call instruction. GetLevel on the gecko: 67 hits, all from
   CalculateDetectionLevel (0x008A0D10). Deeper frames can be stale stack values.
 - **fnv_engine_get**: Actor::GetLevel on the player returned 1.
@@ -1192,7 +1216,7 @@ memory and world edits) and checked in the running game on the dev profile:
 - **fnv_scene_graph**: the player's 97 nodes (BSFadeNode, NiNode, BSFaceGenNiNode, NiTriShape, NiTriStrips), skinned
   shapes with vertex and triangle counts, PPLighting texture sets (HandMale.dds, _n, _sk), locomotion sequences, BSX
   flags. Gamebryo classes have no MSVC RTTI: their names come from NiObject::GetRTTI (vtable slot 2).
-- **fnv_ui_tiles**: HUDMainMenu with 401 trait names read from the game's own trait map (0x011F32F4).
+- **fnv_menu tiles**: HUDMainMenu with 401 trait names read from the game's own trait map (0x011F32F4).
 - **fnv_vats_odds**: 9mm pistol on a gecko at 210 units: head 0.4907 from the engine, and the recomputed terms give
   49.07% too; the torso term is 147% and caps at 95. The menu number uses single precision (Direct3D's x87 control
   word), so 0.95 shows as 95. Not yet compared with an open VATS menu: injected input did not open VATS here.
@@ -1247,8 +1271,8 @@ plugin: names the game does not keep are replaced by their form ids from the rec
 - Over MCP: every read tool on the player and a placed NPC; memory write and undo; a form edit of a
   weapon's damage checked with `GetAttackDamage`; a setting change reverted; an unproven function refused;
   holding "forward" for 800 ms moved the player 262 units.
-- Over MCP from a closed game: `fnv_test_run hello-wasteland.yaml` launched the game and passed in 9 s;
-  `fnv_test_run_all` on the three examples took 34 s (one pass, the broken one failed with the actual
+- Over MCP from a closed game: `fnv_test hello-wasteland.yaml` launched the game and passed in 9 s;
+  `fnv_test run_all` on the three examples took 34 s (one pass, the broken one failed with the actual
   value, the forced crash was diagnosed and the server relaunched the game in 8.5 s). The game keeps
   running after the MCP client closes.
 - Discord's in-game overlay (`DiscordHook`) crashed the game at startup with JIP LN loaded, in every
@@ -1309,7 +1333,7 @@ Dialogue, AI packages and live diffs (2026-11-07, a fresh game started in the Pr
   being served. A state normal play never makes; not traced further.
 
 - Agent tools (2026-11-07, Goodsprings save): `fnv_menu` read the Gun Runners' Arsenal message box (title,
-  text, OK); `fnv_menu_control press` pressed OK and the next queued box appeared; on the hardcore prompt
+  text, OK); `fnv_ui_do message` pressed OK and the next queued box appeared; on the hardcore prompt
   (`ShowMessage 0011E661`) "No (Recommended)" and "Yes" were pressed by label and `GetButtonPressed`'s byte
   became 0 and 1 (hardcore stayed off: the result belonged to the console). `fnv_trace TESQuest::RunScript`
   decoded every quest and named the caller. `fnv_watch` sampled at 250 ms with frame numbers.
@@ -1318,7 +1342,7 @@ Dialogue, AI packages and live diffs (2026-11-07, a fresh game started in the Pr
   the game's cache. `fnv_condition_eval`: the Cowboy perk's skill requirement failed (15 against 45), the
   Super Stimpak's effects split on `IsHardcore` / `HasPerk`. `fnv_leveled_roll Ammo5mm75`: nothing in 23% of
   300 rolls against chance none 25%; the same seed gave the same rolls twice. `fnv_time` advanced 2 hours
-  (globals) and 2 hours (`engine_wait`); `fnv_spawn`, `fnv_move` and their undo; `fnv_test_save` save, list
+  (globals) and 2 hours (`engine_wait`); `fnv_place at export=false`, `fnv_move` and their undo; `fnv_test_save` save, list
   and load. The engine screenshot worked with the window in the background. A YAML test with every new step
   passed, 17 steps, unattended; a failing one carried the debug bundle; `trace_script` listed the four lines
   of the Hello Quest script that never ran.
@@ -1326,7 +1350,7 @@ Dialogue, AI packages and live diffs (2026-11-07, a fresh game started in the Pr
   pathfinding (`LowProcess::ProcessPatrol` > `Pathing::FindPathDistance` > door search > scrap heap), the same
   family as the crash after Trudy was force-enabled. Since then time changes only go forward.
 - One fresh start hung before the main menu (main thread waiting in ntdll under
-  `LoadedNode::ReadFromStream`, 4 s of CPU, no hooks installed); `fnv_restart` terminated it and the next
+  `LoadedNode::ReadFromStream`, 4 s of CPU, no hooks installed); `fnv_game restart` terminated it and the next
   start was normal (14.6 s to the save).
 
 - Engine AI wave (2026-11-07 evening): `fnv_detection` on Sunny Smiles against the player: the recomputed
@@ -1388,7 +1412,7 @@ Dialogue, AI packages and live diffs (2026-11-07, a fresh game started in the Pr
 Every item the completion pass left as "built, checked offline" was run in the game (Prospector Saloon, the Hello
 plugins). Five were wrong and are fixed; one was removed. Tests: 858 pass.
 
-- `fnv_launch start=cell:` **removed**. SStartingCell in the INI crashes the retail game at startup in every cell
+- `fnv_game launch start=cell:` **removed**. SStartingCell in the INI crashes the retail game at startup in every cell
   tried (a plugin interior and GSProspectorSaloonInterior): TES::LoadInterior -> LoadingMenu setup 0x00788AB0 ->
   Tile::Set on InterfaceManager's root tile, still null because the main menu builds it. `coc:` (through the main
   menu) reaches a cell in 11 s. A `cell:` start now answers CELL_START_UNSUPPORTED with the `coc:` to use.

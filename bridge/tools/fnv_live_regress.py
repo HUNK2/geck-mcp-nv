@@ -5,10 +5,10 @@
 1. Preflight: the game runs in the project's dev profile, the companion it loaded is the one built from the current
    sources (state/engine/install.json), and fnv_selftest reports nothing broken.
 2. The unittest live tests under tests/live (smoke: test_smoke.py; full: every file), with FNV_LIVE=1.
-3. full only: the example scenarios through fnv_test_run, each with its expected outcome.
+3. full only: the example scenarios through fnv_test, each with its expected outcome.
 4. summary.json and summary.md in --out. Exit 0 only when everything passed and every expected failure failed.
 
-One in-process MCP server serves the whole run (tests/live/base.py), so launch the game with fnv_launch first and let
+One in-process MCP server serves the whole run (tests/live/base.py), so launch the game with fnv_game launch first and let
 the MCP server go idle for 20 s: it then releases the game's single-instance pipe. --attach never launches."""
 import argparse
 import io
@@ -57,8 +57,8 @@ def preflight(session, attach, start):
     data = status.get('data') or {}
     if not data.get('running'):
         if attach:
-            return ['the game is not running (--attach never launches): fnv_launch first'], data
-        launched = session.call('fnv_launch', {'start': start})
+            return ['the game is not running (--attach never launches): fnv_game launch first'], data
+        launched = session.call('fnv_game', {'action': 'launch', 'start': start})
         if not launched.get('ok'):
             return ['launch failed: %s' % json.dumps(launched.get('error'))[:300]], data
         status = session.call('fnv_status')
@@ -124,7 +124,7 @@ def run_scenarios(session):
             continue
         started = time.monotonic()
         try:
-            envelope = session.call('fnv_test_run', {'path': str(BRIDGE / rel), 'relaunch_on_crash': True})
+            envelope = session.call('fnv_test', {'path': str(BRIDGE / rel), 'relaunch_on_crash': True})
         except Exception as e:  # noqa: BLE001 - a timeout or a dead session: this row says so, the others stay
             envelope = {'ok': False, 'error': {'code': type(e).__name__, 'message': str(e)[:300]}, 'data': None}
         report = envelope.get('data') or {}
@@ -138,7 +138,7 @@ def run_scenarios(session):
                      'failures': [{k: f.get(k) for k in ('phase', 'reason', 'code')}
                                   for f in (report.get('failures') or [])][:5]})
         if not (session.call('fnv_status').get('data') or {}).get('running'):
-            gone = ('the game is not running after %s (relaunch: %s); launch it with fnv_launch and run again'
+            gone = ('the game is not running after %s (relaunch: %s); launch it with fnv_game launch and run again'
                     % (rel, json.dumps(relaunched)[:200]))
     return rows
 

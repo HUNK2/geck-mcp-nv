@@ -10,7 +10,8 @@ Entry: {'by': the parameter that picks the action (default 'action'), 'common': 
 
 ACTION_PARAMS = {
     'fnv_place': {'actions': {
-        'at': {'base', 'position', 'near', 'offset', 'rotation', 'scale', 'snap'},
+        'at': {'base', 'position', 'near', 'offset', 'rotation', 'scale', 'snap', 'export', 'count', 'distance',
+               'direction'},
         'array': {'base', 'position', 'shape', 'count', 'spacing', 'columns', 'radius', 'rotation', 'snap'},
         'nudge': {'ref', 'offset', 'local'},
         'rotate': {'ref', 'rotation'},
@@ -30,6 +31,55 @@ ACTION_PARAMS = {
         'close': {'menu'},
         'back': {'menu'},
         'type': {'label', 'target'},
+        'close_all': set(),
+    }},
+    # TOOL-MERGE tier 1
+    'fnv_crash': {'actions': {
+        'explain': {'path', 'max_frames'},
+        'latest': {'path', 'max_frames'},
+        'history': {'limit', 'include_shutdown'},
+        'context': {'limit'},
+        'capture_on': set(),
+        'capture_off': set(),
+        'capture_status': set(),
+    }},
+    'fnv_trace': {'actions': {
+        'start': {'function', 'when', 'filter', 'stack', 'allow_unproven'},
+        'read': {'function', 'limit', 'include_calls', 'allow_unproven'},
+        'stop': {'function', 'limit', 'include_calls', 'allow_unproven'},
+        'list': set(),
+    }},
+    'fnv_func_find': {'by': 'mode', 'common': {'query', 'limit'}, 'actions': {
+        **{mode: {'status', 'offset'} for mode in ('auto', 'name', 'code', 'regex', 'address')},
+        'callers': {'depth'},
+        'callees': {'depth'},
+    }},
+    'fnv_time': {'actions': {
+        'calendar': {'set_hour', 'advance_hours', 'timescale', 'mode', 'evaluate_packages', 'allow_unproven'},
+        'pause': set(), 'resume': set(), 'force_resume': set(), 'release': set(), 'status': set(),
+        'hold': {'timeout_seconds'},
+        'step': {'frames', 'fps'},
+        'fixed': {'fps'},
+        'speed': {'x'},
+    }},
+    'fnv_snapshot': {'actions': {
+        'capture': {'name', 'items'},
+        'diff': {'before', 'after'},
+    }},
+    'fnv_game': {'actions': {
+        'launch': {'start', 'timeout_seconds'},
+        'restart': {'start', 'timeout_seconds'},
+        'quit': {'force', 'timeout_seconds'},
+    }},
+    'fnv_menu': {'actions': {
+        'state': set(),
+        'tiles': {'menu', 'path', 'depth', 'max_tiles', 'traits'},
+    }},
+    'fnv_test': {'actions': {
+        'run': {'path', 'yaml', 'relaunch_on_crash'},
+        'run_all': {'folder'},
+        'steps': {'steps', 'name', 'start', 'plugins', 'setup', 'teardown', 'deterministic', 'repeat',
+                  'timeout_seconds', 'relaunch_on_crash'},
     }},
 }
 

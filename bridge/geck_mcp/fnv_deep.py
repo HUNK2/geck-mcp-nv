@@ -4,7 +4,7 @@ Hook-based (installed through the engine companion's "hook" op on proven decomp 
   fnv_script_profile  call counts and time per script        Script::Run, Script::RunScriptEffect*
   fnv_script_trace    statements of one script as they run   ScriptRunner::EvaluateLine
   fnv_damage_log      applied damage with the hit's parts     Actor::DamageHealthAndFatigue
-  fnv_crash_context   which scripts were running at a fault   Script::Run (+ the companion's exception handler)
+  fnv_crash context   which scripts were running at a fault   Script::Run (+ the companion's exception handler)
 Outside the process (work while the game is stuck and without the companion):
   fnv_hang_doctor     thread stacks sampled and named with the engine map
   fnv_patch_map       which engine code other plugins changed, against your unpacked FalloutNV.exe
@@ -223,7 +223,7 @@ class DeepTools:
             listeners.append(self._hook_gone)
 
     def _hook_gone(self, label):
-        """A profile hook came out (fnv_revert_all, fnv_hooks remove): the profile window and the crash context that
+        """A profile hook came out (fnv_undo all=true, fnv_hooks remove): the profile window and the crash context that
         rely on it are over (S3 review B I3)."""
         if label in PROFILE:
             self._baseline.pop('profile', None)
@@ -436,7 +436,7 @@ class DeepTools:
                     self.remove(h['id'])
                     removed.append(h['label'])
             return {'removed': removed, 'kept': list(PROFILE) if keep else [],
-                    'note': 'crash context is on: its script hooks stay (fnv_crash_context action=disable)' if keep else None}
+                    'note': 'crash context is on: its script hooks stay (fnv_crash action=capture_off)' if keep else None}
         installed = [self.ensure(w) for w in PROFILE]
         if action == 'start' or not self._baseline.get('profile'):
             for h in installed:
@@ -644,7 +644,7 @@ class DeepTools:
                           'decomp copies the same 0x60 bytes in HitDataEx::FUN_009b4ec0). The name of the handler is '
                           'probable, not proven; the hook itself sits on the proven function.'}
 
-    # ------------------------------------------------------------------ fnv_crash_context
+    # ------------------------------------------------------------------ fnv_crash context
     def _crash_context_on(self):
         return bool(self._baseline.get('crash_context'))
 

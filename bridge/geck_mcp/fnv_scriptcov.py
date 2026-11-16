@@ -4,7 +4,7 @@ start [plugin]   arm the statement hook (ScriptRunner::EvaluateLine 0x005E1550, 
                  share) and read its ring in the background every 0.2 s, keeping each (script, statement) seen
 stop             stop reading; per script of the plugin (or every script seen): statements run and never run as
                  source lines with their text, and the begin blocks never entered
-run folder       start, run every scenario of the folder (fnv_test_run_all), stop
+run folder       start, run every scenario of the folder (fnv_test run_all), stop
 
 The ring holds 4,096 statements and wraps in about a second in a busy cell, so the reader runs often; records lost
 between reads are counted and reported (a line counted as never run may then have run). Statement numbers map to

@@ -1,6 +1,6 @@
 """Plan 2 W7: fnv_bisect and fnv_selftest.
 
-fnv_bisect level=mods|plugins|records steps=[...] (the fnv_do steps of a scenario that fails): find the one MO2 mod,
+fnv_bisect level=mods|plugins|records steps=[...] (the fnv_test steps steps of a scenario that fails): find the one MO2 mod,
 plugin, or record of a plugin (records plugin=<name>: variants of the plugin file with half of its records left out,
 written with the plugin codec over the plugin in its mod folder, the original put back at the end) that makes it fail.
 Level hooks (other DLLs' engine patches) is not offered: putting a foreign patch back in a running game is unsafe (its
@@ -386,7 +386,7 @@ class BisectTools:
         if level not in ('mods', 'plugins', 'records'):
             raise ConvError('BAD_ARGUMENTS', 'level is mods, plugins or records (with plugin).')
         if not steps:
-            raise ConvError('BAD_ARGUMENTS', 'steps (the failing scenario, as for fnv_do) are needed.')
+            raise ConvError('BAD_ARGUMENTS', 'steps (the failing scenario, as for fnv_test steps) are needed.')
         if not self._busy.acquire(blocking=False):
             raise ConvError('BUSY', 'Another fnv_bisect is running; it owns the profile and the plugin file.')
         try:

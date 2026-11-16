@@ -146,7 +146,7 @@ class EnvelopeThroughServerTests(unittest.IsolatedAsyncioTestCase):
 
 def _is_invoke_return(st):
     return (isinstance(st, ast.Return) and isinstance(st.value, ast.Await) and isinstance(st.value.value, ast.Call)
-            and getattr(st.value.value.func, 'id', None) == 'invoke')
+            and getattr(st.value.value.func, 'id', None) in ('invoke', 'offline_invoke'))   # fnv_crash explain, latest
 
 
 def _harmless(st):

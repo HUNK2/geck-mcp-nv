@@ -417,12 +417,12 @@ class Warnings:
             if any('size' in f for f in files.values()):
                 nxt = 'Call fnv_warnings summary or read.'
             else:
-                nxt = 'No log file yet: call fnv_launch, then fnv_warnings summary.'
+                nxt = 'No log file yet: call fnv_game launch, then fnv_warnings summary.'
         else:
             text = 'The warning log is off'
             reason = ('%s=%s in %s.' % (KEY, value, config)) if value is not None else \
                 ('%s has no %s setting.' % (config, KEY) if config else 'No nvse_config.ini exists.')
-            nxt = 'Call fnv_warnings enable, then restart the game (fnv_restart): xNVSE reads the setting at start.'
+            nxt = 'Call fnv_warnings enable, then restart the game (fnv_game restart): xNVSE reads the setting at start.'
         return verdict(text, reason, enabled=on, config=str(config) if config else None, files=files,
                        marks={k: v['lines'] for k, v in marks.items()} or None,
                        enableWouldWrite=str(self.enable_target(config)), next=nxt)
@@ -448,7 +448,7 @@ class Warnings:
                        changed=True, restartNeeded=True, written=str(target),
                        readBefore=str(effective) if effective else None, backup=str(backup) if backup else None,
                        seededFromOtherFile=bool(effective and effective != target),
-                       next='Call fnv_restart (or fnv_launch when the game is closed), then fnv_warnings read.')
+                       next='Call fnv_game restart (or fnv_game launch when the game is closed), then fnv_warnings read.')
 
     def read(self, since='mark', category=None, text=None, plugin=None, source=None, limit=100, offset=0, brief=False):
         rows, files, notes = self.collect(since, [source] if source else None)

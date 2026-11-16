@@ -1,4 +1,4 @@
-"""fnv_do and the scenario runner additions (step, wait for, input with frames, as and $name, deterministic, repeat)
+"""fnv_test steps and the scenario runner additions (step, wait for, input with frames, as and $name, deterministic, repeat)
 against the fake companion. The runner's prepare, screenshot and report writing are stubbed: no game is launched."""
 from pathlib import Path
 from unittest import mock

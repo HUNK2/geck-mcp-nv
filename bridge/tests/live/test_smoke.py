@@ -15,7 +15,7 @@ class SmokeTests(LiveCase):
         self.assertTrue(data.get('position') or data.get('pos'), data)
 
     def test_smoke_spawn_and_undo(self):
-        spawned = self.ok('fnv_spawn', form=CAPS, count=1, distance=100)
+        spawned = self.ok('fnv_place', action='at', export=False, base=CAPS, count=1, distance=100)
         journal = self.ok('fnv_journal', limit=5, include_undone=False)
         self.assertTrue(journal['entries'], 'the spawn was not journaled')
         undone = self.ok('fnv_undo')
@@ -27,10 +27,10 @@ class SmokeTests(LiveCase):
         self.ok('fnv_undo')
 
     def test_smoke_time_pause_and_resume(self):
-        self.ok('fnv_time_control', action='pause')
-        status = self.ok('fnv_time_control', action='status')
+        self.ok('fnv_time', action='pause')
+        status = self.ok('fnv_time', action='status')
         self.assertIn('paused', str(status).lower())
-        self.ok('fnv_time_control', action='resume')
+        self.ok('fnv_time', action='resume')
         self.ok('fnv_wait_for', frames=10, timeout=30)
 
     def test_smoke_hooks_empty(self):

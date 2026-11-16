@@ -1,4 +1,4 @@
-"""Shared fakes for the Plan 2 W1 tests (fnv_inject, fnv_do, fnv_session, fnv_health): the fake companion of
+"""Shared fakes for the Plan 2 W1 tests (fnv_inject, fnv_test steps, fnv_session, fnv_health): the fake companion of
 test_fnv_time with the injector ops (inp, inpcfg) and an event ring, and the live and game stand-ins. No game, no pipe.
 """
 from pathlib import Path
