@@ -1,7 +1,7 @@
 # Known issues
 
 Open problems a user can meet, one line each. None loses data in normal use; most need an unusual order of calls or a
-damaged file. Each is tracked as a GitHub issue.
+damaged file. Most are tracked as GitHub issues.
 
 ## Client
 
@@ -41,6 +41,11 @@ damaged file. Each is tracked as a GitHub issue.
   `fnv_audio` log and subtitles).
 - `fnv_perk_entries evaluate` ends a recording the caller had started.
 - Two engine AI calls at once with the same hook label can lose records.
+
+## Not yet checked in the game
+
+- The companion releasing a held frame gate, held input and stopped threads when the bridge disconnects is tested
+  against a fake host only; a live check in the game is still to come.
 
 ## Game control
 

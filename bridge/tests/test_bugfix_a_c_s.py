@@ -1,4 +1,4 @@
-"""Regression tests for the 2026-11-12 bug log (docs/BUG-LOG.md): server core (A), offline data (C) and the
+"""Regression tests for the 2026-11-12 bug log: server core (A), offline data (C) and the
 stress-test findings (S) that can be checked offline."""
 import io
 import json

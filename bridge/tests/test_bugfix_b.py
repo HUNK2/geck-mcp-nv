@@ -1,4 +1,4 @@
-"""Regression tests for the native-area bugs of docs/BUG-LOG.md that the bridge side can check offline (B4, B5, B8,
+"""Regression tests for the native-area bugs of the bug log that the bridge side can check offline (B4, B5, B8,
 B10, B11). The C fixes (B1, B2, B6, B7, B9, B12-B17) run under the engine suites with GECK_MCP_ZIG set and in the
 game."""
 import struct

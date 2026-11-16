@@ -14,7 +14,7 @@ import sys
 import time
 from pathlib import Path
 
-BRIDGE = Path(r'C:\DecompModGithub\geck-mcp-nv\bridge')
+BRIDGE = Path(__file__).resolve().parents[1]
 PY = str(BRIDGE / '.venv' / 'Scripts' / 'python.exe')
 MINUTES = float(sys.argv[1]) if len(sys.argv) > 1 else 30.0
 OUT = Path(sys.argv[2]) if len(sys.argv) > 2 else Path('soak.json')

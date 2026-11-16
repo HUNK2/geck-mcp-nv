@@ -27,6 +27,22 @@ The first version of the fork. The entries below this one are geck-mcp-nv's own 
 - **Name and version:** the server announces itself as `fnv-mcp` 0.5.0b1 (the Python package stays `geck_mcp`).
   Environment variables have one prefix, `FNV_MCP_` (`FNV_MCP_ZIG`, `FNV_MCP_PIPE`, `FNV_MCP_RELOAD`,
   `FNV_MCP_SUPERVISOR_LOG`, `FNV_MCP_TRANSPORT`); the old names keep working.
+- **Long calls and large answers:** a long tool call sends an MCP progress notification every 5 seconds; an
+  answer over 40,000 characters is cut at a row boundary with `truncated: true` and names its paging argument; the
+  hot-reload supervisor is opt-in (`--reload`).
+- **The companion lets go:** when the bridge disconnects, the frame gate, held input and stopped threads are
+  released at once instead of after two minutes.
+- **Clearer tool listings:** every parameter of the tools with six or more parameters has a description;
+  positions and rotations are `[x, y, z]` everywhere (`fnv_move` and `fnv_raycast` still take the old object);
+  tools have display titles; every failure carries an error code; the server's first advice is `fnv_status`, and
+  `GECK_NOT_RUNNING` says how to start the GECK.
+- **Hardening:** `fnv_run_script` refuses a quit anywhere in the script; the bridge checks that the companion
+  pipe belongs to the game (`PIPE_NOT_GAME`); decompression is capped at 256 MiB; `fnv_func_find` regex searches
+  refuse nested repeats and stop after 20 seconds; Windows tools are run from the system folder; a cached engine
+  build is reused only when its digests match.
+- **Documents:** the scenario file format, an uninstall section in the setup guide, `SECURITY.md`,
+  `CONTRIBUTING.md` and third-party notices; `fnv_plugin_build`, like `fnv_code`, says a DLL built from decompiled
+  code is for local use; `fnv_guide engine` searches the shipped guides when there is no research folder.
 
 ## 0.4.0 beta 1 - 25 October 2026
 

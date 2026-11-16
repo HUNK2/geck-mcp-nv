@@ -101,7 +101,7 @@ One ring of 65,536 records `{seq, frame, tick, source, ref, 6 words}` with an in
 
 | Op | Effect |
 |---|---|
-| `sink add nvse <name_hex>` | Subscribe to an xNVSE event by name through the event manager interface (`SetNativeEventHandler`; see `C:\DecompModGithub\NVSE` for the ABI). One static handler per slot (at most 64 slots) so a record knows its event. `{"ok":true,"slot":N}` |
+| `sink add nvse <name_hex>` | Subscribe to an xNVSE event by name through the event manager interface (`SetNativeEventHandler`; see the xNVSE source, https://github.com/xNVSE/NVSE, for the ABI). One static handler per slot (at most 64 slots) so a record knows its event. `{"ok":true,"slot":N}` |
 | `sink add msg <type>` | Record xNVSE messages of that type (also the per-form ones the companion drops today) |
 | `sink remove <slot\|ff>` | |
 | `sink read <since> <max> [ref]` | `{"records":[{"seq","frame","tick","source","ref","words":[6]}],"next":S,"dropped":D}`; `source` is the event name or `msg:<type>`; optional filter by ref form id |

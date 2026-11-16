@@ -156,7 +156,7 @@ class EngineGetPurityTests(unittest.TestCase):
 
 
 ENGINE_MAP = BRIDGE / 'state' / 'engine_map.json'
-CLEAN_EXE = os.environ.get('FNV_CLEAN_EXE') or 'C:/Users/Ajang/.fnvdecomp/FalloutNV.exe'
+CLEAN_EXE = os.environ.get('FNV_CLEAN_EXE') or str(Path.home() / '.fnvdecomp' / 'FalloutNV.exe')
 
 
 @needs_capstone

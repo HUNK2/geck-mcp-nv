@@ -18,7 +18,8 @@ from geck_mcp.fnv_plugin_build import PluginTools  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # tests/: engine_host
 from engine_host import needs_zig, zig_path  # noqa: E402,F401
 
-DECOMP = Path(r'C:\DecompModGithub\fnv_decomp')
+# The decomp checkout: FNV_DECOMP_ROOT, or a fnv_decomp folder next to this repository.
+DECOMP = Path(os.environ.get('FNV_DECOMP_ROOT') or Path(__file__).resolve().parents[3] / 'fnv_decomp')
 SOURCE = '''// header
 // @fnv 0x00401000
 int A(int x)
