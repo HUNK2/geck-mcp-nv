@@ -127,6 +127,11 @@ def slim_schema(node):
     return out
 
 
+ENVELOPE_SCHEMA_TOOLS = ('fnv_status', 'geck_status')
+ENVELOPE_NOTE = ('The envelope every tool answers with: ok, operation, data (the answer), error (code, message, '
+                 'recovery), outcome. Its full schema is the outputSchema of fnv_status and geck_status.')
+
+
 class BridgeServer(MCPServer):
     """The SDK server, with one change: an error the SDK writes itself (arguments that fail the input schema, an
     unknown tool) gets the same structured result as the tools' own errors, so every result matches the declared
@@ -157,6 +162,12 @@ class BridgeServer(MCPServer):
                 schema = (props or {}).get(param)
                 if isinstance(schema, dict) and not schema.get('description'):
                     schema['description'] = text
+        # The envelope is every tool's answer: its full schema goes out on the entry tools only, the others name
+        # them (about a third of the listing). The tool manager keeps the full schema for checking results.
+        envelope = next((t.output_schema for t in tools if t.name in ENVELOPE_SCHEMA_TOOLS and t.output_schema), None)
+        for tool in tools:
+            if envelope and tool.name not in ENVELOPE_SCHEMA_TOOLS and tool.output_schema == envelope:
+                tool.output_schema = {'type': 'object', 'description': ENVELOPE_NOTE}
         return tools
 
     async def call_tool(self, name, arguments, context=None):

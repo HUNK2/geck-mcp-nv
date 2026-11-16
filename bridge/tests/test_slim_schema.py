@@ -100,6 +100,30 @@ class SlimListingTests(unittest.IsolatedAsyncioTestCase):
         raw = server._tool_manager.get_tool('fnv_ref').parameters
         self.assertEqual(raw.get('title'), 'fnv_refArguments')
 
+    async def test_the_envelope_schema_is_emitted_once_per_entry_tool(self):
+        """The envelope (ok, operation, data, error, outcome) is every tool's answer. Its full schema is emitted on
+        fnv_status and geck_status; the other tools emit a short object schema that names them. The tool manager
+        keeps the full schema on every tool, so structured results are still checked against it."""
+        server = make_server(self.fixture.p, self.fixture.service)
+        async with Client(server) as client:
+            tools = {t.name: t for t in (await client.list_tools()).tools}
+        full = tools['geck_status'].output_schema
+        self.assertIn('error', full.get('properties', {}))
+        self.assertEqual(tools['fnv_status'].output_schema, full)
+        wrong = []
+        for name, tool in tools.items():
+            out = tool.output_schema
+            raw = slim_schema(server._tool_manager.get_tool(name).output_schema or {})
+            if name in ('fnv_status', 'geck_status') or raw != full:
+                if out != raw:
+                    wrong.append((name, 'changed'))
+                continue
+            if out.get('type') != 'object' or 'fnv_status' not in out.get('description', '') or len(json.dumps(out)) > 400:
+                wrong.append((name, out))
+        self.assertEqual(wrong, [])
+        self.assertLess(sum(len(json.dumps(t.output_schema or {})) for t in tools.values()), 80000)
+        self.assertIn('error', server._tool_manager.get_tool('fnv_ref').output_schema.get('properties', {}))
+
     async def test_null_for_an_optional_parameter_still_validates(self):
         server = make_server(self.fixture.p, self.fixture.service)
         refused = {}

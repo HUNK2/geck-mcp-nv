@@ -53,7 +53,10 @@ The first version of the fork. The entries below this one are geck-mcp-nv's own 
   `GECK_NOT_RUNNING` says how to start the GECK.
 - **Slimmer tool list:** schemas are emitted without the generated `title` keys, an optional parameter as its own
   type instead of `anyOf [X, null]` with `default: null` (a client that sends null still works), and descriptions
-  without docstring indentation; the listing is about 18% smaller.
+  without docstring indentation; the listing is about 18% smaller. The envelope schema every tool answers with
+  (ok, operation, data, error, outcome) is emitted in full on `fnv_status` and `geck_status` only; the other tools'
+  outputSchema is a short object schema that names them (the listing shrinks by about another 27%). Results are
+  unchanged and still checked against the full schema.
 - **Hardening:** `fnv_run_script` refuses a quit anywhere in the script; the bridge checks that the companion
   pipe belongs to the game (`PIPE_NOT_GAME`); decompression is capped at 256 MiB; `fnv_func` regex searches
   refuse nested repeats and stop after 20 seconds; Windows tools are run from the system folder; a cached engine
